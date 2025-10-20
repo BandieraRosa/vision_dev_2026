@@ -13,7 +13,8 @@ ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.015 image:=/
 `square` 为一个黑色棋子的大小，单位为 m
 
 标定完成后修改rm_vision/config/camera_info。
-**检验标定结果**
+**检验标定结果**  
+
 PnP解算的距离与实际距离在7m,5m,3m,1.5m时的误差
 ### 2.机器人坐标系维护：
 根据实际测量修改urdf文件，尽可能符合实际情况。通过可视化展示，看机器人建模是否正确
