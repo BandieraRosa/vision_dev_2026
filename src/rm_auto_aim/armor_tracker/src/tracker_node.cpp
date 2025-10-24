@@ -152,6 +152,15 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
   "/current_velocity", rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
   std::bind(&ArmorTrackerNode::velocityCallback, this, std::placeholders::_1));
+  
+  // velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
+  //   "/current_velocity", 
+  //   rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
+  //   [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg) {
+  //     gaf_solver->init(velocity_msg);
+  //   }
+  // );
+  
   // Measurement publisher (for debug usage)
   info_pub_ = this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
 
