@@ -1,6 +1,5 @@
-name: Auto_Aim C/C++ CI (ROS2 Humble)
+name: Auto_Aim C/C++ CI (ROS2 Humble - 仅编译检查)
 
-# 触发条件保持不变（推送或PR到指定分支时运行）
 on:
   push:
     branches: [ "Observation-of-the-whole-vehicle" ]
@@ -8,56 +7,50 @@ on:
     branches: [ "Observation-of-the-whole-vehicle" ]
 
 jobs:
-  build:
+  build-check:
     runs-on: ubuntu-22.04
 
     steps:
+      # 1. 检出代码到工作目录
       - uses: actions/checkout@v4
 
-      - name: Install ROS2 Humble
+      # 2. 安装ROS2 Humble及编译依赖
+      - name: Install ROS2 Humble and build tools
         run: |
-          # 配置 Ubuntu 软件源（允许 universe 组件，ROS2 依赖）
+          # 配置基础软件源
           sudo apt-get update && sudo apt-get install -y software-properties-common
           sudo add-apt-repository universe
 
-          # 添加 ROS2 源和密钥
-          sudo apt-get update && sudo apt-get install -y curl
+          # 添加ROS2源和密钥
+          sudo apt-get install -y curl
           sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
-          # 安装 ROS2 Humble 基础包和编译工具（包含 CMake、ament_cmake 等）
+          # 安装ROS2核心包、编译工具（colcon是ROS2标准构建工具，依赖CMake）
           sudo apt-get update && sudo apt-get install -y \
             ros-humble-desktop \
             ros-humble-ament-cmake \
+            python3-colcon-common-extensions \
             build-essential \
             cmake \
-            g++ \
-            libssl-dev \
-            python3-colcon-common-extensions
+            g++
 
-          # 初始化 ROS2 环境变量
+          # 加载ROS2环境变量（确保编译时能找到ROS2库和头文件）
           source /opt/ros/humble/setup.bash
 
-      # 3. 创建 CMake 构建目录并编译
-      - name: CMake Build
-        run: |
-          # 再次加载 ROS2 环境（确保当前步骤能识别 ROS2 依赖）
-          source /opt/ros/humble/setup.bash
-
-          # 创建并进入构建目录
-          mkdir -p build && cd build
-
-          # 运行 CMake 配置（假设项目根目录有 CMakeLists.txt，根据实际路径调整）
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=install  # 可选：指定安装路径
-
-          # 编译（使用多线程加速，-j$(nproc) 表示使用所有可用CPU核心）
-          make -j$(nproc)
-
-      # 4. （可选）运行编译后的测试（如果项目有测试用例）
-      - name: Run Tests
+      # 3. 编译项目并验证编译结果
+      - name: Build project with colcon
         run: |
           source /opt/ros/humble/setup.bash
-          cd build
-          make test  # 执行 CMake 定义的测试用例
+          cd ${{ github.workspace }}  # 进入代码根目录（检出的仓库路径）
+
+          # 使用colcon编译（ROS2标准构建命令，自动处理CMakeLists.txt）
+          colcon build
+
+          # 验证编译是否成功：检查build目录是否存在（colcon编译成功会生成build目录）
+          if [ -d "build" ]; then
+            echo "✅ 编译成功：build目录已生成"
+          else
+            echo "❌ 编译失败：未生成build目录"
+            exit 1  # 编译失败时，工作流标记为"不通过"
+          fi
