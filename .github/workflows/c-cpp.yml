@@ -1,5 +1,6 @@
-name: Auto_Aim C/C++ CI
+name: Auto_Aim C/C++ CI (ROS2 Humble)
 
+# 触发条件保持不变（推送或PR到指定分支时运行）
 on:
   push:
     branches: [ "Observation-of-the-whole-vehicle" ]
@@ -8,16 +9,55 @@ on:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v4
-    - name: configure
-      run: ./configure
-    - name: make
-      run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
+      - uses: actions/checkout@v4
+
+      - name: Install ROS2 Humble
+        run: |
+          # 配置 Ubuntu 软件源（允许 universe 组件，ROS2 依赖）
+          sudo apt-get update && sudo apt-get install -y software-properties-common
+          sudo add-apt-repository universe
+
+          # 添加 ROS2 源和密钥
+          sudo apt-get update && sudo apt-get install -y curl
+          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+          # 安装 ROS2 Humble 基础包和编译工具（包含 CMake、ament_cmake 等）
+          sudo apt-get update && sudo apt-get install -y \
+            ros-humble-desktop \
+            ros-humble-ament-cmake \
+            build-essential \
+            cmake \
+            g++ \
+            libssl-dev \
+            python3-colcon-common-extensions
+
+          # 初始化 ROS2 环境变量
+          source /opt/ros/humble/setup.bash
+
+      # 3. 创建 CMake 构建目录并编译
+      - name: CMake Build
+        run: |
+          # 再次加载 ROS2 环境（确保当前步骤能识别 ROS2 依赖）
+          source /opt/ros/humble/setup.bash
+
+          # 创建并进入构建目录
+          mkdir -p build && cd build
+
+          # 运行 CMake 配置（假设项目根目录有 CMakeLists.txt，根据实际路径调整）
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=install  # 可选：指定安装路径
+
+          # 编译（使用多线程加速，-j$(nproc) 表示使用所有可用CPU核心）
+          make -j$(nproc)
+
+      # 4. （可选）运行编译后的测试（如果项目有测试用例）
+      - name: Run Tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          cd build
+          make test  # 执行 CMake 定义的测试用例
