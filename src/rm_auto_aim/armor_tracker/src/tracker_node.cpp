@@ -149,17 +149,17 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   // Register a callback with tf2_ros::MessageFilter to be called when transforms are available
   armors_filter_->registerCallback(&ArmorTrackerNode::armorsCallback, this);
 
-  velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
-  "/current_velocity", rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
-  std::bind(&ArmorTrackerNode::velocityCallback, this, std::placeholders::_1));
-  
   // velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
-  //   "/current_velocity", 
-  //   rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
-  //   [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg) {
-  //     gaf_solver->init(velocity_msg);
-  //   }
-  // );
+  // "/current_velocity", rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
+  // std::bind(&ArmorTrackerNode::velocityCallback, this, std::placeholders::_1));
+  
+  velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
+    "/current_velocity", 
+    rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
+    [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg) {
+      gaf_solver->init(velocity_msg);
+    }
+  );
   
   // Measurement publisher (for debug usage)
   info_pub_ = this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
@@ -201,12 +201,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
 }
 
-void ArmorTrackerNode::velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-{
-
-  gaf_solver->init(velocity_msg);
-
-}
+// void ArmorTrackerNode::velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
+// {
+//   gaf_solver->init(velocity_msg);
+// }
 
 void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
