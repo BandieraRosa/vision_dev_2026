@@ -73,7 +73,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       debug_ = p.as_bool();
       debug_ ? createDebugPublishers() : destroyDebugPublishers();
     });
-
+  
+//创建相机内参订阅者 → 接收一次/camera_info消息 → 提取图像中心、保存内参、初始化 PnP 求解器 → 停止订阅
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
     "/camera_info", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info) {
