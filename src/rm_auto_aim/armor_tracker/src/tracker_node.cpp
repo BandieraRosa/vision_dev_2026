@@ -114,7 +114,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // P - error estimate covariance matrix
   Eigen::DiagonalMatrix<double, 9> p0;
   p0.setIdentity();
-  tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
+  tracker_->ekf_ = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
 
   // Reset tracker service
   using std::placeholders::_1;
@@ -253,7 +253,7 @@ void ArmorTrackerNode::armorsCallback(
   // Update tracker
   if (tracker_->tracker_state == Tracker::LOST)
   {
-    tracker_->init(armors_msg);
+    tracker_->Init(armors_msg);
     target_msg.tracking = false;
   }
   else
@@ -261,7 +261,7 @@ void ArmorTrackerNode::armorsCallback(
     // 求时间差
     dt_ = (time - last_time_).seconds();
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
-    tracker_->update(armors_msg);
+    tracker_->Update(armors_msg);
 
     // Publish Info
     info_msg.position_diff = tracker_->info_position_diff;

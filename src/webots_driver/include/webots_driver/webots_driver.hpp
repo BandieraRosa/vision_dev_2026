@@ -20,13 +20,12 @@ class WebotsRobotDriver : public webots_ros2_driver::PluginInterface
   void init(webots_ros2_driver::WebotsNode* node,
             std::unordered_map<std::string, std::string>& parameters) override;
   void step() override;
-  // 析构函数用于释放内存
+  
   ~WebotsRobotDriver();
 
  private:
   webots_ros2_driver::WebotsNode* node_;
 
-  // --- 修改点 2: 使用 Supervisor 指针 ---
   webots::Supervisor* robot_;
 
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr bullet_speed_pub_;

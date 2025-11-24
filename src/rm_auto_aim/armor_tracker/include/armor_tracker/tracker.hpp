@@ -21,7 +21,7 @@ namespace rm_auto_aim
 {
 
 // 装甲板数量 正常的4块 前哨站三块
-enum class ArmorsNum
+enum class ArmorsNum : uint8_t
 {
   NORMAL_4 = 4,
   OUTPOST_3 = 3
@@ -35,16 +35,16 @@ class Tracker  // 整车观测
   using Armors = auto_aim_interfaces::msg::Armors;
   using Armor = auto_aim_interfaces::msg::Armor;
 
-  void init(const Armors::SharedPtr& armors_msg);
+  void Init(const Armors::SharedPtr& armors_msg);
 
-  void update(const Armors::SharedPtr& armors_msg);
+  void Update(const Armors::SharedPtr& armors_msg);
 
-  ExtendedKalmanFilter ekf;
+  ExtendedKalmanFilter ekf_;
 
   int tracking_thres;
   int lost_thres;
 
-  enum State
+  enum State : uint8_t
   {             // 四个状态
     LOST,       // 丢失
     DETECTING,  // 观测中

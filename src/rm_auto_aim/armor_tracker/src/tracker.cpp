@@ -27,7 +27,7 @@ Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
 {
 }
 
-void Tracker::init(const Armors::SharedPtr& armors_msg)
+void Tracker::Init(const Armors::SharedPtr& armors_msg)
 {
   if (armors_msg->armors.empty())
   {
@@ -55,9 +55,9 @@ void Tracker::init(const Armors::SharedPtr& armors_msg)
   updateArmorsNum(tracked_armor);
 }
 
-void Tracker::update(const Armors::SharedPtr& armors_msg)
+void Tracker::Update(const Armors::SharedPtr& armors_msg)
 {
-  Eigen::VectorXd ekf_prediction = ekf.Predict();  // 根据整车c的预测，得出装甲板的位置
+  Eigen::VectorXd ekf_prediction = ekf_.Predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
   bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
@@ -106,7 +106,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
       double measured_yaw =
           orientationToYaw(tracked_armor.pose.orientation);  // 测量的yaw值
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
-      target_state = ekf.Update(measurement);
+      target_state = ekf_.Update(measurement);
       RCLCPP_DEBUG(
           rclcpp::get_logger("armor_tracker"),
           "EKF update");  // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
@@ -130,12 +130,12 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
   if (target_state(8) < 0.12)
   {
     target_state(8) = 0.12;
-    ekf.SetState(target_state);
+    ekf_.SetState(target_state);
   }
   else if (target_state(8) > 0.4)
   {
     target_state(8) = 0.4;
-    ekf.SetState(target_state);
+    ekf_.SetState(target_state);
   }
 
   // 跟踪状态机制处理
@@ -200,7 +200,7 @@ void Tracker::initEKF(const Armor& a)
   dz = 0, another_r = r;
   target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
 
-  ekf.SetState(target_state);
+  ekf_.SetState(target_state);
 }
 
 void Tracker::updateArmorsNum(const Armor& armor)
@@ -247,7 +247,7 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 
-  ekf.SetState(target_state);
+  ekf_.SetState(target_state);
 }
 
 // 姿态转换成偏航角(yaw)

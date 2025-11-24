@@ -52,6 +52,11 @@ install(
 )
 
 install(
+  DIRECTORY webots/worlds
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
   DIRECTORY urdf
   DESTINATION share/${PROJECT_NAME}
 )

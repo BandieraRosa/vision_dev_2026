@@ -8,19 +8,19 @@ from webots_ros2_driver.webots_controller import WebotsController
 
 
 def generate_launch_description():
-    package_dir = get_package_share_directory('webots_robot_controller')
+    package_dir = get_package_share_directory('webots_driver')
     robot_description_path = os.path.join(package_dir, 'urdf', 'robot.urdf')
 
     # 启动 Webots，这里指向你的 .wbt 世界文件
     # 如果你只想启动驱动连接到已经在运行的 Webots，可以去掉这个 WebotsLauncher 部分
     webots = WebotsLauncher(
-        world=os.path.join(package_dir, 'worlds', 'my_world.wbt'),
+        world=os.path.join(package_dir, 'webots', 'worlds', 'auto_aim_test_field.wbt'),
         ros2_supervisor=True
     )
 
     # 启动机器人控制器
     my_robot_driver = WebotsController(
-        robot_name='YourRobotNameInWebots',  # 必须与 Webots 世界文件中的 robot name 字段一致
+        robot_name='self', 
         parameters=[
             {'robot_description': robot_description_path},
         ]
