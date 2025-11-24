@@ -11,47 +11,46 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 // C++ system
+#include <fstream>
 #include <future>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
-#include <fstream>
-#include <iomanip>
 
-
-#include "auto_aim_interfaces/msg/target.hpp"
-#include "auto_aim_interfaces/msg/send.hpp"
-#include "auto_aim_interfaces/msg/velocity.hpp"
 #include "auto_aim_interfaces/msg/receive.hpp"
+#include "auto_aim_interfaces/msg/send.hpp"
+#include "auto_aim_interfaces/msg/target.hpp"
+#include "auto_aim_interfaces/msg/velocity.hpp"
 
 namespace rm_serial_driver
 {
 class RMSerialDriver : public rclcpp::Node
 {
-public:
-  explicit RMSerialDriver(const rclcpp::NodeOptions & options);
+ public:
+  explicit RMSerialDriver(const rclcpp::NodeOptions& options);
 
   ~RMSerialDriver() override;
-  float pitch_trans(float originAngle);
-  float pitch_re_trans(float originAngle);
-  float yaw_trans(float originAngle);
-  float yaw_re_trans(float originAngle);
-private:
+  float PitchTrans(float originAngle);
+  float PitchReTrans(float originAngle);
+  float YawTrans(float originAngle);
+  float YawReTrans(float originAngle);
+
+ private:
   // 在 RMSerialDriver 类的头文件中添加成员变量
   std::ofstream csv_file_;
 
-  void getParams();
+  void GetParams();
 
-  void receiveData();
+  void ReceiveData();
 
-  void sendData(const auto_aim_interfaces::msg::Send::SharedPtr msg);
+  void SendData(const auto_aim_interfaces::msg::Send::SharedPtr msg);
 
-  void reopenPort();
+  void ReopenPort();
 
-  void setParam(const rclcpp::Parameter & param);
+  void SetParam(const rclcpp::Parameter& param);
 
-  void resetTracker();
+  void ResetTracker();
 
   // void receive_marker(const auto_aim_interfaces::msg::Receive::SharedPtr msg);
 
@@ -62,7 +61,8 @@ private:
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
 
   // Param client to set detect_colr
-  using ResultFuturePtr = std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>>;
+  using ResultFuturePtr =
+      std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>>;
   bool initial_set_param_ = false;
   uint8_t previous_receive_color_ = 0;
   rclcpp::AsyncParametersClient::SharedPtr detector_param_client_;
@@ -76,7 +76,6 @@ private:
 
   auto_aim_interfaces::msg::Receive::SharedPtr receive_msg_;
 
-
   double timestamp_offset_ = 0;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Velocity>::SharedPtr velocity_pub_;
@@ -85,10 +84,8 @@ private:
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
 
-
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr latency_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
-
 
   std::thread receive_thread_;
 };

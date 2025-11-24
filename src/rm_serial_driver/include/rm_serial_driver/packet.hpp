@@ -13,7 +13,7 @@ struct ReceivePacket
   uint8_t detect_color : 1;  // 0-red 1-blue
   bool reset_tracker : 1;
   uint8_t reserved : 6;
-  float current_v; // m/s
+  float current_v;  // m/s
   float yaw;
   float pitch;
   float roll;
@@ -29,29 +29,28 @@ struct SendPacket
   bool is_fire : 1;
   uint8_t reserved : 1;
 
-  float x;  //装甲板在世界坐标系下的x
-  float y;  //装甲板在世界坐标系下的y
-  float z;  //装甲板在世界坐标系下的z
+  float x;  // 装甲板在世界坐标系下的x
+  float y;  // 装甲板在世界坐标系下的y
+  float z;  // 装甲板在世界坐标系下的z
   float v_yaw;
 
   float pitch;
-  float yaw;  //云台的yaw
+  float yaw;  // 云台的yaw
   uint16_t checksum = 0;
 } __attribute__((packed));
 
-inline ReceivePacket fromVector(const std::vector<uint8_t> & data)
+inline ReceivePacket from_vector(const std::vector<uint8_t>& data)
 {
   ReceivePacket packet;
-  std::copy(data.begin(), data.end(), reinterpret_cast<uint8_t *>(&packet));
+  std::copy(data.begin(), data.end(), reinterpret_cast<uint8_t*>(&packet));
   return packet;
 }
 
-inline std::vector<uint8_t> toVector(const SendPacket & data)
+inline std::vector<uint8_t> toVector(const SendPacket& data)
 {
   std::vector<uint8_t> packet(sizeof(SendPacket));
-  std::copy(
-    reinterpret_cast<const uint8_t *>(&data),
-    reinterpret_cast<const uint8_t *>(&data) + sizeof(SendPacket), packet.begin());
+  std::copy(reinterpret_cast<const uint8_t*>(&data),
+            reinterpret_cast<const uint8_t*>(&data) + sizeof(SendPacket), packet.begin());
   return packet;
 }
 
