@@ -18,13 +18,13 @@
 #include <string>
 #include <vector>
 
+#include "armor_executor/SolveTrajectory.hpp"
 #include "armor_tracker/tracker.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
-#include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
-#include "auto_aim_interfaces/msg/velocity.hpp"
+#include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
-#include "armor_executor/SolveTrajectory.hpp"
+#include "auto_aim_interfaces/msg/velocity.hpp"
 
 namespace rm_auto_aim
 {
@@ -32,15 +32,15 @@ using armors_tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Armor
 using velocity_tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Velocity>;
 class ArmorTrackerNode : public rclcpp::Node
 {
-public:
-  explicit ArmorTrackerNode(const rclcpp::NodeOptions & options);
+ public:
+  explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
-private:
+ private:
   void velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
   void armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
-  void publishMarkers(const auto_aim_interfaces::msg::Target & target_msg);
+  void publishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
