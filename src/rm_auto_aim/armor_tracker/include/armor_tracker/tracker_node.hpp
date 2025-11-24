@@ -36,11 +36,11 @@ class ArmorTrackerNode : public rclcpp::Node
   explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
  private:
-  void velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
+  void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
-  void armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
+  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
-  void publishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
+  void PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
@@ -50,11 +50,14 @@ class ArmorTrackerNode : public rclcpp::Node
   double dt_;
 
   // Armor tracker
-  double s2qxyz_, s2qyaw_, s2qr_;
-  double r_xyz_factor, r_yaw;
+  double s2qxyz_;
+  double s2qyaw_;
+  double s2qr_;
+  double r_xyz_factor_;
+  double r_yaw_;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
-  std::unique_ptr<SolveTrajectory> gaf_solver;
+  std::unique_ptr<SolveTrajectory> solver_;
 
   // Reset tracker service
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_tracker_srv_;

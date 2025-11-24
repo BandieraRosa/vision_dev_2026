@@ -7,10 +7,10 @@
 namespace rm_auto_aim
 {
 
-class ExtendedKalmanFilter
+class EKF
 {
  public:
-  enum XVectorIndex : std::uint8_t
+  enum STATE : std::uint8_t
   {
     X_CENTER = 0,
     V_X_CENTER = 1,
@@ -31,12 +31,11 @@ class ExtendedKalmanFilter
   using VecMatFunc = std::function<Eigen::MatrixXd(const Eigen::VectorXd&)>;
   using VoidMatFunc = std::function<Eigen::MatrixXd()>;
 
-  ExtendedKalmanFilter() = default;
+  EKF() = default;
 
-  explicit ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc& h,
-                                const VecMatFunc& j_f, const VecMatFunc& j_h,
-                                const VoidMatFunc& u_q, const VecMatFunc& u_r,
-                                const Eigen::MatrixXd& p_0);
+  explicit EKF(const VecVecFunc& f, const VecVecFunc& h, const VecMatFunc& j_f,
+               const VecMatFunc& j_h, const VoidMatFunc& u_q, const VecMatFunc& u_r,
+               const Eigen::MatrixXd& p_0);
 
   // 设置初始状态
   void SetState(const Eigen::VectorXd& x0);

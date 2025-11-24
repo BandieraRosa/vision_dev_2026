@@ -11,10 +11,9 @@ u_q:过程噪声协方差矩阵
 u_r:测量噪声协方差矩阵
 p0:初始状态协方差矩阵
 */
-ExtendedKalmanFilter::ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc& h,
-                                           const VecMatFunc& j_f, const VecMatFunc& j_h,
-                                           const VoidMatFunc& u_q, const VecMatFunc& u_r,
-                                           const Eigen::MatrixXd& p0)
+EKF::EKF(const VecVecFunc& f, const VecVecFunc& h, const VecMatFunc& j_f,
+         const VecMatFunc& j_h, const VoidMatFunc& u_q, const VecMatFunc& u_r,
+         const Eigen::MatrixXd& p0)
     : f_(f),
       h_(h),
       jacobian_f_(j_f),
@@ -29,12 +28,11 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc
 {
 }
 
-void ExtendedKalmanFilter::SetState(const Eigen::VectorXd& x0) { x_post_ = x0; }
+void EKF::SetState(const Eigen::VectorXd& x0) { x_post_ = x0; }
 
-Eigen::VectorXd ExtendedKalmanFilter::GetState() const { return x_post_; }
+Eigen::VectorXd EKF::GetState() const { return x_post_; }
 
-void ExtendedKalmanFilter::SetStateWithUncertainty(const Eigen::VectorXd& x0,
-                                                   const Eigen::VectorXd& diagP)
+void EKF::SetStateWithUncertainty(const Eigen::VectorXd& x0, const Eigen::VectorXd& diagP)
 {
   x_post_ = x0;
   for (int i = 0; i < diagP.size(); i++)
@@ -43,13 +41,13 @@ void ExtendedKalmanFilter::SetStateWithUncertainty(const Eigen::VectorXd& x0,
   }
 }
 
-const Eigen::MatrixXd ExtendedKalmanFilter::GetCovariance() const { return p_post_; }
+const Eigen::MatrixXd EKF::GetCovariance() const { return p_post_; }
 
-Eigen::MatrixXd ExtendedKalmanFilter::GetCovariance() { return p_post_; }
+Eigen::MatrixXd EKF::GetCovariance() { return p_post_; }
 
-void ExtendedKalmanFilter::SetCovariance(const Eigen::MatrixXd& p) { p_post_ = p; }
+void EKF::SetCovariance(const Eigen::MatrixXd& p) { p_post_ = p; }
 
-void ExtendedKalmanFilter::PrintCovariance() const
+void EKF::PrintCovariance() const
 {
   printf("P_post:\n");
   for (int i = 0; i < dimensions_; i++)
@@ -62,22 +60,16 @@ void ExtendedKalmanFilter::PrintCovariance() const
   }
 }
 
-ExtendedKalmanFilter::VecVecFunc ExtendedKalmanFilter::GetObservation() const
-{
-  return h_;
-}
-ExtendedKalmanFilter::VecVecFunc ExtendedKalmanFilter::GetStateTransition() const
-{
-  return f_;
-}
+EKF::VecVecFunc EKF::GetObservation() const { return h_; }
+EKF::VecVecFunc EKF::GetStateTransition() const { return f_; }
 
-void ExtendedKalmanFilter::PriToPost()
+void EKF::PriToPost()
 {
   x_post_ = x_pri_;
   p_post_ = p_pri_;
 }
 
-Eigen::MatrixXd ExtendedKalmanFilter::Predict()
+Eigen::MatrixXd EKF::Predict()
 {
   m_f_ = jacobian_f_(x_post_), m_q_ = update_q_();
 
@@ -91,7 +83,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::Predict()
   return x_pri_;
 }
 
-Eigen::MatrixXd ExtendedKalmanFilter::Update(const Eigen::VectorXd& z)
+Eigen::MatrixXd EKF::Update(const Eigen::VectorXd& z)
 {
   m_h_ = jacobian_h_(x_pri_);
   m_r_ = update_r_(z);

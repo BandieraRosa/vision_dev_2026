@@ -39,7 +39,7 @@ class Tracker  // 整车观测
 
   void Update(const Armors::SharedPtr& armors_msg);
 
-  ExtendedKalmanFilter ekf_;
+  EKF ekf_;
 
   int tracking_thres;
   int lost_thres;
@@ -68,15 +68,15 @@ class Tracker  // 整车观测
   double dz, another_r;
 
  private:
-  void initEKF(const Armor& a);
+  void InitEKF(const Armor& a);
 
-  void updateArmorsNum(const Armor& a);
+  void UpdateArmorsNum(const Armor& a);
 
-  void handleArmorJump(const Armor& a);
+  void HandleArmorJump(const Armor& a);
 
-  double orientationToYaw(const geometry_msgs::msg::Quaternion& q);
+  double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
 
-  Eigen::Vector3d getArmorPositionFromState(const Eigen::VectorXd& x);
+  Eigen::Vector3d GetArmorPositionFromState(const Eigen::VectorXd& x);
 
   double max_match_distance_;
   double max_match_yaw_diff_;

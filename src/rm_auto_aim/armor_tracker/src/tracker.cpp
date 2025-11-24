@@ -10,7 +10,6 @@
 
 // STD
 #include <cfloat>
-#include <memory>
 #include <string>
 
 namespace rm_auto_aim
@@ -46,13 +45,13 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
        // 为被追踪的装甲板，一旦选定跟踪目标后，在LOST之前不会切换目标，即使新目标在中心
   }
 
-  initEKF(tracked_armor);
+  InitEKF(tracked_armor);
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Init EKF!");
 
   tracked_id = tracked_armor.number;
   tracker_state = DETECTING;
 
-  updateArmorsNum(tracked_armor);
+  UpdateArmorsNum(tracked_armor);
 }
 
 void Tracker::Update(const Armors::SharedPtr& armors_msg)
@@ -67,7 +66,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     Armor same_id_armor;
     int same_id_armors_count = 0;
     auto predicted_position =
-        getArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
+        GetArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
     double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
     double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
@@ -86,7 +85,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
         if (position_diff < min_position_diff)
         {  // 位置小于最小匹配距离，表明这就是预测的那一块装甲板
           min_position_diff = position_diff;
-          yaw_diff = abs(orientationToYaw(armor.pose.orientation) - ekf_prediction(6));
+          yaw_diff =
+              abs(OrientationToYaw(armor.pose.orientation) - ekf_prediction(EKF::YAW));
           tracked_armor = armor;
         }
       }
@@ -104,7 +104,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
       auto p = tracked_armor.pose.position;
       // 更新 EKF
       double measured_yaw =
-          orientationToYaw(tracked_armor.pose.orientation);  // 测量的yaw值
+          OrientationToYaw(tracked_armor.pose.orientation);  // 测量的yaw值
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
       target_state = ekf_.Update(measurement);
       RCLCPP_DEBUG(
@@ -115,7 +115,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     {
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
       // 且偏航角发生了跳变，将此情况视为目标正在旋转并且装甲发生了 **跳变**
-      handleArmorJump(same_id_armor);  // 跳变处理
+      HandleArmorJump(same_id_armor);  // 跳变处理
     }
     else
     {
@@ -127,14 +127,14 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   }
 
   // 防止半径扩散
-  if (target_state(8) < 0.12)
+  if (target_state(EKF::STATE::ROBOT_R) < 0.12)
   {
-    target_state(8) = 0.12;
+    target_state(EKF::STATE::ROBOT_R) = 0.12;
     ekf_.SetState(target_state);
   }
-  else if (target_state(8) > 0.4)
+  else if (target_state(EKF::STATE::ROBOT_R) > 0.4)
   {
-    target_state(8) = 0.4;
+    target_state(EKF::STATE::ROBOT_R) = 0.4;
     ekf_.SetState(target_state);
   }
 
@@ -184,26 +184,31 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
 }
 
 // 初始化ekf
-void Tracker::initEKF(const Armor& a)
+void Tracker::InitEKF(const Armor& a)
 {
   double xa = a.pose.position.x;
   double ya = a.pose.position.y;
   double za = a.pose.position.z;
   last_yaw_ = 0;
-  double yaw = orientationToYaw(a.pose.orientation);
+  double yaw = OrientationToYaw(a.pose.orientation);
 
   // 设置初始位置在目标后面0.2米
-  target_state = Eigen::VectorXd::Zero(9);
+  target_state = Eigen::VectorXd::Zero(13);
   double r = 0.26;
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
-  target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
+  // target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
+  target_state(EKF::STATE::X_CENTER) = xc;
+  target_state(EKF::STATE::Y_CENTER) = yc;
+  target_state(EKF::STATE::Z_ARMOR) = za;
+  target_state(EKF::STATE::YAW) = yaw;
+  target_state(EKF::STATE::ROBOT_R) = r;
 
   ekf_.SetState(target_state);
 }
 
-void Tracker::updateArmorsNum(const Armor& armor)
+void Tracker::UpdateArmorsNum(const Armor&)
 {
   if (tracked_id == "outpost")
   {
@@ -215,18 +220,18 @@ void Tracker::updateArmorsNum(const Armor& armor)
   }
 }
 
-// 处理装甲板 **跳变**
-void Tracker::handleArmorJump(const Armor& current_armor)
+// 处理装甲板跳变
+void Tracker::HandleArmorJump(const Armor& current_armor)
 {
-  double yaw = orientationToYaw(current_armor.pose.orientation);
-  target_state(6) = yaw;
-  updateArmorsNum(current_armor);
+  double yaw = OrientationToYaw(current_armor.pose.orientation);
+  target_state(EKF::STATE::YAW) = yaw;
+  UpdateArmorsNum(current_armor);
   // Only 4 armors has 2 radius and height
   if (tracked_armors_num == ArmorsNum::NORMAL_4)
   {
-    dz = target_state(4) - current_armor.pose.position.z;
-    target_state(4) = current_armor.pose.position.z;
-    std::swap(target_state(8), another_r);
+    dz = target_state(EKF::STATE::Z_ARMOR) - current_armor.pose.position.z;
+    target_state(EKF::STATE::Z_ARMOR) = current_armor.pose.position.z;
+    std::swap(target_state(EKF::STATE::ROBOT_R), another_r);
   }
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
 
@@ -234,16 +239,30 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   // 将此情况视为 EKF 发散，重置状态。
   auto p = current_armor.pose.position;
   Eigen::Vector3d current_p(p.x, p.y, p.z);
-  Eigen::Vector3d infer_p = getArmorPositionFromState(target_state);
+  Eigen::Vector3d infer_p = GetArmorPositionFromState(target_state);
   if ((current_p - infer_p).norm() > max_match_distance_)
   {
-    double r = target_state(8);
-    target_state(0) = p.x + r * cos(yaw);  // xc
-    target_state(1) = 0;                   // vxc
-    target_state(2) = p.y + r * sin(yaw);  // yc
-    target_state(3) = 0;                   // vyc
-    target_state(4) = p.z;                 // za
-    target_state(5) = 0;                   // vza
+    Eigen::VectorXd diag_p = ekf_.GetCovariance().diagonal();
+    diag_p(EKF::STATE::V_X_CENTER) *= 10.0;
+    diag_p(EKF::STATE::A_X_CENTER) *= 10.0;
+    diag_p(EKF::STATE::V_Y_CENTER) *= 10.0;
+    diag_p(EKF::STATE::A_Y_CENTER) *= 10.0;
+    diag_p(EKF::STATE::V_Z_ARMOR) *= 10.0;
+    diag_p(EKF::STATE::A_Z_ARMOR) *= 10.0;
+    diag_p(EKF::STATE::YAW) *= 10.0;
+    diag_p(EKF::STATE::V_YAW) *= 10.0;
+    diag_p(EKF::STATE::A_YAW) *= 10.0;
+
+    double r = target_state(EKF::STATE::ROBOT_R);
+    target_state(EKF::STATE::X_CENTER) = p.x + r * cos(yaw);  // xc
+    target_state(EKF::STATE::V_X_CENTER) = 0;                 // vxc
+    target_state(EKF::STATE::A_X_CENTER) = 0;                 // axc
+    target_state(EKF::STATE::Y_CENTER) = p.y + r * sin(yaw);  // yc
+    target_state(EKF::STATE::V_Y_CENTER) = 0;                 // vyc
+    target_state(EKF::STATE::A_Y_CENTER) = 0;                 // ayc
+    target_state(EKF::STATE::Z_ARMOR) = p.z;                  // za
+    target_state(EKF::STATE::V_Z_ARMOR) = 0;                  // vza
+    target_state(EKF::STATE::A_Z_ARMOR) = 0;                  // azc
     RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 
@@ -251,12 +270,12 @@ void Tracker::handleArmorJump(const Armor& current_armor)
 }
 
 // 姿态转换成偏航角(yaw)
-double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion& q)
+double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
 {
   // Get armor yaw
   tf2::Quaternion tf_q;
   tf2::fromMsg(q, tf_q);
-  double roll, pitch, yaw;
+  double roll{}, pitch{}, yaw{};
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
   // Make yaw change continuous (-pi~pi to -inf~inf)
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
@@ -265,7 +284,7 @@ double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion& q)
 }
 
 // 三维计算,根据我们一开始的装甲板解算得到的预测装甲板位置
-Eigen::Vector3d Tracker::getArmorPositionFromState(const Eigen::VectorXd& x)
+Eigen::Vector3d Tracker::GetArmorPositionFromState(const Eigen::VectorXd& x)
 {
   // 计算当前装甲板的预测位置
   double xc = x(0), yc = x(2), za = x(4);
