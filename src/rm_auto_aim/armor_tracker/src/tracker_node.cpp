@@ -238,7 +238,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { solver_->init(velocity_msg); });
+      { solver_->Init(velocity_msg); });
 
   // Measurement publisher (for debug usage)
   info_pub_ =
@@ -390,9 +390,9 @@ void ArmorTrackerNode::ArmorsCallback(
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
-      solver_->autoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg);
+      solver_->AutoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg);
 
-      solver_->setFireCallback([&](bool is_fire) { send_msg.is_fire = is_fire; });
+      solver_->SetFireCallback([&](bool is_fire) { send_msg.is_fire = is_fire; });
 
       // TODO: 将sendmsg换为欧拉角
       send_msg.position.x = aim_x;

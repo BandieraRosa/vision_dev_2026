@@ -16,9 +16,8 @@
 // STD
 #include <memory>
 #include <string>
-#include <vector>
 
-#include "armor_executor/SolveTrajectory.hpp"
+#include "SolveTrajectory.hpp"
 #include "armor_tracker/tracker.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
