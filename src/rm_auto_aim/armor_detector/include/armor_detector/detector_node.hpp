@@ -26,19 +26,19 @@ namespace rm_auto_aim
 
 class ArmorDetectorNode : public rclcpp::Node
 {
-public:
-  ArmorDetectorNode(const rclcpp::NodeOptions & options);
+ public:
+  ArmorDetectorNode(const rclcpp::NodeOptions& options);
 
-private:
-  void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+ private:
+  void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG);
 
-  std::unique_ptr<Detector> initDetector();
-  std::vector<Armor> detectArmors(const sensor_msgs::msg::Image::ConstSharedPtr & img_msg);
+  std::unique_ptr<Detector> InitDetector();
+  std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
 
-  void createDebugPublishers();
-  void destroyDebugPublishers();
+  void CreateDebugPublishers();
+  void DestroyDebugPublishers();
 
-  void publishMarkers();
+  void PublishMarkers();
 
   // Armor Detector
   std::unique_ptr<Detector> detector_;

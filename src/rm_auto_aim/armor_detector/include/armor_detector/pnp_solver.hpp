@@ -14,18 +14,17 @@ namespace rm_auto_aim
 {
 class PnPSolver
 {
-public:
-  PnPSolver(
-    const std::array<double, 9> & camera_matrix,
-    const std::vector<double> & distortion_coefficients);
+ public:
+  PnPSolver(const std::array<double, 9>& camera_matrix,
+            const std::vector<double>& distortion_coefficients);
 
   // Get 3d position
-  bool solvePnP(const Armor & armor, cv::Mat & rvec, cv::Mat & tvec);
+  bool SolvePnP(const Armor& armor, cv::Mat& rvec, cv::Mat& tvec);
 
   // Calculate the distance between armor center and image center
-  float calculateDistanceToCenter(const cv::Point2f & image_point);
+  float CalculateDistanceToCenter(const cv::Point2f& image_point);
 
-private:
+ private:
   cv::Mat camera_matrix_;
   cv::Mat dist_coeffs_;
 

@@ -13,11 +13,14 @@ add_definitions(-Wall -Werror)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake_auto REQUIRED)
+find_package(OpenCV REQUIRED)
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/hik_camera_node.cpp
 )
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
 
 target_include_directories(${PROJECT_NAME} PUBLIC hikSDK/include)
 
@@ -44,6 +47,8 @@ target_link_libraries(${PROJECT_NAME}
   MVRender
   MvUsb3vTL
 )
+
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN hik_camera::HikCameraNode

@@ -19,7 +19,7 @@ namespace rm_auto_aim
 {
 class Detector
 {
-public:
+ public:
   struct LightParams
   {
     // width / height
@@ -41,17 +41,18 @@ public:
     double max_angle;
   };
 
-  Detector(const int & bin_thres, const int & color, const LightParams & l, const ArmorParams & a);
+  Detector(const int& bin_thres, const int& color, const LightParams& l,
+           const ArmorParams& a);
 
-  std::vector<Armor> detect(const cv::Mat & input);
+  std::vector<Armor> Detect(const cv::Mat& input);
 
-  cv::Mat preprocessImage(const cv::Mat & input);
-  std::vector<Light> findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img);
-  std::vector<Armor> matchLights(const std::vector<Light> & lights);
+  cv::Mat PreprocessImage(const cv::Mat& input);
+  std::vector<Light> FindLights(const cv::Mat& rbg_img, const cv::Mat& binary_img);
+  std::vector<Armor> MatchLights(const std::vector<Light>& lights);
 
   // For debug usage
-  cv::Mat getAllNumbersImage();
-  void drawResults(cv::Mat & img);
+  cv::Mat GetAllNumbersImage();
+  void DrawResults(cv::Mat& img);
 
   int binary_thres;
   int detect_color;
@@ -65,11 +66,11 @@ public:
   auto_aim_interfaces::msg::DebugLights debug_lights;
   auto_aim_interfaces::msg::DebugArmors debug_armors;
 
-private:
-  bool isLight(const Light & possible_light);
-  bool containLight(
-    const Light & light_1, const Light & light_2, const std::vector<Light> & lights);
-  ArmorType isArmor(const Light & light_1, const Light & light_2);
+ private:
+  bool IsLight(const Light& possible_light);
+  bool ContainLight(const Light& light_1, const Light& light_2,
+                    const std::vector<Light>& lights);
+  ArmorType IsArmor(const Light& light_1, const Light& light_2);
 
   std::vector<Light> lights_;
   std::vector<Armor> armors_;
