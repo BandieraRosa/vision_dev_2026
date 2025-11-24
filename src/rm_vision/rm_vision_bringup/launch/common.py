@@ -28,5 +28,6 @@ tracker_node = Node(
     output='both',
     emulate_tty=True,
     parameters=[node_params],
-    ros_arguments=['--log-level', 'armor_tracker:='+launch_params['tracker_log_level']],
+    ros_arguments=['--log-level', 'armor_tracker:=' +
+                   launch_params['tracker_log_level']],
 )

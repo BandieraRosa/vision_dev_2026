@@ -1,7 +1,8 @@
 import os
 import sys
 from ament_index_python.packages import get_package_share_directory
-sys.path.append(os.path.join(get_package_share_directory('rm_vision_bringup'), 'launch'))
+sys.path.append(os.path.join(
+    get_package_share_directory('rm_vision_bringup'), 'launch'))
 
 
 def generate_launch_description():
@@ -18,7 +19,8 @@ def generate_launch_description():
             plugin=plugin,
             name='camera_node',
             parameters=[node_params],
-            extra_arguments=[{'use_intra_process_comms': True}] #启用进程内的通信，提高性能
+            # 启用进程内的通信，提高性能
+            extra_arguments=[{'use_intra_process_comms': True}]
         )
 
     def get_camera_detector_container(camera_node):
@@ -40,12 +42,14 @@ def generate_launch_description():
             output='both',
             emulate_tty=True,
             ros_arguments=['--ros-args', '--log-level',
-                        'armor_detector:='+launch_params['detector_log_level']],
+                           'armor_detector:='+launch_params['detector_log_level']],
             on_exit=Shutdown(),
         )
 
-    hik_camera_node = get_camera_node('hik_camera', 'hik_camera::HikCameraNode')
-    mv_camera_node = get_camera_node('mindvision_camera', 'mindvision_camera::MVCameraNode')
+    hik_camera_node = get_camera_node(
+        'hik_camera', 'hik_camera::HikCameraNode')
+    mv_camera_node = get_camera_node(
+        'mindvision_camera', 'mindvision_camera::MVCameraNode')
 
     if (launch_params['camera'] == 'hik'):
         cam_detector = get_camera_detector_container(hik_camera_node)
@@ -61,7 +65,7 @@ def generate_launch_description():
         parameters=[node_params],
         on_exit=Shutdown(),
         ros_arguments=['--ros-args', '--log-level',
-                    'serial_driver:='+launch_params['serial_log_level']],
+                       'serial_driver:='+launch_params['serial_log_level']],
     )
 
     delay_serial_node = TimerAction(
