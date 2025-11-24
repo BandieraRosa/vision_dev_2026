@@ -89,7 +89,7 @@ WebotsRobotDriver::~WebotsRobotDriver()
 
 void WebotsRobotDriver::step() {}
 
-void WebotsRobotDriver::GimbalCallback(const geometry_msgs::msg::Vector3::SharedPtr& msg)
+void WebotsRobotDriver::GimbalCallback(geometry_msgs::msg::Vector3::SharedPtr msg)
 {
   if (pitch_motor_)
   {
@@ -102,7 +102,7 @@ void WebotsRobotDriver::GimbalCallback(const geometry_msgs::msg::Vector3::Shared
   }
 }
 
-void WebotsRobotDriver::FireNotifyCallback(const std_msgs::msg::UInt8::SharedPtr& msg)
+void WebotsRobotDriver::FireNotifyCallback(std_msgs::msg::UInt8::SharedPtr msg)
 {
   if (fire_led_)
   {

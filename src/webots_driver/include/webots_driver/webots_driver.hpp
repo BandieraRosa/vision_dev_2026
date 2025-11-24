@@ -37,12 +37,12 @@ class WebotsRobotDriver : public webots_ros2_driver::PluginInterface
   webots::Motor* yaw_motor_;
   rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr target_eulr_sub_;
 
-  void GimbalCallback(const geometry_msgs::msg::Vector3::SharedPtr& msg);
+  void GimbalCallback(geometry_msgs::msg::Vector3::SharedPtr msg);
 
   webots::LED* fire_led_;
   rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr fire_notify_sub_;
 
-  void FireNotifyCallback(const std_msgs::msg::UInt8::SharedPtr& msg);
+  void FireNotifyCallback(std_msgs::msg::UInt8::SharedPtr msg);
 };
 }  // namespace webots_driver
 
