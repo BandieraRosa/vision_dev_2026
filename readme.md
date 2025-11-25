@@ -75,6 +75,11 @@ rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 ```
 
+若使用clangd，则：
+
+```Shell
+colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
 
 ### 运行节点
 
