@@ -10,12 +10,12 @@
 #include <geometry_msgs/msg/vector3.hpp>
 
 // STD
-#include <memory>
 #include <string>
 
 #include "armor_tracker/extended_kalman_filter.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
+
 
 namespace rm_auto_aim
 {
@@ -39,11 +39,6 @@ class Tracker  // 整车观测
 
   void Update(const Armors::SharedPtr& armors_msg);
 
-  EKF ekf_;
-
-  int tracking_thres;
-  int lost_thres;
-
   enum State : uint8_t
   {             // 四个状态
     LOST,       // 丢失
@@ -51,6 +46,11 @@ class Tracker  // 整车观测
     TRACKING,   // 跟踪中
     TEMP_LOST,  // 临时丢失
   } tracker_state;
+
+  EKF ekf_;
+
+  int tracking_thres;
+  int lost_thres;
 
   // 装甲板情况
   std::string tracked_id;        // 装甲板号

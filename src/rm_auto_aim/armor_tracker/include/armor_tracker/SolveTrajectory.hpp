@@ -1,10 +1,5 @@
 #pragma once
 
-#ifndef PI
-#define PI 3.1415926535f
-#endif
-#define GRAVITY 9.78
-
 #include <cmath>
 #include <cstddef>
 #include <fstream>
@@ -160,6 +155,15 @@ class TrajectoryTable
 class SolveTrajectory
 {
  public:
+  static constexpr float PI = 3.1415926535f;
+  static constexpr float GRAVITY = 9.78f;
+
+  enum CalculateMode : std::uint8_t
+  {
+    NORMAL = 0,
+    TABLE_LOOKUP = 1
+  };
+
   enum TargetArmorId : uint8_t
   {
     ARMOR_OUTPOST = 0,
@@ -195,44 +199,11 @@ class SolveTrajectory
 
   // 构造函数
   SolveTrajectory(const float& k, const int& bias_time, const float& s_bias,
-                  const float& z_bias);
-
-  // 带查找表配置的构造函数
-  SolveTrajectory(const float& k, const int& bias_time, const float& s_bias,
-                  const float& z_bias, const TrajectoryTable::TableConfig& table_config);
-
-  float k;  // 弹道系数
-
-  // 自身参数
-  double current_v;  // 当前弹速
-  double fly_time;   // 飞行时间
-
-  // 目标参数
-  int bias_time;  // 偏置时间
-  float s_bias;   // 枪口前推的距离
-  float z_bias;   // yaw轴电机到枪口水平面的垂直距离
-
-  float tar_yaw;  // 目标yaw
-
-  struct TargetPostion tar_position[4];
-
-  std::vector<float> tmp_yaws;
-
-  float min_yaw_in_cycle;
-  float max_yaw_in_cycle;
+                  const float& z_bias, CalculateMode calculate_mode,
+                  const TrajectoryTable::TableConfig& table_config);
 
   // 初始化弹速
   void Init(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
-
-  // 初始化弹道查找表
-  bool InitTrajectoryTable();
-
-  // 设置是否使用查表
-  void SetUseTable(bool use_table) { use_table_ = use_table; }
-  bool IsUsingTable() const
-  {
-    return use_table_ && trajectory_table_ && trajectory_table_->IsInit();
-  }
 
   // 单方向空气阻力模型
   float MonoDirectionalAirResistanceModel(float s, float v, float angle);
@@ -240,17 +211,11 @@ class SolveTrajectory
   // pitch弹道补偿 (集成查表逻辑)
   float PitchTrajectoryCompensation(float s, float z, float v);
 
-  // 使用查表的pitch解算
-  float PitchTrajectoryCompensationWithTable(float s, float z, float v);
-
-  // 使用迭代的pitch解算 (原始方法)
-  float PitchTrajectoryCompensationIterative(float s, float z, float v);
-
   bool ShouldFire(float tmp_yaw, float v_yaw, float timeDelay);
 
   using FireCallback = std::function<void(bool)>;
 
-  void SetFireCallback(FireCallback callback) { fireCallback = std::move(callback); }
+  void SetFireCallback(FireCallback callback) { fire_callback_ = std::move(callback); }
 
   void CalculateArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                               bool use_1, bool use_average_radius);
@@ -276,20 +241,32 @@ class SolveTrajectory
                            const auto_aim_interfaces::msg::Target::SharedPtr msg);
 
  private:
-  FireCallback fireCallback;
+  FireCallback fire_callback_;
 
   // 完全空气阻力模型
   float CompleteAirResistanceModel(float s, float v, float angle);
 
-  // 弹道查找表
-  std::unique_ptr<TrajectoryTable> trajectory_table_;
-  bool use_table_ = true;  // 是否优先使用查表
+  // 自身参数
+  double current_v_;  // 当前弹速
+  double fly_time_;   // 飞行时间
 
-  // 查表偏置参数
-  float table_x_bias_ = 0.0f;
-  float table_y_bias_ = 0.0f;
-  float table_pitch_bias_ = 0.02f;
-  float table_t_bias_ = 0.0f;
+  float tar_yaw_;  // 目标yaw
+
+  struct TargetPostion tar_position_[4];
+
+  std::vector<float> tmp_yaws_;
+
+  float min_yaw_in_cycle_;
+  float max_yaw_in_cycle_;
+  float k_;  // 弹道系数
+  // 弹道查找表
+  std::unique_ptr<TrajectoryTable> table_;
+  CalculateMode calculate_mode_ = CalculateMode::NORMAL;  ///< 弹道计算模式
+
+  // 目标参数
+  int bias_time_;  // 偏置时间
+  float s_bias_;   // 枪口前推的距离
+  float z_bias_;   // yaw轴电机到枪口水平面的垂直距离
 };
 
 }  // namespace rm_auto_aim

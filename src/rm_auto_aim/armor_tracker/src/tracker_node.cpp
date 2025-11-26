@@ -25,6 +25,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   int bias_time = static_cast<int>(this->declare_parameter("tracker.bias_time", 100));
   float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
+  bool use_table = this->declare_parameter("tracker.calculate_mode", true);
 
   double max_x = this->declare_parameter("tracker.table.max_x", 13.0);
   double min_x = this->declare_parameter("tracker.table.min_x", 0.0);
@@ -33,9 +34,19 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
+  SolveTrajectory::CalculateMode calculate_mode{};
+  if (use_table)
+  {
+    calculate_mode = SolveTrajectory::CalculateMode::TABLE_LOOKUP;
+  }
+  else
+  {
+    calculate_mode = SolveTrajectory::CalculateMode::NORMAL;
+  }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
                                                min_y, resolution, table_filename};
-  solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, table_config);
+  solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias,
+                                              calculate_mode, table_config);
 
   // ---------------- EKF 设置 ----------------
   // 状态 x = [xc, vxc, axc, yc, vyc, ayc, za, vza, aza, yaw, vyaw, ayaw, r] (13维)

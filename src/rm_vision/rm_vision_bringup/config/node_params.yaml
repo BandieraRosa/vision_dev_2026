@@ -51,6 +51,7 @@
       bias_time: 10
       s_bias: 0.18375
       z_bias: 0.0
+      calculate_mode: true
 
       tracking_thres: 5
       lost_time_thres: 1.0
