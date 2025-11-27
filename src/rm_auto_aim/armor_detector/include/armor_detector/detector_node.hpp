@@ -2,10 +2,8 @@
 #define ARMOR_DETECTOR__DETECTOR_NODE_HPP_
 
 // ROS
-#include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber_filter.hpp>
-#include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -13,7 +11,6 @@
 
 // STD
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "armor_detector/detector.hpp"

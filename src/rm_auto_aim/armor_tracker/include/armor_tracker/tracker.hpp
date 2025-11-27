@@ -4,18 +4,9 @@
 // Eigen
 #include <Eigen/Eigen>
 
-// ROS
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/quaternion.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-
-// STD
-#include <string>
-
-#include "armor_tracker/extended_kalman_filter.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
-
+#include "extended_kalman_filter.hpp"
 
 namespace rm_auto_aim
 {

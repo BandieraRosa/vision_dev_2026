@@ -3,11 +3,9 @@
 
 // OpenCV
 #include <opencv2/core.hpp>
-#include <opencv2/core/types.hpp>
 
 // STD
 #include <cmath>
-#include <string>
 #include <vector>
 
 #include "armor_detector/armor.hpp"

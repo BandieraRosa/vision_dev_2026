@@ -1,13 +1,9 @@
 #pragma once
 
 #include <cmath>
-#include <cstddef>
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"

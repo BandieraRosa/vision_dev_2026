@@ -4,13 +4,6 @@
 // STD
 #include "armor_tracker/SolveTrajectory.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-#include <iostream>
-#include <memory>
-#include <vector>
-
 namespace rm_auto_aim
 {
 

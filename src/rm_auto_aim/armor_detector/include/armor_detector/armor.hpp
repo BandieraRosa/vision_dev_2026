@@ -3,10 +3,6 @@
 
 #include <opencv2/core.hpp>
 
-// STL
-#include <algorithm>
-#include <string>
-
 namespace rm_auto_aim
 {
 const int RED = 0;

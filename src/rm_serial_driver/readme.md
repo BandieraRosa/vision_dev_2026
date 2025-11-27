@@ -1,10 +1,18 @@
 # ROS2与LibXR融合串口通信
 
 ## 当前功能
-- 从电控获取弹速`bullet_speed`与云台姿态四元数`ahrs_quaternion`
-- `\
+- 从电控获取
 
-- 发送开火指令与云台期望欧拉角至电控
+  - 弹速`bullet_speed`，发布至`/current_velocity`
+
+  - 云台姿态四元数`ahrs_quaternion`，发布至`serial/gimbal_joint_state`
+
+    
+
+- 发送至电控
+
+  - 开火指令`fire_notify`
+  - 云台期望欧拉角`target_eulr`
 
 
 
@@ -36,17 +44,17 @@
    void (*ahrs_euler_cb_fun)(bool, RMSerialDriver *self, LibXR::RawData &data) =
       [](bool, RMSerialDriver *self, LibXR::RawData &data) {
         auto quat = reinterpret_cast<LibXR::Quaternion<float> *>(data.addr_);
-
+   
         //调试打印三种方式任选其一
         XR_LOG_INFO("Serial got quat:%f,%f,%f,%f", quat->w(),quat->x(), quat->y(), quat->z()); 
         // RCLCPP_INFO(self->get_logger(),"Serial got quat:%f,%f,%f,%f", quat->w(),quat->x(), quat->y(), quat->z());
         // std::cout<<"Serial got quat:"<<quat->w()<<","<<quat->x()<<","<< quat->y()<<","<< quat->z()<<std::endl;
-
+   
         rm_serial_driver::gimbal_euler gimbal_;
         self->convert_quaternion_to_euler(
           quat->x(), quat->y(), quat->z(), quat->w(),
           gimbal_.roll, gimbal_.pitch, gimbal_.yaw);
-
+   
         // ROS2发布云台关节状态
         sensor_msgs::msg::JointState joint_state;
         joint_state.header.stamp = self->now();
