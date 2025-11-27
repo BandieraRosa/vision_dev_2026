@@ -10,7 +10,7 @@ def generate_launch_description():
 
     serial_driver_node = Node(
         package='rm_serial_driver',
-        executable='ros2_libxr_node',
+        executable='rm_serial_driver_node',
         name='rm_serial_driver',
         output='both',
         emulate_tty=True,
