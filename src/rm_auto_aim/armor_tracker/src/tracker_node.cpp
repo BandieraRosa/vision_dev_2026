@@ -416,6 +416,24 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
 
+      // double current_yaw = 0.0, current_pitch = 0.0;
+      // try
+      // {
+      //   geometry_msgs::msg::TransformStamped t;
+      //   t = tf2_buffer_->lookupTransform(target_frame_, "gimbal_link",
+      //                                    tf2::TimePointZero);
+      //   tf2::Quaternion q;
+      //   tf2::fromMsg(t.transform.rotation, q);
+      //   double r, p, y;
+      //   tf2::Matrix3x3(q).getRPY(r, p, y);
+      //   current_yaw = y;
+      //   current_pitch = p;
+      // }
+      // catch (const tf2::TransformException& ex)
+      // {
+      //   RCLCPP_WARN(this->get_logger(), "Gimbal transform error: %s", ex.what());
+      // }
+
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
       solver_->AutoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg);
