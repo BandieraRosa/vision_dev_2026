@@ -23,4 +23,4 @@ class SimulatorDriverNode : public rclcpp::Node
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr fire_notify_pub_;
 };
 }  // namespace rm_simulator_driver
-#endif  // GIMBAL_CONTROLLER_HPP_
+#endif  // SIMULATOR_DRIVER_HPP_
