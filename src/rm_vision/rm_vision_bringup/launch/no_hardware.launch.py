@@ -14,7 +14,7 @@ def generate_launch_description():
     detector_node = Node(
         package='armor_detector',
         executable='armor_detector_node',
-        emulate_tty=True,
+        emulate_tty=True, 
         output='both',
         parameters=[node_params],
         arguments=['--ros-args', '--log-level',

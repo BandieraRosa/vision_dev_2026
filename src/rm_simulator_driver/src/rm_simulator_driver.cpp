@@ -33,6 +33,8 @@ void SimulatorDriverNode::TargetCallback(
   auto fire_notify = std_msgs::msg::Bool();
   fire_notify.data = msg->is_fire;
   fire_notify_pub_->publish(fire_notify);
+  RCLCPP_INFO(this->get_logger(), "Received target: yaw=%.2f, pitch=%.2f, is_fire=%d",
+              msg->yaw, msg->pitch, msg->is_fire);
 }
 }  // namespace rm_simulator_driver
 #include "rclcpp_components/register_node_macro.hpp"

@@ -1,6 +1,7 @@
 #include "armor_tracker/tracker_node.hpp"
 
 #include <memory>
+#include <rclcpp/logging.hpp>
 #include <vector>
 
 namespace rm_auto_aim
@@ -313,6 +314,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  RCLCPP_INFO(this->get_logger(), "Received %zu armors", armors_msg->armors.size());
   // Tranform armor position from image frame to world coordinate
   for (auto& armor : armors_msg->armors)
   {
