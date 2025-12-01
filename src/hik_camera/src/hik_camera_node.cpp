@@ -1,6 +1,8 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
+#include <chrono>
 #include <opencv2/imgproc.hpp>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/qos.hpp>
 
 #include "MvCameraControl.h"
@@ -14,24 +16,35 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("hik_camera_node", options)
 {
   // 声明参数（默认值可根据你的实际情况调整）
-  params_.exposure_time = this->declare_parameter<double>("exposure_time", 5.0);  // ms
-  params_.gain = this->declare_parameter<double>("gain", 10.0);
+  params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);  // us
+  params_.gain = this->declare_parameter<double>("gain", 16.0);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
-  params_.frame_id = this->declare_parameter<std::string>("frame_id", "narrow_stereo");
+  params_.frame_id =
+      this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
+  params_.camera_name =
+      this->declare_parameter<std::string>("camera_name", "narrow_stereo");
+
+  RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
   // 创建 publisher，话题名保持与原代码一致
   camera_pub_ = image_transport::create_camera_publisher(this, "image_raw",
                                                          rmw_qos_profile_sensor_data);
+  RCLCPP_INFO(this->get_logger(), "Camera publisher created.");
   // 初始化相机
   CaptureInit();
+  RCLCPP_INFO(this->get_logger(), "Camera initialized.");
+
+  // 创建守护线程，负责自动重启
+  guard_.protect_thread = std::thread(&HikCameraNode::ProtectRunning, this);
+
   MV_CC_GetImageInfo(handle_, &img_info_);
   image_msg_.data.reserve(
       static_cast<size_t>(img_info_.nHeightMax * img_info_.nWidthMax) * 3);
   image_msg_.height = img_info_.nHeightMax;
   image_msg_.width = img_info_.nWidthMax;
   camera_info_manager_ =
-      std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.frame_id);
+      std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
   auto camera_info_url = this->declare_parameter(
       "camera_info_url", "package://hik_camera/config/camera_info.yaml");
   if (camera_info_manager_->validateURL(camera_info_url))
@@ -45,9 +58,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
                 camera_info_url.c_str());
   }
 
-  // 创建守护线程，负责自动重启
-  guard_.protect_thread = std::thread(&HikCameraNode::ProtectRunning, this);
-
+  RCLCPP_INFO(this->get_logger(), "Guard thread created.");
   // 创建取流线程
   capture_thread_ = std::thread(
       [this]()
@@ -345,21 +356,30 @@ void HikCameraNode::ProtectRunning()
 {
   RCLCPP_INFO(this->get_logger(), "Protect thread started.");
 
-  this->guard_.protect_thread =
-      std::thread{[this]() -> void
-                  {
-                    std::unique_lock<std::mutex> lock(this->guard_.mux);
-                    while (true)
-                    {
-                      this->guard_.is_quit.wait(
-                          lock, [this]
-                          { return (this->hik_state_.load() == HikStateEnum::STOPPED); });
-                      this->CaptureStop();
-                      this->CaptureInit();
-                      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    }
-                  }};
+  std::unique_lock<std::mutex> lock(this->guard_.mux);
+  while (running_.load())
+  {
+    // 等待条件变量
+    this->guard_.is_quit.wait(
+        lock,
+        [this]
+        {
+          return (this->hik_state_.load() == HikStateEnum::STOPPED) ||
+                 (!this->running_.load());
+        });
 
+    if (!this->running_.load())
+    {
+      break;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Camera stopped, attempting to restart...");
+    this->CaptureStop();
+    // 简单延时防止频繁重启
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    this->CaptureInit();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
   RCLCPP_INFO(this->get_logger(), "Protect thread exit.");
 }
 

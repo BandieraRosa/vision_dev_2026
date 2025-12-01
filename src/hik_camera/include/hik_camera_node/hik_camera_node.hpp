@@ -35,6 +35,7 @@ class HikCameraNode : public rclcpp::Node
     bool autocap;
     double frame_rate;
     std::string frame_id;
+    std::string camera_name;
   };
 
   struct Protect
