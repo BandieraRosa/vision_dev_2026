@@ -52,9 +52,6 @@ class ArmorTrackerNode : public rclcpp::Node
   std::unique_ptr<Tracker> tracker_;
   std::unique_ptr<SolveTrajectory> solver_;
 
-  // Reset tracker service
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_tracker_srv_;
-
   // Subscriber with tf2 message_filter
   std::string target_frame_;
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
