@@ -1,8 +1,8 @@
 # 相机标定
 ```bash
-ros2 launch hik_camera_ros2_driver hik_camera_launch.py
+ros2 launch hik_camera hik_camera.launch.py
 
-ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.015 image:=/camera/image camera:=/camera
+ros2 run camera_calibration cameracalibrator --size 11x8 --square 0.015 image:=/image_raw camera:=/hik_camera
 ```
 `size` 为棋盘格交点的数量 `width x height`
 
