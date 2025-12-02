@@ -12,8 +12,10 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   LibXR::PlatformInit();
   peripherals_ = std::make_unique<LibXR::HardwareContainer>();
   ramfs_ = std::make_unique<LibXR::RamFS>();
+  auto vid = this->declare_parameter<std::string>("vid", "0");
+  auto pid = this->declare_parameter<std::string>("pid", "0");
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
-      "16d0", "1492", 115200, LibXR::LinuxUART::Parity::NO_PARITY, 8, 1);
+      vid, pid, 115200, LibXR::LinuxUART::Parity::NO_PARITY, 8, 1);
   terminal_ = std::make_unique<LibXR::Terminal<1024, 64, 16, 128>>(*ramfs_);
   term_thread_ = std::make_unique<LibXR::Thread>();
   term_thread_->Create(terminal_.get(), LibXR::Terminal<1024, 64, 16, 128>::ThreadFun,
@@ -24,25 +26,28 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   };
 
   // 从下位机接收的话题
-  auto ahrs_euler_topic =
-      LibXR::Topic::CreateTopic<LibXR::Quaternion<float>>("ahrs_quaternion");
+  ahrs_quaternion_topic_ =
+      LibXR::Topic::FindOrCreate<LibXR::Quaternion<float>>("ahrs_quaternion");
 
   LibXR::Topic::Domain referee_domain = LibXR::Topic::Domain("referee");
-  bullet_speed_topic_ = LibXR::Topic::CreateTopic<float>("bullet_speed", &referee_domain);
+  // bullet_speed_topic_ =
+  //     LibXR::Topic::FindOrCreate<float>("bullet_speed", &referee_domain);
 
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
-  target_eulr_topic_ =
-      LibXR::Topic::CreateTopic<LibXR::EulerAngle<float>>("target_eulr", &tracker_domain);
-  fire_notify_topic_ = LibXR::Topic::CreateTopic<uint8_t>("fire_notify", &tracker_domain);
+  target_euler_topic_ = LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>(
+      "target_euler", &tracker_domain);
+  // fire_notify_topic_ =
+  //     LibXR::Topic::FindOrCreate<uint8_t>("fire_notify", &tracker_domain);
 
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "serial/gimbal_joint_state", rclcpp::QoS(rclcpp::KeepLast(1)));
 
   // 弹速
-  velocity_pub_ =
-      this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity", 10);
+  // velocity_pub_ =
+  //     this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity",
+  //     10);
 
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
@@ -52,7 +57,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   XRobotMain(peripherals);
 
   // 云台姿态回调
-  void (*ahrs_euler_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
+  void (*ahrs_quaternion_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
       [](bool, RMSerialDriver* self, LibXR::RawData& data)
   {
     auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
@@ -69,14 +74,14 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp = self->now();
-    joint_state.name.push_back("gimbal_pitch_joint");
-    joint_state.name.push_back("gimbal_yaw_joint");
+    joint_state.name.push_back("pitch_joint");
+    joint_state.name.push_back("yaw_joint");
     joint_state.position.push_back(gimbal.pitch);
     joint_state.position.push_back(gimbal.yaw);
     self->joint_state_pub_->publish(joint_state);
   };
-  auto ahrs_euler_cb = LibXR::Topic::Callback::Create(ahrs_euler_cb_fun, this);
-  ahrs_euler_topic.RegisterCallback(ahrs_euler_cb);
+  auto ahrs_quaternion_cb = LibXR::Topic::Callback::Create(ahrs_quaternion_cb_fun, this);
+  ahrs_quaternion_topic_.RegisterCallback(ahrs_quaternion_cb);
 
   // 弹速回调
   void (*bullet_speed_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
@@ -94,15 +99,16 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
   bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
+  // LibXR::EulerAngle<float> target_euler;
+  // target_euler.Yaw() = 1.0f;
+  // target_euler.Pitch() = 0.5f;
+  // target_euler.Roll() = 0.0f;
+  // uint8_t fire_notify = 0;
+
   while (1)
   {
-    LibXR::EulerAngle<float> target_euler;
-    target_euler.Yaw() = 1.0f;
-    target_euler.Pitch() = 0.5f;
-    target_euler.Roll() = 0.0f;
-    uint8_t fire_notify = 0;
-    target_eulr_topic_.Publish(target_euler);
-    fire_notify_topic_.Publish(fire_notify);
+    // target_euler_topic_.Publish(target_euler);
+    // fire_notify_topic_.Publish(fire_notify);
     LibXR::Thread::Sleep(10);  // 发送延迟，10ms
   }
 }
@@ -121,7 +127,7 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   XR_LOG_INFO("Serial got send: yaw:%f, pitch:%f, is_fire:%d", msg->yaw, msg->pitch,
               msg->is_fire);
 
-  target_eulr_topic_.Publish(target_euler);
+  target_euler_topic_.Publish(target_euler);
   fire_notify_topic_.Publish(fire_notify);
 }
 

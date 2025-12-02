@@ -48,13 +48,13 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   // // 向下位机发送: target_eulr (目标欧拉角), fire_notify (开火通知)
   // static SharedTopicClient shared_topic_client(
   //     hw, appmgr, "uart_client", 81920, 256,
-  //     {{"target_eulr", "tracker"}, {"fire_notify", "tracker"}});
+  //     {{"target_euler", "tracker"}, {"fire_notify", "tracker"}});
 
   static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
                                   {{"ahrs_quaternion"}});
 
   static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
-                                               {{"target_eulr", "tracker"}});
+                                               {{"target_euler", "tracker"}});
   static SharedTopic shared_topic_1(hw, appmgr, "uart_client", 81920, 256,
                                     {{"bullet_speed", "referee"}});
   static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920, 256,
@@ -88,8 +88,9 @@ class RMSerialDriver : public rclcpp::Node
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
 
   /* LibXR Topic (用于发送到下位机) */
+  LibXR::Topic ahrs_quaternion_topic_;
   LibXR::Topic bullet_speed_topic_;
-  LibXR::Topic target_eulr_topic_;
+  LibXR::Topic target_euler_topic_;
   LibXR::Topic fire_notify_topic_;
 
   /* LibXR初始化相关成员变量 */
