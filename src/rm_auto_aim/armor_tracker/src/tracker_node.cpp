@@ -422,7 +422,8 @@ void ArmorTrackerNode::ArmorsCallback(
   }
 
   last_time_ = time;
-
+  RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
+              send_msg.yaw);
   send_pub_->publish(send_msg);
 
   target_pub_->publish(target_msg);

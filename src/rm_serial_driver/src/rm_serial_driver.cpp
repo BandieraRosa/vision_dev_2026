@@ -72,7 +72,13 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     rm_serial_driver::gimbal_euler gimbal;
     self->ConvertQuaternionToEuler(quat->x(), quat->y(), quat->z(), quat->w(),
                                    gimbal.roll, gimbal.pitch, gimbal.yaw);
-
+    if (++self->ahrs_receive_cnt % self->ahrs_print_freq == 0)
+    {
+      RCLCPP_INFO(self->get_logger(),
+                  "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f", gimbal.roll,
+                  gimbal.pitch, gimbal.yaw);
+      self->ahrs_receive_cnt = 0;
+    }
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp =

@@ -345,7 +345,7 @@ void SolveTrajectory::FireLogicIsTop(
     }
   }
 
-  std::cout << "idx: " << idx << '\n';
+  // std::cout << "idx: " << idx << '\n';
 
   // 解算pitch和yaw
   auto [p, y] =
@@ -374,7 +374,7 @@ void SolveTrajectory::FireLogicDefault(
     idx = SelectArmor(msg, false);
     break;
   }
-  std::cout << "idx: " << idx << '\n';
+  // std::cout << "idx: " << idx << '\n';
 
   auto [p, y] =
       CalculatePitchAndYaw(idx, msg, time_delay, s_bias_, z_bias_,

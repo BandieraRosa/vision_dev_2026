@@ -71,6 +71,10 @@ class RMSerialDriver : public rclcpp::Node
 
   double timestamp_offset{};
 
+  int ahrs_receive_cnt = 0;
+  int ahrs_print_freq = 12;
+
+
  private:
   /* 函数声明 */
 
