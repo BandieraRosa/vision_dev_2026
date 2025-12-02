@@ -16,7 +16,7 @@
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.0055 #串行通信驱动的时间戳偏移量
+    timestamp_offset: 0.0 #串行通信驱动的时间戳偏移量
     device_name: /dev/ttyACM0 #串行通信驱动的设备名称
     vid: "16d0"
     pid: "1492"
@@ -39,24 +39,26 @@
 /armor_tracker:
   ros__parameters:
     target_frame: gimbal_odom # 目标坐标系
-    max_armor_distance: 10.0 # 极限最远可观测装甲板距离
+    max_armor_distance: 13.0 # 极限最远可观测装甲板距离
 
     ekf:
-      sigma2_q_xyz: 0.05 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 5.0 #偏航角过程噪声方差
-      sigma2_q_r: 80.0 #位置坐标过程噪声方差
+      sigma2_q_xyz: 50.0 # 位置坐标过程噪声方差
+      sigma2_q_yaw: 500.0 #偏航角过程噪声方差
+      sigma2_q_r: 3000.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.00025 #位置坐标观测噪声协方差系数
-      r_yaw: 0.005 #偏航角观测噪声协方差
+      r_xyz_factor: 0.02 #位置坐标观测噪声协方差系数
+      r_yaw: 0.01 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
-      max_match_distance: 0.5
+      max_match_distance: 0.3
       max_match_yaw_diff: 1.0
 
       # 注意: 弹道解算的参数也在这里
-      k: 0.038
+      # k: 0.038
+      k: 0.0
       bias_time: 10
-      s_bias: 0.18375
+      # s_bias: 0.18375
+      s_bias: 0.0
       z_bias: 0.0
       calculate_mode: true
 
@@ -68,4 +70,4 @@
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "table.bin"
+        filename: "/home/bandiera/Desktop/AUTO-Aming-system/install/armor_tracker/share/armor_tracker/tools/hero_13_table.bin"

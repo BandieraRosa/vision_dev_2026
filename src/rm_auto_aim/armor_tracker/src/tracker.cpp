@@ -60,8 +60,11 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     auto predicted_position =
         GetArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
+    RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+                "Predicted Armor Position: [%.2f, %.2f, %.2f]", predicted_position.x(),
+                predicted_position.y(), predicted_position.z());
+    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;           // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -72,6 +75,9 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
         same_id_armors_count++;
         // 误差分析,计算预测位置与当前装甲位置之间的差异
         auto p = armor.pose.position;  // p是真正的观察到的 装甲板的 position
+        RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+                    "Armor ID: %s, Position: [%.2f, %.2f, %.2f]", armor.number.c_str(),
+                    p.x, p.y, p.z);
         Eigen::Vector3d position_vec(p.x, p.y, p.z);
         double position_diff = (predicted_position - position_vec).norm();
 
@@ -88,7 +94,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     // 存储tracker信息
     info_position_diff = min_position_diff;
     info_yaw_diff = yaw_diff;
-
+    RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+                "Position diff: %.4f, Yaw diff: %.4f", info_position_diff, info_yaw_diff);
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
     if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_)
     {  // 最近装甲板距离与yaw差值比阈值小
@@ -280,8 +287,9 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
 Eigen::Vector3d Tracker::GetArmorPositionFromState(const Eigen::VectorXd& x)
 {
   // 计算当前装甲板的预测位置
-  double xc = x(0), yc = x(2), za = x(4);
-  double yaw = x(6), r = x(8);
+  double xc = x(EKF::STATE::X_CENTER), yc = x(EKF::STATE::Y_CENTER),
+         za = x(EKF::STATE::Z_ARMOR);
+  double yaw = x(EKF::STATE::YAW), r = x(EKF::STATE::ROBOT_R);
   double xa = xc - r * cos(yaw);
   double ya = yc - r * sin(yaw);
   return Eigen::Vector3d(xa, ya, za);

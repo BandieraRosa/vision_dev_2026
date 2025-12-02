@@ -152,7 +152,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start);
   if (duration_ns < std::chrono::nanoseconds(2'000'000))
   {
-    RCLCPP_WARN(this->get_logger(), "Read frame too fast, dropped.");
+    // RCLCPP_WARN(this->get_logger(), "Read frame too fast, dropped.");
     MV_CC_FreeImageBuffer(handle_, &raw);
     return false;
   }
