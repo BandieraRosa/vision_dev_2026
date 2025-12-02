@@ -1,4 +1,4 @@
 /rm_serial_driver:
   ros__parameters:
-    vid: "1366"
-    pid: "0101"
+    vid: "16d0"
+    pid: "1492"

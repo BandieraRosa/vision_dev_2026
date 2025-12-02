@@ -13,12 +13,13 @@
     frame_rate: 249.0
     frame_id: camera_optical_frame
 
-
 # 串口节点
 /serial_driver:
   ros__parameters:
     timestamp_offset: 0.0055 #串行通信驱动的时间戳偏移量
     device_name: /dev/ttyACM0 #串行通信驱动的设备名称
+    vid: "16d0"
+    pid: "1492"
 
 # 装甲板识别节点
 /armor_detector:
