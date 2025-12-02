@@ -7,7 +7,7 @@
 /camera_node:
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
-    exposure_time: 500
+    exposure_time: 500.0
     gain: 16.0
     autocap: true
     frame_rate: 249.0

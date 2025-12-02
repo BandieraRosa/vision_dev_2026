@@ -47,7 +47,7 @@ def generate_launch_description():
         )
 
     hik_camera_node = get_camera_node(
-        'hik_camera', 'hik_camera::HikCameraNode')
+        'hik_camera', 'HikCamera::HikCameraNode')
     mv_camera_node = get_camera_node(
         'mindvision_camera', 'mindvision_camera::MVCameraNode')
 
