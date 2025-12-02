@@ -55,10 +55,11 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
 
   static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
                                                {{"target_euler"}});
-//   static SharedTopic shared_topic_1(hw, appmgr, "uart_client", 81920, 256,
-//                                     {{"bullet_speed", "referee"}});
-//   static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920, 256,
-//                                                  {{"fire_notify", "tracker"}});
+  //   static SharedTopic shared_topic_1(hw, appmgr, "uart_client", 81920, 256,
+  //                                     {{"bullet_speed", "referee"}});
+  //   static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920,
+  //   256,
+  //                                                  {{"fire_notify", "tracker"}});
 }
 
 /* RMSerialDriver类定义*/
@@ -67,6 +68,8 @@ class RMSerialDriver : public rclcpp::Node
  public:
   explicit RMSerialDriver(const rclcpp::NodeOptions& options);
   ~RMSerialDriver() override;
+
+  double timestamp_offset{};
 
  private:
   /* 函数声明 */

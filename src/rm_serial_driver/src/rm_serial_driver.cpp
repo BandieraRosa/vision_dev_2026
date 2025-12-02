@@ -15,6 +15,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   ramfs_ = std::make_unique<LibXR::RamFS>();
   auto vid = this->declare_parameter<std::string>("vid", "16d0");
   auto pid = this->declare_parameter<std::string>("pid", "1492");
+  timestamp_offset = this->declare_parameter<double>("timestamp_offset", 0);
+  std::cout << "Serial timestamp_offset: " << timestamp_offset << '\n';
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
       vid, pid, 115200, LibXR::LinuxUART::Parity::NO_PARITY, 8, 1);
   terminal_ = std::make_unique<LibXR::Terminal<1024, 64, 16, 128>>(*ramfs_);
@@ -43,7 +45,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
-      "gimbal_joint_state", rclcpp::QoS(rclcpp::KeepLast(1)));
+      "/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
 
   // 弹速
   // velocity_pub_ =
@@ -63,7 +65,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   {
     auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
 
-    // RCLCPP_INFO(self->get_logger(), "Serial got quat:%f,%f,%f,%f", quat->w(), quat->x(),
+    // RCLCPP_INFO(self->get_logger(), "Serial got quat:%f,%f,%f,%f", quat->w(),
+    // quat->x(),
     //             quat->y(), quat->z());
 
     rm_serial_driver::gimbal_euler gimbal;
@@ -72,7 +75,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
-    joint_state.header.stamp = self->now();
+    joint_state.header.stamp =
+        self->now() + rclcpp::Duration::from_seconds(self->timestamp_offset);
     joint_state.name.push_back("pitch_joint");
     joint_state.name.push_back("yaw_joint");
     joint_state.position.push_back(gimbal.pitch);
