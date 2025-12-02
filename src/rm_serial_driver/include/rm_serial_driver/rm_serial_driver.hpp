@@ -54,11 +54,11 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
                                   {{"ahrs_quaternion"}});
 
   static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
-                                               {{"target_euler", "tracker"}});
-  static SharedTopic shared_topic_1(hw, appmgr, "uart_client", 81920, 256,
-                                    {{"bullet_speed", "referee"}});
-  static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920, 256,
-                                                 {{"fire_notify", "tracker"}});
+                                               {{"target_euler"}});
+//   static SharedTopic shared_topic_1(hw, appmgr, "uart_client", 81920, 256,
+//                                     {{"bullet_speed", "referee"}});
+//   static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920, 256,
+//                                                  {{"fire_notify", "tracker"}});
 }
 
 /* RMSerialDriver类定义*/

@@ -1,6 +1,7 @@
 #include "rm_serial_driver/rm_serial_driver.hpp"
 
 #include <iostream>
+#include <rclcpp/logging.hpp>
 
 using namespace std::chrono_literals;
 
@@ -12,8 +13,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   LibXR::PlatformInit();
   peripherals_ = std::make_unique<LibXR::HardwareContainer>();
   ramfs_ = std::make_unique<LibXR::RamFS>();
-  auto vid = this->declare_parameter<std::string>("vid", "0");
-  auto pid = this->declare_parameter<std::string>("pid", "0");
+  auto vid = this->declare_parameter<std::string>("vid", "16d0");
+  auto pid = this->declare_parameter<std::string>("pid", "1492");
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
       vid, pid, 115200, LibXR::LinuxUART::Parity::NO_PARITY, 8, 1);
   terminal_ = std::make_unique<LibXR::Terminal<1024, 64, 16, 128>>(*ramfs_);
@@ -35,14 +36,14 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
-  target_euler_topic_ = LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>(
-      "target_euler", &tracker_domain);
+  target_euler_topic_ =
+      LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>("target_euler");
   // fire_notify_topic_ =
   //     LibXR::Topic::FindOrCreate<uint8_t>("fire_notify", &tracker_domain);
 
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
-      "serial/gimbal_joint_state", rclcpp::QoS(rclcpp::KeepLast(1)));
+      "gimbal_joint_state", rclcpp::QoS(rclcpp::KeepLast(1)));
 
   // 弹速
   // velocity_pub_ =
@@ -62,10 +63,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   {
     auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
 
-    XR_LOG_INFO("Serial got quat:%f,%f,%f,%f", quat->w(), quat->x(), quat->y(),
-                quat->z());
-    std::cout << "quat:" << quat->w() << "," << quat->x() << "," << quat->y() << ","
-              << quat->z() << '\n';
+    // RCLCPP_INFO(self->get_logger(), "Serial got quat:%f,%f,%f,%f", quat->w(), quat->x(),
+    //             quat->y(), quat->z());
 
     rm_serial_driver::gimbal_euler gimbal;
     self->ConvertQuaternionToEuler(quat->x(), quat->y(), quat->z(), quat->w(),
@@ -96,19 +95,11 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     velocity_msg.velocity = static_cast<double>(*bullet_speed);
     self->velocity_pub_->publish(velocity_msg);
   };
-  auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
-  bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
-
-  // LibXR::EulerAngle<float> target_euler;
-  // target_euler.Yaw() = 1.0f;
-  // target_euler.Pitch() = 0.5f;
-  // target_euler.Roll() = 0.0f;
-  // uint8_t fire_notify = 0;
+  // auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
+  // bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
   while (1)
   {
-    // target_euler_topic_.Publish(target_euler);
-    // fire_notify_topic_.Publish(fire_notify);
     LibXR::Thread::Sleep(10);  // 发送延迟，10ms
   }
 }
@@ -124,9 +115,8 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   target_euler.Roll() = 0.0f;
 
   uint8_t fire_notify = msg->is_fire ? 1 : 0;
-  XR_LOG_INFO("Serial got send: yaw:%f, pitch:%f, is_fire:%d", msg->yaw, msg->pitch,
-              msg->is_fire);
-
+  RCLCPP_INFO(this->get_logger(), "Serial got send: yaw:%f, pitch:%f, is_fire:%d",
+              msg->yaw, msg->pitch, msg->is_fire);
   target_euler_topic_.Publish(target_euler);
   fire_notify_topic_.Publish(fire_notify);
 }
