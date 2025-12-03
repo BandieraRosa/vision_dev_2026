@@ -75,8 +75,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
         same_id_armors_count++;
         // 误差分析,计算预测位置与当前装甲位置之间的差异
         auto p = armor.pose.position;  // p是真正的观察到的 装甲板的 position
-        RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-                    "Target Position: [%.2f, %.2f, %.2f]", p.x, p.y, p.z);
+        // RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+        //             "Target Position: [%.2f, %.2f, %.2f]", p.x, p.y, p.z);
         Eigen::Vector3d position_vec(p.x, p.y, p.z);
         double position_diff = (predicted_position - position_vec).norm();
 
@@ -94,7 +94,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     info_position_diff = min_position_diff;
     info_yaw_diff = yaw_diff;
     // RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-    //             "Position diff: %.4f, Yaw diff: %.4f", info_position_diff, info_yaw_diff);
+    //             "Position diff: %.4f, Yaw diff: %.4f", info_position_diff,
+    //             info_yaw_diff);
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
     if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_)
     {  // 最近装甲板距离与yaw差值比阈值小
@@ -119,9 +120,10 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     else
     {
       // 没找到匹配的装甲板
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                  "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]: No
-                                               // matched armor found!
+      // RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+      //             "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]:
+      //             No
+      //                                          // matched armor found!
     }
   }
 
