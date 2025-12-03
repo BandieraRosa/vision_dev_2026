@@ -72,7 +72,7 @@ class RMSerialDriver : public rclcpp::Node
   double timestamp_offset{};
 
   int ahrs_receive_cnt = 0;
-  int ahrs_print_freq = 12;
+  int ahrs_print_freq = 50;
 
 
  private:

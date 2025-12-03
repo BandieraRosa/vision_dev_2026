@@ -65,10 +65,6 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   {
     auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
 
-    // RCLCPP_INFO(self->get_logger(), "Serial got quat:%f,%f,%f,%f", quat->w(),
-    // quat->x(),
-    //             quat->y(), quat->z());
-
     rm_serial_driver::gimbal_euler gimbal;
     self->ConvertQuaternionToEuler(quat->x(), quat->y(), quat->z(), quat->w(),
                                    gimbal.roll, gimbal.pitch, gimbal.yaw);
@@ -108,10 +104,16 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
   // bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
-  while (1)
-  {
-    LibXR::Thread::Sleep(10);  // 发送延迟，10ms
-  }
+  // while (1)
+  // {
+  //   LibXR::Thread::Sleep(10);  // 发送延迟，10ms
+  // }
+
+  auto timer_ = this->create_wall_timer(10ms,
+                                        [this]()
+                                        {
+                                          LibXR::Thread::Sleep(10);  // 发送延迟，10ms
+                                        });
 }
 
 RMSerialDriver::~RMSerialDriver() {}
@@ -120,15 +122,15 @@ RMSerialDriver::~RMSerialDriver() {}
 void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
   LibXR::EulerAngle<float> target_euler;
-  target_euler.Yaw() = static_cast<float>(msg->yaw);
   target_euler.Pitch() = static_cast<float>(msg->pitch);
+  target_euler.Yaw() = static_cast<float>(msg->yaw);
   target_euler.Roll() = 0.0f;
 
   uint8_t fire_notify = msg->is_fire ? 1 : 0;
-  RCLCPP_INFO(this->get_logger(), "Serial got send: yaw:%f, pitch:%f, is_fire:%d",
-              msg->yaw, msg->pitch, msg->is_fire);
+  RCLCPP_INFO(this->get_logger(), "Serial got send: is_fire:%d pitch:%f, yaw:%f,",
+              fire_notify, target_euler.Pitch(), target_euler.Yaw());
   target_euler_topic_.Publish(target_euler);
-  fire_notify_topic_.Publish(fire_notify);
+  // fire_notify_topic_.Publish(fire_notify);
 }
 
 /*四元数转欧拉角*/

@@ -386,6 +386,10 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
+      RCLCPP_INFO(this->get_logger(), "EKF State: yaw=%.4f, v_yaw=%.6f, a_yaw=%.6f",
+                  tracker_->target_state(EKF::STATE::YAW),
+                  tracker_->target_state(EKF::STATE::V_YAW),
+                  tracker_->target_state(EKF::STATE::A_YAW));
       target_msg.tracking = true;
       // Fill target message
       const auto& state = tracker_->target_state;
@@ -415,6 +419,10 @@ void ArmorTrackerNode::ArmorsCallback(
       }
 
       solver_->SetFireCallback([&](bool is_fire) { send_msg.is_fire = is_fire; });
+      if (pitch == NAN || yaw == NAN)
+      {
+        RCLCPP_ERROR(this->get_logger(), "pitch or yaw is NAN!");
+      }
 
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
@@ -422,10 +430,11 @@ void ArmorTrackerNode::ArmorsCallback(
   }
 
   last_time_ = time;
-  RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
-              send_msg.yaw);
-  send_pub_->publish(send_msg);
 
+  // RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
+  //             send_msg.yaw);
+
+  send_pub_->publish(send_msg);
   target_pub_->publish(target_msg);
 
   PublishMarkers(target_msg);

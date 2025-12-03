@@ -43,11 +43,11 @@
 
     ekf:
       sigma2_q_xyz: 50.0 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 500.0 #偏航角过程噪声方差
+      sigma2_q_yaw: 300.0 #偏航角过程噪声方差
       sigma2_q_r: 3000.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.02 #位置坐标观测噪声协方差系数
-      r_yaw: 0.01 #偏航角观测噪声协方差
+      r_xyz_factor: 0.01 #位置坐标观测噪声协方差系数
+      r_yaw: 0.005 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
       max_match_distance: 0.3
