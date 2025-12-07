@@ -168,10 +168,10 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   auto pixel_type = frame_info.enPixelType;
 
   static const std::unordered_map<MvGvspPixelType, int> TYPE_MAP = {
-      {PixelType_Gvsp_BayerGR8, cv::COLOR_BayerGR2RGB},
-      {PixelType_Gvsp_BayerRG8, cv::COLOR_BayerRG2RGB},
-      {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2RGB},
-      {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2RGB}};
+      {PixelType_Gvsp_BayerGR8, cv::COLOR_BayerGR2BGR},
+      {PixelType_Gvsp_BayerRG8, cv::COLOR_BayerRG2BGR},
+      {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2BGR},
+      {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2BGR}};
 
   auto it = TYPE_MAP.find(pixel_type);
   if (it == TYPE_MAP.end())
