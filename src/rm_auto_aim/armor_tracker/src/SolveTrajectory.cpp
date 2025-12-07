@@ -294,7 +294,7 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
 //=============================================================================
 void SolveTrajectory::FireLogicIsTop(
     float& pitch, float& yaw, float& aim_x, float& aim_y, float& aim_z,
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg, bool& is_fire)
 {
   tar_yaw_ = static_cast<float>(msg->yaw);
   // 线性预测
@@ -305,7 +305,6 @@ void SolveTrajectory::FireLogicIsTop(
   //    3     1
   //       0
   int idx = 0;
-  bool is_fire = false;
 
   if (msg->armors_num == ARMOR_NUM_OUTPOST)
   {
@@ -317,10 +316,6 @@ void SolveTrajectory::FireLogicIsTop(
       {
         is_fire = true;
         idx = static_cast<int>(i);
-        if (fire_callback_)
-        {
-          fire_callback_(is_fire);
-        }
         break;
       }
     }
@@ -336,10 +331,6 @@ void SolveTrajectory::FireLogicIsTop(
       {
         is_fire = true;
         idx = static_cast<int>(i);
-        if (fire_callback_)
-        {
-          fire_callback_(is_fire);
-        }
         break;
       }
     }
@@ -395,10 +386,10 @@ void SolveTrajectory::FireLogicDefault(
 */
 void SolveTrajectory::AutoSolveTrajectory(
     float& pitch, float& yaw, float& aim_x, float& aim_y, float& aim_z,
-    const auto_aim_interfaces::msg::Target::SharedPtr msg)
+    const auto_aim_interfaces::msg::Target::SharedPtr msg, bool& is_fire)
 {
   // 优先开火逻辑
-  FireLogicIsTop(pitch, yaw, aim_x, aim_y, aim_z, msg);
+  FireLogicIsTop(pitch, yaw, aim_x, aim_y, aim_z, msg, is_fire);
 }
 
 // 从坐标轴正向看向原点，逆时针方向为正

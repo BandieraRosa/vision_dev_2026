@@ -225,7 +225,8 @@ class SolveTrajectory
                   bool select_by_min_yaw);
 
   void FireLogicIsTop(float& pitch, float& yaw, float& aim_x, float& aim_y, float& aim_z,
-                      const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+                      const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                      bool& is_fire);
 
   void FireLogicDefault(float& pitch, float& yaw, float& aim_x, float& aim_y,
                         float& aim_z,
@@ -234,7 +235,8 @@ class SolveTrajectory
   // 根据最优决策得出被击打装甲板 自动解算弹道
   void AutoSolveTrajectory(float& pitch, float& yaw, float& aim_x, float& aim_y,
                            float& aim_z,
-                           const auto_aim_interfaces::msg::Target::SharedPtr msg);
+                           const auto_aim_interfaces::msg::Target::SharedPtr msg,
+                           bool& is_fire);
 
  private:
   FireCallback fire_callback_;

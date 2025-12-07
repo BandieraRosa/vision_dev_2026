@@ -409,7 +409,9 @@ void ArmorTrackerNode::ArmorsCallback(
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
-      solver_->AutoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg);
+
+      bool is_fire = false;
+      solver_->AutoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg, is_fire);
 
       if (abs(aim_x) > 0.01)
       {
@@ -424,6 +426,7 @@ void ArmorTrackerNode::ArmorsCallback(
         RCLCPP_ERROR(this->get_logger(), "pitch or yaw is NAN!");
       }
 
+      send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
     }
