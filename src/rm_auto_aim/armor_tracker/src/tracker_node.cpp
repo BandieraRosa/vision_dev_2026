@@ -1,5 +1,6 @@
 #include "armor_tracker/tracker_node.hpp"
 
+#include <cmath>
 #include <memory>
 #include <rclcpp/logging.hpp>
 #include <vector>
@@ -49,54 +50,40 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias,
                                               calculate_mode, table_config);
 
-  // ---------------- EKF 设置 ----------------
-  // 状态 x = [xc, vxc, axc, yc, vyc, ayc, za, vza, aza, yaw, vyaw, ayaw, r] (13维)
+  // ---------------- EKF 设置 (CV模型) ----------------
+  // 状态 x = [xc, vxc, yc, vyc, za, vza, yaw, vyaw, r] (9维)
   // 观测 z = [xa, ya, za, yaw] (4维)
-  // f - Process function 过程函数对状态进行更新
+
+  // f - Process function 过程函数对状态进行更新 (CV模型)
   auto f = [this](const Eigen::VectorXd& x)
   {
     Eigen::VectorXd x_new = x;
     double t = dt_;
-    x_new(EKF::STATE::X_CENTER) +=
-        x(EKF::STATE::V_X_CENTER) * t + 0.5 * x(EKF::STATE::A_X_CENTER) * t * t;
-    x_new(EKF::STATE::Y_CENTER) +=
-        x(EKF::STATE::V_Y_CENTER) * t + 0.5 * x(EKF::STATE::A_Y_CENTER) * t * t;
-    x_new(EKF::STATE::Z_ARMOR) +=
-        x(EKF::STATE::V_Z_ARMOR) * t + 0.5 * x(EKF::STATE::A_Z_ARMOR) * t * t;
-    x_new(EKF::STATE::YAW) +=
-        x(EKF::STATE::V_YAW) * t + 0.5 * x(EKF::STATE::A_YAW) * t * t;
-
-    x_new(EKF::STATE::V_X_CENTER) += x(EKF::STATE::A_X_CENTER) * t;
-    x_new(EKF::STATE::V_Y_CENTER) += x(EKF::STATE::A_Y_CENTER) * t;
-    x_new(EKF::STATE::V_Z_ARMOR) += x(EKF::STATE::A_Z_ARMOR) * t;
-    x_new(EKF::STATE::V_YAW) += x(EKF::STATE::A_YAW) * t;
+    // CV模型：位置 += 速度 * 时间
+    x_new(EKF::STATE::X_CENTER) += x(EKF::STATE::V_X_CENTER) * t;
+    x_new(EKF::STATE::Y_CENTER) += x(EKF::STATE::V_Y_CENTER) * t;
+    x_new(EKF::STATE::Z_ARMOR) += x(EKF::STATE::V_Z_ARMOR) * t;
+    x_new(EKF::STATE::YAW) += x(EKF::STATE::V_YAW) * t;
+    // 速度保持不变（CV模型假设）
     return x_new;
   };
-  // J_f - Jacobian of process function
+
+  // J_f - Jacobian of process function (CV模型：9x9矩阵)
   auto j_f = [this](const Eigen::VectorXd&)
   {
-    Eigen::MatrixXd f(13, 13);
+    Eigen::MatrixXd f(9, 9);
     f.setIdentity();
     double t = dt_;
-    // clang-format off
-    // f << 1, d, 0, 0, 0, 0, 0, 0, 0,
-    //      0, 1, 0, 0, 0, 0, 0, 0, 0,
-    //      0, 0, 1, d, 0, 0, 0, 0, 0,
-    //      0, 0, 0, 1, 0, 0, 0, 0, 0,
-    //      0, 0, 0, 0, 1, d, 0, 0, 0,
-    //      0, 0, 0, 0, 0, 1, 0, 0, 0,
-    //      0, 0, 0, 0, 0, 0, 1, d, 0,
-    //      0, 0, 0, 0, 0, 0, 0, 1, 0,
-    //      0, 0, 0, 0, 0, 0, 0, 0, 1;
-
-    for (int i = 0; i < 4; ++i) {
-      f(i * 3 + 0, i * 3 + 1) = t;
-      f(i * 3 + 0, i * 3 + 2) = 0.5 * t * t;
-      f(i * 3 + 1, i * 3 + 2) = t;
-    }
-    // clang-format on
+    // CV模型雅可比矩阵
+    // [xc, vxc, yc, vyc, za, vza, yaw, vyaw, r]
+    //   0,   1,  2,   3,  4,   5,   6,    7, 8
+    f(EKF::STATE::X_CENTER, EKF::STATE::V_X_CENTER) = t;
+    f(EKF::STATE::Y_CENTER, EKF::STATE::V_Y_CENTER) = t;
+    f(EKF::STATE::Z_ARMOR, EKF::STATE::V_Z_ARMOR) = t;
+    f(EKF::STATE::YAW, EKF::STATE::V_YAW) = t;
     return f;
   };
+
   // h - Observation function 观测函数对状态进行测量
   auto h = [](const Eigen::VectorXd& x)
   {
@@ -109,96 +96,96 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     z(3) = x(EKF::STATE::YAW);      // yaw
     return z;
   };
-  // J_h - Jacobian of observation function
+
+  // J_h - Jacobian of observation function (CV模型：4x9矩阵)
   auto j_h = [](const Eigen::VectorXd& x)
   {
-    Eigen::MatrixXd h(4, 13);
+    Eigen::MatrixXd h(4, 9);
     double yaw = x(EKF::STATE::YAW), r = x(EKF::STATE::ROBOT_R);
-    // xc vxc axc yc vyc ayc za vza aza yaw vyaw ayaw r
-    h << /*xa*/ 1, 0, 0, 0, 0, 0, 0, 0, 0, r * std::sin(yaw), 0, 0, -std::cos(yaw),
-        /*ya */ 0, 0, 0, 1, 0, 0, 0, 0, 0, -r * std::cos(yaw), 0, 0, -std::sin(yaw),
-        /*za */ 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-        /*yaw*/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0;
+    // 状态: [xc, vxc, yc, vyc, za, vza, yaw, vyaw, r]
+    // 索引:   0,   1,  2,   3,  4,   5,   6,    7, 8
+    h.setZero();
+    // d(xa)/d(xc) = 1
+    h(0, EKF::STATE::X_CENTER) = 1;
+    // d(xa)/d(yaw) = r * sin(yaw)
+    h(0, EKF::STATE::YAW) = r * std::sin(yaw);
+    // d(xa)/d(r) = -cos(yaw)
+    h(0, EKF::STATE::ROBOT_R) = -std::cos(yaw);
+
+    // d(ya)/d(yc) = 1
+    h(1, EKF::STATE::Y_CENTER) = 1;
+    // d(ya)/d(yaw) = -r * cos(yaw)
+    h(1, EKF::STATE::YAW) = -r * std::cos(yaw);
+    // d(ya)/d(r) = -sin(yaw)
+    h(1, EKF::STATE::ROBOT_R) = -std::sin(yaw);
+
+    // d(za)/d(za) = 1
+    h(2, EKF::STATE::Z_ARMOR) = 1;
+
+    // d(yaw)/d(yaw) = 1
+    h(3, EKF::STATE::YAW) = 1;
+
     return h;
   };
-  // update_Q - process noise covariance matrix 过程噪声协方差矩阵
+
+  // update_Q - process noise covariance matrix 过程噪声协方差矩阵 (CV模型)
   s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 20.0);
   s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 100.0);
   s2qr_ = declare_parameter("ekf.sigma2_q_r", 800.0);
   auto u_q = [this]()
   {
-    Eigen::MatrixXd q(13, 13);
+    Eigen::MatrixXd q(9, 9);
+    q.setZero();
     double t = dt_, x = s2qxyz_, y = s2qyaw_, r = s2qr_;
 
-    double t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t, t6 = t5 * t;
-    // XYZ 块的元素 (p-位置, v-速度, a-加速度)
-    double q_p_p_xyz = t6 / 36.0 * x;
-    double q_p_v_xyz = t5 / 12.0 * x;
-    double q_p_a_xyz = t4 / 6.0 * x;
-    double q_v_v_xyz = t4 / 4.0 * x;
-    double q_v_a_xyz = t3 / 2.0 * x;
-    double q_a_a_xyz = t2 * x;
+    double t2 = t * t, t3 = t2 * t, t4 = t3 * t;
+
+    // CV模型的过程噪声矩阵
+    // 对于每个位置-速度对，使用离散白噪声加速度模型：
+    // Q = [[t^4/4, t^3/2], [t^3/2, t^2]] * sigma^2
+
+    // XYZ 块的元素 (p-位置, v-速度)
+    double q_p_p_xyz = t4 / 4.0 * x;
+    double q_p_v_xyz = t3 / 2.0 * x;
+    double q_v_v_xyz = t2 * x;
 
     // Yaw 块的元素
-    double q_p_p_yaw = t6 / 36.0 * y;
-    double q_p_v_yaw = t5 / 12.0 * y;
-    double q_p_a_yaw = t4 / 6.0 * y;
-    double q_v_v_yaw = t4 / 4.0 * y;
-    double q_v_a_yaw = t3 / 2.0 * y;
-    double q_a_a_yaw = t2 * y;
+    double q_p_p_yaw = t4 / 4.0 * y;
+    double q_p_v_yaw = t3 / 2.0 * y;
+    double q_v_v_yaw = t2 * y;
 
     double q_r = t2 * r;
-    // clang-format off
-    q.setZero();
-    // [xc, vxc, axc]
+
+    // [xc, vxc]
     q(EKF::STATE::X_CENTER, EKF::STATE::X_CENTER) = q_p_p_xyz;
     q(EKF::STATE::X_CENTER, EKF::STATE::V_X_CENTER) = q_p_v_xyz;
-    q(EKF::STATE::X_CENTER, EKF::STATE::A_X_CENTER) = q_p_a_xyz;
     q(EKF::STATE::V_X_CENTER, EKF::STATE::X_CENTER) = q_p_v_xyz;
     q(EKF::STATE::V_X_CENTER, EKF::STATE::V_X_CENTER) = q_v_v_xyz;
-    q(EKF::STATE::V_X_CENTER, EKF::STATE::A_X_CENTER) = q_v_a_xyz;
-    q(EKF::STATE::A_X_CENTER, EKF::STATE::X_CENTER) = q_p_a_xyz;
-    q(EKF::STATE::A_X_CENTER, EKF::STATE::V_X_CENTER) = q_v_a_xyz;
-    q(EKF::STATE::A_X_CENTER, EKF::STATE::A_X_CENTER) = q_a_a_xyz;
 
-    // [yc, vyc, ayc]
+    // [yc, vyc]
     q(EKF::STATE::Y_CENTER, EKF::STATE::Y_CENTER) = q_p_p_xyz;
     q(EKF::STATE::Y_CENTER, EKF::STATE::V_Y_CENTER) = q_p_v_xyz;
-    q(EKF::STATE::Y_CENTER, EKF::STATE::A_Y_CENTER) = q_p_a_xyz;
-    q(EKF::STATE::V_Y_CENTER, EKF::STATE::Y_CENTER) = q_p_v_xyz; 
-    q(EKF::STATE::V_Y_CENTER, EKF::STATE::V_Y_CENTER) = q_v_v_xyz; 
-    q(EKF::STATE::V_Y_CENTER, EKF::STATE::A_Y_CENTER) = q_v_a_xyz;
-    q(EKF::STATE::A_Y_CENTER, EKF::STATE::Y_CENTER) = q_p_a_xyz; 
-    q(EKF::STATE::A_Y_CENTER, EKF::STATE::V_Y_CENTER) = q_v_a_xyz;  
-    q(EKF::STATE::A_Y_CENTER, EKF::STATE::A_Y_CENTER) = q_a_a_xyz;
+    q(EKF::STATE::V_Y_CENTER, EKF::STATE::Y_CENTER) = q_p_v_xyz;
+    q(EKF::STATE::V_Y_CENTER, EKF::STATE::V_Y_CENTER) = q_v_v_xyz;
 
-    // [za, vza, aza]
-    q(EKF::STATE::Z_ARMOR, EKF::STATE::Z_ARMOR) = q_p_p_xyz; 
-    q(EKF::STATE::Z_ARMOR, EKF::STATE::V_Z_ARMOR) = q_p_v_xyz; 
-    q(EKF::STATE::Z_ARMOR, EKF::STATE::A_Z_ARMOR) = q_p_a_xyz;
-    q(EKF::STATE::V_Z_ARMOR, EKF::STATE::Z_ARMOR) = q_p_v_xyz; 
-    q(EKF::STATE::V_Z_ARMOR, EKF::STATE::V_Z_ARMOR)=q_v_v_xyz; 
-    q(EKF::STATE::V_Z_ARMOR, EKF::STATE::A_Z_ARMOR)=q_v_a_xyz;
-    q(EKF::STATE::A_Z_ARMOR, EKF::STATE::Z_ARMOR)=q_p_a_xyz; 
-    q(EKF::STATE::A_Z_ARMOR, EKF::STATE::V_Z_ARMOR) = q_v_a_xyz; 
-    q(EKF::STATE::A_Z_ARMOR, EKF::STATE::A_Z_ARMOR) = q_a_a_xyz;
+    // [za, vza]
+    q(EKF::STATE::Z_ARMOR, EKF::STATE::Z_ARMOR) = q_p_p_xyz;
+    q(EKF::STATE::Z_ARMOR, EKF::STATE::V_Z_ARMOR) = q_p_v_xyz;
+    q(EKF::STATE::V_Z_ARMOR, EKF::STATE::Z_ARMOR) = q_p_v_xyz;
+    q(EKF::STATE::V_Z_ARMOR, EKF::STATE::V_Z_ARMOR) = q_v_v_xyz;
 
-    // [yaw, vyaw, ayaw]
-    q(EKF::STATE::YAW, EKF::STATE::YAW) = q_p_p_yaw; 
-    q(EKF::STATE::YAW, EKF::STATE::V_YAW) = q_p_v_yaw; 
-    q(EKF::STATE::YAW, EKF::STATE::A_YAW) = q_p_a_yaw;
-    q(EKF::STATE::V_YAW, EKF::STATE::YAW) = q_p_v_yaw; 
-    q(EKF::STATE::V_YAW, EKF::STATE::V_YAW)=q_v_v_yaw; 
-    q(EKF::STATE::V_YAW, EKF::STATE::A_YAW)=q_v_a_yaw;
-    q(EKF::STATE::A_YAW, EKF::STATE::YAW)=q_p_a_yaw; 
-    q(EKF::STATE::A_YAW, EKF::STATE::V_YAW) = q_v_a_yaw; 
-    q(EKF::STATE::A_YAW, EKF::STATE::A_YAW) = q_a_a_yaw;
+    // [yaw, vyaw]
+    q(EKF::STATE::YAW, EKF::STATE::YAW) = q_p_p_yaw;
+    q(EKF::STATE::YAW, EKF::STATE::V_YAW) = q_p_v_yaw;
+    q(EKF::STATE::V_YAW, EKF::STATE::YAW) = q_p_v_yaw;
+    q(EKF::STATE::V_YAW, EKF::STATE::V_YAW) = q_v_v_yaw;
 
     // R
     q(EKF::STATE::ROBOT_R, EKF::STATE::ROBOT_R) = q_r;
-    // clang-format on
+
     return q;
   };
+
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
   r_xyz_factor_ = declare_parameter("ekf.r_xyz_factor", 0.05);
   r_yaw_ = declare_parameter("ekf.r_yaw", 0.02);
@@ -211,8 +198,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
         std_dev_xyz * std_dev_xyz, r_yaw_;
     return r;
   };
-  // P - error estimate covariance matrix
-  Eigen::DiagonalMatrix<double, 13> p0;
+
+  // P - error estimate covariance matrix (CV模型：9x9)
+  Eigen::DiagonalMatrix<double, 9> p0;
   p0.setIdentity();
   tracker_->ekf_ = EKF(f, h, j_f, j_h, u_q, u_r, p0);
 
@@ -299,7 +287,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
-  // RCLCPP_INFO(this->get_logger(), "Received %zu armors", armors_msg->armors.size());
   // Tranform armor position from image frame to world coordinate
   for (auto& armor : armors_msg->armors)
   {
@@ -386,20 +373,19 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
-      RCLCPP_INFO(this->get_logger(), "EKF State: yaw=%.4f, v_yaw=%.6f, a_yaw=%.6f",
+      RCLCPP_INFO(this->get_logger(), "EKF State: yaw=%.4f, v_yaw=%.6f",
                   tracker_->target_state(EKF::STATE::YAW),
-                  tracker_->target_state(EKF::STATE::V_YAW),
-                  tracker_->target_state(EKF::STATE::A_YAW));
+                  tracker_->target_state(EKF::STATE::V_YAW));
       target_msg.tracking = true;
-      // Fill target message
+      // Fill target message (CV模型：9维状态)
       const auto& state = tracker_->target_state;
       target_msg.id = tracker_->tracked_id;
       target_msg.armors_num = static_cast<int>(tracker_->tracked_armors_num);
       target_msg.position.x = state(EKF::STATE::X_CENTER);
-      target_msg.velocity.x = state(EKF::STATE::V_X_CENTER);
       target_msg.position.y = state(EKF::STATE::Y_CENTER);
-      target_msg.velocity.y = state(EKF::STATE::V_Y_CENTER);
       target_msg.position.z = state(EKF::STATE::Z_ARMOR);
+      target_msg.velocity.x = state(EKF::STATE::V_X_CENTER);
+      target_msg.velocity.y = state(EKF::STATE::V_Y_CENTER);
       target_msg.velocity.z = state(EKF::STATE::V_Z_ARMOR);
       target_msg.yaw = state(EKF::STATE::YAW);
       target_msg.v_yaw = state(EKF::STATE::V_YAW);
@@ -457,6 +443,7 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
   armor_marker_.header = target_msg.header;
 
   visualization_msgs::msg::MarkerArray marker_array;
+
   if (target_msg.tracking)
   {
     double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;

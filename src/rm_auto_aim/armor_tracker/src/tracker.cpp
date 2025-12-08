@@ -13,7 +13,7 @@ Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
     : tracker_state(LOST),
       tracked_id(std::string("")),
       measurement(Eigen::VectorXd::Zero(4)),
-      target_state(Eigen::VectorXd::Zero(9)),
+      target_state(Eigen::VectorXd::Zero(9)),  // CV模型：9维
       max_match_distance_(max_match_distance),
       max_match_yaw_diff_(max_match_yaw_diff)
 {
@@ -60,11 +60,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     auto predicted_position =
         GetArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    // RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-    //             "Predicted Armor Position: [%.2f, %.2f, %.2f]", predicted_position.x(),
-    //             predicted_position.y(), predicted_position.z());
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;           // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -75,8 +72,6 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
         same_id_armors_count++;
         // 误差分析,计算预测位置与当前装甲位置之间的差异
         auto p = armor.pose.position;  // p是真正的观察到的 装甲板的 position
-        // RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-        //             "Target Position: [%.2f, %.2f, %.2f]", p.x, p.y, p.z);
         Eigen::Vector3d position_vec(p.x, p.y, p.z);
         double position_diff = (predicted_position - position_vec).norm();
 
@@ -93,9 +88,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     // 存储tracker信息
     info_position_diff = min_position_diff;
     info_yaw_diff = yaw_diff;
-    // RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-    //             "Position diff: %.4f, Yaw diff: %.4f", info_position_diff,
-    //             info_yaw_diff);
+
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
     if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_)
     {  // 最近装甲板距离与yaw差值比阈值小
@@ -107,9 +100,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
           OrientationToYaw(tracked_armor.pose.orientation);  // 测量的yaw值
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
       target_state = ekf_.Update(measurement);
-      RCLCPP_DEBUG(
-          rclcpp::get_logger("armor_tracker"),
-          "EKF update");  // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
+      RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
     }
     else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_)
     {
@@ -120,10 +111,6 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     else
     {
       // 没找到匹配的装甲板
-      // RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-      //             "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]:
-      //             No
-      //                                          // matched armor found!
     }
   }
 
@@ -184,7 +171,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   }
 }
 
-// 初始化ekf
+// 初始化ekf (CV模型：9维状态)
 void Tracker::InitEKF(const Armor& a)
 {
   double xa = a.pose.position.x;
@@ -193,17 +180,22 @@ void Tracker::InitEKF(const Armor& a)
   last_yaw_ = 0;
   double yaw = OrientationToYaw(a.pose.orientation);
 
-  // 设置初始位置在目标后面0.2米
-  target_state = Eigen::VectorXd::Zero(13);
+  // 设置初始位置在目标后面0.26米
+  target_state = Eigen::VectorXd::Zero(9);  // CV模型：9维
   double r = 0.26;
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
-  // target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
+
+  // CV模型状态: [xc, vxc, yc, vyc, za, vza, yaw, vyaw, r]
   target_state(EKF::STATE::X_CENTER) = xc;
+  target_state(EKF::STATE::V_X_CENTER) = 0;
   target_state(EKF::STATE::Y_CENTER) = yc;
+  target_state(EKF::STATE::V_Y_CENTER) = 0;
   target_state(EKF::STATE::Z_ARMOR) = za;
+  target_state(EKF::STATE::V_Z_ARMOR) = 0;
   target_state(EKF::STATE::YAW) = yaw;
+  target_state(EKF::STATE::V_YAW) = 0;
   target_state(EKF::STATE::ROBOT_R) = r;
 
   ekf_.SetState(target_state);
@@ -221,7 +213,7 @@ void Tracker::UpdateArmorsNum(const Armor&)
   }
 }
 
-// 处理装甲板跳变
+// 处理装甲板跳变 (CV模型：9维状态)
 void Tracker::HandleArmorJump(const Armor& current_armor)
 {
   double yaw = OrientationToYaw(current_armor.pose.orientation);
@@ -244,26 +236,20 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   if ((current_p - infer_p).norm() > max_match_distance_)
   {
     Eigen::VectorXd diag_p = ekf_.GetCovariance().diagonal();
+    // CV模型：只有速度项，没有加速度项
     diag_p(EKF::STATE::V_X_CENTER) *= 10.0;
-    diag_p(EKF::STATE::A_X_CENTER) *= 10.0;
     diag_p(EKF::STATE::V_Y_CENTER) *= 10.0;
-    diag_p(EKF::STATE::A_Y_CENTER) *= 10.0;
     diag_p(EKF::STATE::V_Z_ARMOR) *= 10.0;
-    diag_p(EKF::STATE::A_Z_ARMOR) *= 10.0;
     diag_p(EKF::STATE::YAW) *= 10.0;
     diag_p(EKF::STATE::V_YAW) *= 10.0;
-    diag_p(EKF::STATE::A_YAW) *= 10.0;
 
     double r = target_state(EKF::STATE::ROBOT_R);
     target_state(EKF::STATE::X_CENTER) = p.x + r * cos(yaw);  // xc
     target_state(EKF::STATE::V_X_CENTER) = 0;                 // vxc
-    target_state(EKF::STATE::A_X_CENTER) = 0;                 // axc
     target_state(EKF::STATE::Y_CENTER) = p.y + r * sin(yaw);  // yc
     target_state(EKF::STATE::V_Y_CENTER) = 0;                 // vyc
-    target_state(EKF::STATE::A_Y_CENTER) = 0;                 // ayc
     target_state(EKF::STATE::Z_ARMOR) = p.z;                  // za
     target_state(EKF::STATE::V_Z_ARMOR) = 0;                  // vza
-    target_state(EKF::STATE::A_Z_ARMOR) = 0;                  // azc
     RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 
@@ -284,7 +270,7 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
   return yaw;
 }
 
-// 三维计算,根据我们一开始的装甲板解算得到的预测装甲板位置
+// 三维计算,根据我们一开始的装甲板解算得到的预测装甲板位置 (CV模型)
 Eigen::Vector3d Tracker::GetArmorPositionFromState(const Eigen::VectorXd& x)
 {
   // 计算当前装甲板的预测位置
