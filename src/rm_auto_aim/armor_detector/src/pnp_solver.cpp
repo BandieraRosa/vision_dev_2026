@@ -45,8 +45,41 @@ bool PnPSolver::SolvePnP(const Armor& armor, cv::Mat& rvec, cv::Mat& tvec)
   // Solve pnp
   auto object_points =
       armor.type == ArmorType::SMALL ? small_armor_points_ : large_armor_points_;
-  return cv::solvePnP(object_points, image_armor_points, camera_matrix_, dist_coeffs_,
-                      rvec, tvec, false, cv::SOLVEPNP_IPPE);
+
+  std::vector<cv::Mat> rvecs, tvecs;
+  std::vector<double> re_projection_error;
+  int solutions = cv::solvePnPGeneric(object_points, image_armor_points, camera_matrix_,
+                                      dist_coeffs_, rvecs, tvecs, false,
+                                      cv::SOLVEPNP_IPPE,  // 使用 IPPE 算法获取多个解
+                                      cv::noArray(), cv::noArray(), re_projection_error);
+
+  if (solutions == 0)
+  {
+    return false;
+  }
+
+  double z_data[3]{0, 0, 10};
+  cv::Mat z_vector(cv::Size(1, 3), CV_64FC1, z_data);
+
+  cv::Mat r_0, r_1;
+  cv::Rodrigues(rvecs.front(), r_0);
+  cv::Rodrigues(rvecs.back(), r_1);
+
+  cv::Mat z_camera_0 = r_0 * z_vector + tvecs.front();
+  cv::Mat z_camera_1 = r_1 * z_vector + tvecs.back();
+
+  cv::Mat r, t;
+  if (z_camera_0.at<double>(2, 0) > 0)
+  {
+    rvec = rvecs.front();
+    tvec = tvecs.front();
+  }
+  else
+  {
+    rvec = rvecs.back();
+    tvec = tvecs.back();
+  }
+  return true;
 }
 
 float PnPSolver::CalculateDistanceToCenter(
