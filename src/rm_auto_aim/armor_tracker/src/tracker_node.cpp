@@ -27,6 +27,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   int bias_time = static_cast<int>(this->declare_parameter("tracker.bias_time", 100));
   float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
+  float pitch_bias =
+      static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
+
   bool use_table = this->declare_parameter("tracker.calculate_mode", true);
 
   double max_x = this->declare_parameter("tracker.table.max_x", 13.0);
@@ -47,7 +50,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
                                                min_y, resolution, table_filename};
-  solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias,
+  solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
                                               calculate_mode, table_config);
 
   // ---------------- EKF 设置 (CV模型) ----------------
@@ -328,7 +331,7 @@ void ArmorTrackerNode::ArmorsCallback(
   if (tracker_->tracker_state == Tracker::LOST)
   {
     tracker_->Init(armors_msg);
-    // solver_->rebuild();
+    solver_->ReBuild();
     target_msg.tracking = false;
   }
   else
@@ -374,6 +377,10 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
+      RCLCPP_INFO(this->get_logger(), "EKF State: v_x=%.6f, v_y=%.6f",
+                  tracker_->target_state(EKF::STATE::V_X_CENTER),
+                  tracker_->target_state(EKF::STATE::V_Y_CENTER));
+
       target_msg.tracking = true;
       // Fill target message (CV模型：9维状态)
       const auto& state = tracker_->target_state;
@@ -392,37 +399,36 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.dz = tracker_->dz;
 
       // 获取当前相机的 yaw 与 tracking 目标的 x
-      // float camera_yaw = 0.0f;
+      float camera_yaw = 0.0f;
 
-      // auto transform_stamped = tf2_buffer_->lookupTransform(
-      //     "odom", "camera_optical_frame", tf2::TimePointZero);
+      auto transform_stamped = tf2_buffer_->lookupTransform(
+          "gimbal_odom", "camera_optical_frame", tf2::TimePointZero);
 
-      // // 从变换中提取四元数并转换为欧拉角
-      // tf2::Quaternion q(
-      //     transform_stamped.transform.rotation.x,
-      //     transform_stamped.transform.rotation.y,
-      //     transform_stamped.transform.rotation.z,
-      //     transform_stamped.transform.rotation.w);
+      // 从变换中提取四元数并转换为欧拉角
+      tf2::Quaternion q(
+          transform_stamped.transform.rotation.x, transform_stamped.transform.rotation.y,
+          transform_stamped.transform.rotation.z, transform_stamped.transform.rotation.w);
 
-      // double camera_roll{}, camera_pitch{}, camera_yaw_tf{};
-      // tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw_tf);
-      // try
-      // {
-      //   camera_yaw = static_cast<float>(camera_yaw_tf);
-      // }
-      // catch (const tf2::TransformException& ex)
-      // {
-      //   RCLCPP_WARN(this->get_logger(), "Could not get camera transform: %s",
-      //   ex.what()); camera_yaw = 0.0f;
-      // }
-      // target_msg.camera_yaw = camera_yaw;
-      // target_msg.armor_x = tracker_->tracked_armor.pose.position.x;
+      double camera_roll{}, camera_pitch{}, camera_yaw_tf{};
+      tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw_tf);
+      try
+      {
+        camera_yaw = static_cast<float>(camera_yaw_tf);
+      }
+      catch (const tf2::TransformException& ex)
+      {
+        RCLCPP_WARN(this->get_logger(), "Could not get camera transform: %s", ex.what());
+        camera_yaw = 0.0f;
+      }
+      target_msg.camera_yaw = camera_yaw;
+      target_msg.armor_x = tracker_->tracked_armor.pose.position.y;
+      RCLCPP_INFO(this->get_logger(), "armor_x: %.6f", target_msg.armor_x);
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
-      solver_->AutoSolveTrajectory(pitch, yaw, aim_x, aim_y, aim_z, msg, is_fire);
+      solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
 
       if (abs(aim_x) > 0.01)
       {
@@ -431,7 +437,6 @@ void ArmorTrackerNode::ArmorsCallback(
         target_msg.aiming_point.z = aim_z;
       }
 
-      solver_->SetFireCallback([&](bool is_fire) { send_msg.is_fire = is_fire; });
       if (pitch == NAN || yaw == NAN)
       {
         RCLCPP_ERROR(this->get_logger(), "pitch or yaw is NAN!");

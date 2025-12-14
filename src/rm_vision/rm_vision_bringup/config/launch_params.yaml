@@ -2,7 +2,7 @@ camera: hik
 odom2camera:
   # xyz: '"0.13 0.0 0.07"'
   xyz: '"0.134554 -0.000950 0.041359"'
-  rpy: '"-1.540614 -0.002273 -1.560693"'
+  rpy: '"0.0 0.0 0.025"'
 
 detector_log_level: INFO
 tracker_log_level: INFO
