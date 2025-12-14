@@ -2,22 +2,11 @@
 
 #include <iostream>
 #include <rclcpp/logging.hpp>
-#include <termios.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <atomic>
-#include <thread>
-#include <chrono>
 
 using namespace std::chrono_literals;
 
 namespace rm_serial_driver
 {
-static struct termios g_orig_termios;
-static int g_orig_flags = 0;
-static std::atomic<long long> g_last_space_ms{0};
-static constexpr long long kSpaceTimeoutMs = 200;  // 超过这个时间认为没有按下
-
 RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     : Node("rm_serial_driver", options)
 {
@@ -62,6 +51,18 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // velocity_pub_ =
   //     this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity",
   //     10);
+
+  //打弹（t键打弹，g键停止）
+  fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+      "/cmd_vel", rclcpp::SensorDataQoS(),
+      [this](const geometry_msgs::msg::Twist::SharedPtr msg)
+      {
+        if(msg->linear.z > 0.0){
+          fire_notify=1;
+        }
+        fire_notify_topic_.Publish(fire_notify);
+        fire_notify=0;
+      });
 
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
@@ -120,68 +121,14 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   //   LibXR::Thread::Sleep(10);  // 发送延迟，10ms
   // }
 
-  // --- 设置终端为非规范、非阻塞以检测空格按下 ---
-  if (isatty(STDIN_FILENO))
-  {
-    tcgetattr(STDIN_FILENO, &g_orig_termios);
-    struct termios t = g_orig_termios;
-    t.c_lflag &= ~(ICANON | ECHO);  // 非规范模式、无回显
-    t.c_cc[VMIN] = 0;
-    t.c_cc[VTIME] = 0;
-    tcsetattr(STDIN_FILENO, TCSANOW, &t);
-
-    g_orig_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    fcntl(STDIN_FILENO, F_SETFL, g_orig_flags | O_NONBLOCK);
-
-    // 后台线程读取 stdin，不阻塞主线程
-    std::thread([]()
-                {
-                  using namespace std::chrono;
-                  while (rclcpp::ok())
-                  {
-                    char c = 0;
-                    ssize_t n = read(STDIN_FILENO, &c, 1);
-                    if (n > 0 && c == ' ')
-                    {
-                      auto now_ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-                      g_last_space_ms.store(now_ms);
-                    }
-                    std::this_thread::sleep_for(10ms);
-                  }
-                })
-        .detach();
-  }
-
-  // 用定时器持续根据按键状态发送 fire_notify（按住空格则为1，否则为0）
   auto timer_ = this->create_wall_timer(10ms,
                                         [this]()
                                         {
-                                          using namespace std::chrono;
-                                          auto now_ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-                                          auto last = g_last_space_ms.load();
-                                          uint8_t fire_notify = 0;
-                                          if (last != 0 && (now_ms - last) <= kSpaceTimeoutMs)
-                                          {
-                                            fire_notify = 1;
-                                          }
-                                          // 仅在状态变化或固定频率下发送也可以在这里优化
-                                          std::cout << fire_notify << std::endl;
-                                          fire_notify_topic_.Publish(fire_notify);
-
                                           LibXR::Thread::Sleep(10);  // 发送延迟，10ms
                                         });
 }
 
-RMSerialDriver::~RMSerialDriver()
-{
-  // 恢复终端设置
-  if (isatty(STDIN_FILENO))
-  {
-    tcsetattr(STDIN_FILENO, TCSANOW, &g_orig_termios);
-    if (g_orig_flags != 0)
-      fcntl(STDIN_FILENO, F_SETFL, g_orig_flags);
-  }
-}
+RMSerialDriver::~RMSerialDriver() {}
 
 // Send消息回调
 void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPtr msg)
@@ -192,7 +139,7 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   target_euler.Yaw() = static_cast<float>(msg->yaw);
   target_euler.Roll() = 0.0f;
 
-  uint8_t fire_notify = msg->is_fire ? 1 : 0;
+  // fire_notify = msg->is_fire ? 1 : 0;
   RCLCPP_INFO(this->get_logger(), "Serial got send: is_fire:%d pitch:%f, yaw:%f,",
               fire_notify, target_euler.Pitch(), target_euler.Yaw());
   target_euler_topic_.Publish(target_euler);

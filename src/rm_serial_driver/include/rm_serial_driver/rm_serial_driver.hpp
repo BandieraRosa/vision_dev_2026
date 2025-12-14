@@ -7,6 +7,7 @@
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 
 // LibXR
 #include "SharedTopic.hpp"
@@ -75,6 +76,8 @@ class RMSerialDriver : public rclcpp::Node
 
 
  private:
+
+  uint8_t fire_notify=0;
   /* 函数声明 */
 
   // 四元数转欧拉角函数
@@ -92,6 +95,7 @@ class RMSerialDriver : public rclcpp::Node
 
   /* ROS2订阅者 */
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr fire_sub_;
 
   /* LibXR Topic (用于发送到下位机) */
   LibXR::Topic ahrs_quaternion_topic_;
