@@ -18,7 +18,7 @@ constexpr double MIN_Y = -1.0;       // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;  // 精度 (m)
 constexpr double MAX_ERROR = 0.005;  // 允许误差 (m)
 constexpr int ERROR_LEVEL = 5;       // 误差等级
-constexpr double GUN = 0.15;         // 枪口到pitch轴电机的距离 (m)
+constexpr double GUN = 0.10;         // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.8;        // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)

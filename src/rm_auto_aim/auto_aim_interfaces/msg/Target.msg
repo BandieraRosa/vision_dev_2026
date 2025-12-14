@@ -10,3 +10,5 @@ float64 radius_1
 float64 radius_2
 float64 dz
 geometry_msgs/Point aiming_point
+float64 camera_yaw
+float64 armor_x

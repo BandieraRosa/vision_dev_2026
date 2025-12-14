@@ -2,7 +2,7 @@
 ```bash
 ros2 launch hik_camera hik_camera.launch.py
 
-ros2 run camera_calibration cameracalibrator --size 11x8 --square 0.015 image:=/image_raw camera:=/hik_camera
+ros2 run camera_calibration cameracalibrator --size 11x8 --square 0.02 image:=/image_raw camera:=/hik_camera
 ```
 `size` 为棋盘格交点的数量 `width x height`
 

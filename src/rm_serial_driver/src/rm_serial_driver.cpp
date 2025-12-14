@@ -59,9 +59,9 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
       {
         if(msg->linear.z > 0.0){
           fire_notify=1;
+        }else if(msg->linear.z == 0.0){
+          fire_notify=0;
         }
-        fire_notify_topic_.Publish(fire_notify);
-        fire_notify=0;
       });
 
   // 订阅 /tracker/send

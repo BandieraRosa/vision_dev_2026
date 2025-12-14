@@ -328,6 +328,7 @@ void ArmorTrackerNode::ArmorsCallback(
   if (tracker_->tracker_state == Tracker::LOST)
   {
     tracker_->Init(armors_msg);
+    // solver_->rebuild();
     target_msg.tracking = false;
   }
   else
@@ -373,9 +374,6 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
-      RCLCPP_INFO(this->get_logger(), "EKF State: yaw=%.4f, v_yaw=%.6f",
-                  tracker_->target_state(EKF::STATE::YAW),
-                  tracker_->target_state(EKF::STATE::V_YAW));
       target_msg.tracking = true;
       // Fill target message (CV模型：9维状态)
       const auto& state = tracker_->target_state;
@@ -392,6 +390,33 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_1 = state(EKF::STATE::ROBOT_R);
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
+
+      // 获取当前相机的 yaw 与 tracking 目标的 x
+      // float camera_yaw = 0.0f;
+
+      // auto transform_stamped = tf2_buffer_->lookupTransform(
+      //     "odom", "camera_optical_frame", tf2::TimePointZero);
+
+      // // 从变换中提取四元数并转换为欧拉角
+      // tf2::Quaternion q(
+      //     transform_stamped.transform.rotation.x,
+      //     transform_stamped.transform.rotation.y,
+      //     transform_stamped.transform.rotation.z,
+      //     transform_stamped.transform.rotation.w);
+
+      // double camera_roll{}, camera_pitch{}, camera_yaw_tf{};
+      // tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw_tf);
+      // try
+      // {
+      //   camera_yaw = static_cast<float>(camera_yaw_tf);
+      // }
+      // catch (const tf2::TransformException& ex)
+      // {
+      //   RCLCPP_WARN(this->get_logger(), "Could not get camera transform: %s",
+      //   ex.what()); camera_yaw = 0.0f;
+      // }
+      // target_msg.camera_yaw = camera_yaw;
+      // target_msg.armor_x = tracker_->tracked_armor.pose.position.x;
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
