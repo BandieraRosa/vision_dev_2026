@@ -77,7 +77,7 @@ class RMSerialDriver : public rclcpp::Node
 
  private:
 
-  uint8_t fire_notify=0;
+  uint8_t fire_notify=1;
   /* 函数声明 */
 
   // 四元数转欧拉角函数

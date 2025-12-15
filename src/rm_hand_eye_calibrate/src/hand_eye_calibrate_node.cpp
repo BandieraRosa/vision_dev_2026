@@ -3,6 +3,10 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include <cmath>
+#include <opencv2/core/eigen.hpp>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -35,13 +39,9 @@ class HandEyeCalibrateNode : public rclcpp::Node
     invert_pitch_ = declare_parameter<bool>("invert_pitch_sign", false);
 
     // -------- 检测阈值 --------
-    // 允许的最大关节速度 (rad/s)，超过此速度认为在运动中
     max_motion_vel_ = declare_parameter<double>("check_max_velocity", 0.05);
-    // 允许的最小拉普拉斯方差，低于此值认为图像模糊
     min_blur_score_ = declare_parameter<double>("check_min_blur_score", 100.0);
-    // 最小采样间隔角度 (rad)，防止采集重复数据 (默认约 5 度)
     min_angle_dist_ = declare_parameter<double>("check_min_angle_dist", 0.087);
-    // 数据时效性
     max_age_sec_ = declare_parameter<double>("max_age_sec", 0.5);
 
     // -------- 调试图像 --------
@@ -99,7 +99,107 @@ class HandEyeCalibrateNode : public rclcpp::Node
     double blur_score = 0.0;
   };
 
-  // ---------- 坐标系转换 ----------
+  static double LimitRad(double angle)
+  {
+    while (angle > CV_PI)
+    {
+      angle -= 2 * CV_PI;
+    }
+    while (angle < -CV_PI)
+    {
+      angle += 2 * CV_PI;
+    }
+    return angle;
+  }
+
+  static Eigen::Vector3d CustomEulers(Eigen::Quaterniond q, int axis0, int axis1,
+                                      int axis2, bool extrinsic)
+  {
+    if (!extrinsic)
+    {
+      std::swap(axis0, axis2);
+    }
+
+    auto i = axis0, j = axis1, k = axis2;
+    auto is_proper = (i == k);
+    if (is_proper)
+    {
+      k = 3 - i - j;
+    }
+    auto sign = (i - j) * (j - k) * (k - i) / 2;
+
+    double a = NAN, b = NAN, c = NAN, d = NAN;
+    Eigen::Vector4d xyzw = q.coeffs();  // Eigen stored as x,y,z,w
+    // 注意：离线代码中 q.coeffs() 返回的是 [x, y, z, w]，但代码逻辑里用了 xyzw[3] 作为 w
+    // (实部) 这是正确的，Eigen Quaternion 内部存储顺序确实是 x, y, z, w。
+
+    if (is_proper)
+    {
+      a = xyzw[3];
+      b = xyzw[i];
+      c = xyzw[j];
+      d = xyzw[k] * sign;
+    }
+    else
+    {
+      a = xyzw[3] - xyzw[j];
+      b = xyzw[i] + xyzw[k] * sign;
+      c = xyzw[j] + xyzw[3];
+      d = xyzw[k] * sign - xyzw[i];
+    }
+
+    Eigen::Vector3d eulers;
+    auto n2 = a * a + b * b + c * c + d * d;
+    eulers[1] = std::acos(2 * (a * a + b * b) / n2 - 1);
+
+    auto half_sum = std::atan2(b, a);
+    auto half_diff = std::atan2(-d, c);
+
+    auto eps = 1e-7;
+    auto safe1 = std::abs(eulers[1]) >= eps;
+    auto safe2 = std::abs(eulers[1] - CV_PI) >= eps;
+    auto safe = safe1 && safe2;
+    if (safe)
+    {
+      eulers[0] = half_sum + half_diff;
+      eulers[2] = half_sum - half_diff;
+    }
+    else
+    {
+      if (!extrinsic)
+      {
+        eulers[0] = 0;
+        if (!safe1) eulers[2] = 2 * half_sum;
+        if (!safe2) eulers[2] = -2 * half_diff;
+      }
+      else
+      {
+        eulers[2] = 0;
+        if (!safe1) eulers[0] = 2 * half_sum;
+        if (!safe2) eulers[0] = 2 * half_diff;
+      }
+    }
+
+    for (int i = 0; i < 3; i++) eulers[i] = LimitRad(eulers[i]);
+
+    if (!is_proper)
+    {
+      eulers[2] *= sign;
+      eulers[1] -= CV_PI / 2;
+    }
+
+    if (!extrinsic) std::swap(eulers[0], eulers[2]);
+
+    return eulers;
+  }
+
+  static Eigen::Vector3d custom_eulers(Eigen::Matrix3d R, int axis0, int axis1, int axis2,
+                                       bool extrinsic = true)
+  {
+    Eigen::Quaterniond q(R);
+    return CustomEulers(q, axis0, axis1, axis2, extrinsic);
+  }
+
   static cv::Mat Rz(double yaw)
   {
     double c = cos(yaw), s = sin(yaw);
@@ -112,7 +212,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
     return (cv::Mat_<double>(3, 3) << c, 0, s, 0, 1, 0, -s, 0, c);
   }
 
-  // 计算拉普拉斯方差 (模糊检测)
   static double CalcBlurScore(const cv::Mat& gray)
   {
     cv::Mat lap;
@@ -122,7 +221,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
     return stddev.val[0] * stddev.val[0];
   }
 
-  // 检查机器人是否静止
   bool CheckStatic(const sensor_msgs::msg::JointState& js, std::string& err_msg)
   {
     for (size_t i = 0; i < js.name.size(); ++i)
@@ -145,10 +243,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
   int ToOpenCvMethod(const std::string& m) const
   {
     std::string u = m;
-    for (auto& ch : u)
-    {
-      ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    }
+    std::transform(u.begin(), u.end(), u.begin(), ::toupper);
     if (u == "TSAI")
     {
       return cv::CALIB_HAND_EYE_TSAI;
@@ -169,7 +264,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
     {
       return cv::CALIB_HAND_EYE_DANIILIDIS;
     }
-    return cv::CALIB_HAND_EYE_DANIILIDIS;
+    return cv::CALIB_HAND_EYE_TSAI;
   }
 
   // ---------- 回调 ----------
@@ -194,9 +289,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
       return;
     }
 
-    // 1. 解析关节
     double yaw = 0.0, pitch = 0.0;
-    // bool found_joints = false; // 未使用
     for (size_t i = 0; i < js->name.size(); ++i)
     {
       if (js->name[i] == yaw_joint_name_)
@@ -209,7 +302,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
       }
     }
 
-    // 2. 图像处理
     cv::Mat frame;
     try
     {
@@ -222,15 +314,11 @@ class HandEyeCalibrateNode : public rclcpp::Node
 
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-
-    // 计算模糊度
     double blur = CalcBlurScore(gray);
 
-    // 检查运动状态
     std::string motion_msg;
     bool is_static = CheckStatic(*js, motion_msg);
 
-    // 检测棋盘格
     const cv::Size PATTERN_SIZE(board_cols_, board_rows_);
     std::vector<cv::Point2f> corners;
     bool found = cv::findChessboardCorners(
@@ -238,8 +326,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
         cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE);
 
     cv::Mat vis = frame.clone();
-
-    // 状态叠加文字
     auto draw_text = [&](const std::string& txt, bool ok, int line)
     {
       cv::Scalar color = ok ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
@@ -254,7 +340,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
           cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30, 0.01));
       cv::drawChessboardCorners(vis, PATTERN_SIZE, corners, true);
 
-      // PnP
       std::vector<cv::Point3f> obj_pts;
       for (int r = 0; r < board_rows_; ++r)
       {
@@ -267,7 +352,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
       cv::Mat rvec, tvec;
       cv::solvePnP(obj_pts, corners, k_, d_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
 
-      // 投影误差
       std::vector<cv::Point2f> proj;
       cv::projectPoints(obj_pts, rvec, tvec, k_, d_, proj);
       double err_sum = 0;
@@ -277,18 +361,13 @@ class HandEyeCalibrateNode : public rclcpp::Node
       }
       double rmse = std::sqrt(err_sum / static_cast<double>(corners.size()));
 
-      // 保存检测结果
       Detection det;
       det.stamp = img->header.stamp;
       cv::Rodrigues(rvec, det.R_target2cam);
       det.t_target2cam = tvec.clone();
 
-      // 构建 Gripper (Pitch Link) 到 Base (Gimbal Odom) 的变换
-      double pitch_sign = invert_pitch_ ? -1.0 : 1.0;
-      double pitch_val_corrected = pitch * pitch_sign;
-      // 注意：此处严格对应 URDF。Ry(-pitch) 对应 pitch 轴 axis="0 -1 0"
-      det.R_gripper2base = Rz(yaw) * Ry(-pitch_val_corrected);
-      det.t_gripper2base = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 0.0);  // 假设轴心重合
+      det.R_gripper2base = Rz(yaw) * Ry(-pitch);
+      det.t_gripper2base = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 0.0);
       det.yaw = yaw;
       det.pitch = pitch;
       det.reproj_rmse = rmse;
@@ -300,17 +379,10 @@ class HandEyeCalibrateNode : public rclcpp::Node
         current_vis_info_ = {true, blur, is_static, motion_msg, rmse};
       }
 
-      // 绘制详细信息
       std::ostringstream s1;
-      s1 << "Blur Score: " << std::fixed << std::setprecision(1) << blur
-         << (blur < min_blur_score_ ? " (BAD)" : " (OK)");
+      s1 << "Blur: " << std::fixed << std::setprecision(1) << blur;
       draw_text(s1.str(), blur >= min_blur_score_, 1);
-
-      std::ostringstream s2;
-      s2 << "Motion: " << (is_static ? "STATIC" : "MOVING")
-         << (is_static ? "" : (" [" + motion_msg + "]"));
-      draw_text(s2.str(), is_static, 2);
-
+      draw_text(is_static ? "STATIC" : "MOVING", is_static, 2);
       std::ostringstream s3;
       s3 << "PnP RMSE: " << std::fixed << std::setprecision(3) << rmse;
       draw_text(s3.str(), rmse < 1.0, 3);
@@ -320,10 +392,9 @@ class HandEyeCalibrateNode : public rclcpp::Node
       std::lock_guard<std::mutex> lk(mtx_);
       last_detection_.reset();
       current_vis_info_ = {false, blur, is_static, motion_msg, 0.0};
-      draw_text("Chessboard NOT Found", false, 1);
+      draw_text("NO CHESSBOARD", false, 1);
     }
 
-    // 发布图片
     if (publish_debug_image_ && debug_image_pub_)
     {
       debug_image_pub_->publish(
@@ -331,72 +402,60 @@ class HandEyeCalibrateNode : public rclcpp::Node
     }
   }
 
-  // ---------- 服务回调：Capture ----------
+  // ---------- Capture ----------
   void OnCapture(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                  const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
   {
     std::lock_guard<std::mutex> lk(mtx_);
 
-    // 1. 基础存在性检查
     if (!last_detection_.has_value())
     {
       res->success = false;
-      res->message = "No chessboard detected currently.";
+      res->message = "No chessboard detected.";
       return;
     }
     const auto& det = last_detection_.value();
 
-    // 2. 时效性检查
     if ((now() - det.stamp).seconds() > max_age_sec_)
     {
       res->success = false;
-      res->message = "Detection too old (lagging). Check system load.";
+      res->message = "Detection lagging.";
       return;
     }
 
-    // 3. 静止检测
     if (!current_vis_info_.is_static)
     {
       res->success = false;
-      res->message = "REJECTED: Robot is moving! " + current_vis_info_.motion_msg;
+      res->message = "REJECTED: Moving!";
       return;
     }
 
-    // 4. 模糊检测
     if (det.blur_score < min_blur_score_)
     {
       res->success = false;
-      res->message = "REJECTED: Image too blurry (score " +
-                     std::to_string(static_cast<int>(det.blur_score)) + " < " +
-                     std::to_string(static_cast<int>(min_blur_score_)) + ")";
+      res->message = "REJECTED: Blurry!";
       return;
     }
 
-    // 5. 重复/距离检测
-    // 简单策略：计算新样本的 (yaw, pitch) 与已有样本的欧氏距离
     for (const auto& s : samples_)
     {
-      double dy = s.yaw - det.yaw;
-      double dp = s.pitch - det.pitch;
-      double dist = std::sqrt(dy * dy + dp * dp);
+      double dist =
+          std::sqrt(std::pow(s.yaw - det.yaw, 2) + std::pow(s.pitch - det.pitch, 2));
       if (dist < min_angle_dist_)
       {
         res->success = false;
-        res->message =
-            "REJECTED: Pose too close to existing sample (dist=" + std::to_string(dist) +
-            " rad). Move joint more.";
+        res->message = "REJECTED: Too close to existing sample.";
         return;
       }
     }
 
-    // --- 通过所有检查，保存样本 ---
     samples_.push_back(det);
     res->success = true;
     res->message = "Captured Sample #" + std::to_string(samples_.size()) +
                    " (RMSE: " + std::to_string(det.reproj_rmse) + ")";
   }
 
-  // ---------- 服务回调：Reset ----------
+  // ---------- Reset ----------
   void OnReset(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
   {
@@ -406,19 +465,18 @@ class HandEyeCalibrateNode : public rclcpp::Node
     res->message = "Reset all samples.";
   }
 
-  // ---------- 服务回调：Solve ----------
+  // ---------- Solve ----------
   void OnSolve(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
   {
     std::lock_guard<std::mutex> lk(mtx_);
     if (samples_.size() < 5)
-    {  // 至少5组
+    {
       res->success = false;
-      res->message = "Not enough samples (" + std::to_string(samples_.size()) + "<5).";
+      res->message = "Need more samples (<5).";
       return;
     }
 
-    // 准备数据
     std::vector<cv::Mat> r_g2b, t_g2b, r_t2c, t_t2c;
     for (const auto& s : samples_)
     {
@@ -432,7 +490,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
     try
     {
       int method_id = ToOpenCvMethod(method_);
-
       cv::calibrateHandEye(r_g2b, t_g2b, r_t2c, t_t2c, r_cam2grip, t_cam2grip,
                            static_cast<cv::HandEyeCalibrationMethod>(method_id));
     }
@@ -443,48 +500,59 @@ class HandEyeCalibrateNode : public rclcpp::Node
       return;
     }
 
+    std::ostringstream ss;
+
     tf2::Matrix3x3 r_calib(r_cam2grip.at<double>(0, 0), r_cam2grip.at<double>(0, 1),
                            r_cam2grip.at<double>(0, 2), r_cam2grip.at<double>(1, 0),
                            r_cam2grip.at<double>(1, 1), r_cam2grip.at<double>(1, 2),
                            r_cam2grip.at<double>(2, 0), r_cam2grip.at<double>(2, 1),
                            r_cam2grip.at<double>(2, 2));
-    tf2::Vector3 t_calib(t_cam2grip.at<double>(0), t_cam2grip.at<double>(1),
-                         t_cam2grip.at<double>(2));
 
     tf2::Matrix3x3 r_link2opt;
     r_link2opt.setRPY(-CV_PI / 2.0, 0, -CV_PI / 2.0);
-
     tf2::Matrix3x3 r_final = r_calib * r_link2opt.transpose();
 
-    tf2::Vector3 t_final = t_calib;
-
-    double roll = NAN, pitch = NAN, yaw = NAN;
+    double roll, pitch, yaw;
     r_final.getRPY(roll, pitch, yaw);
 
-    std::ostringstream ss;
-    ss << "SUCCESS! \n";
-    ss << "xyz: '\"" << t_final.x() << " " << t_final.y() << " " << t_final.z() << "\"\n";
-    ss << "rpy: '" << roll << " " << pitch << " " << yaw << "'";
+    ss << "=== ROS URDF Format ===\n";
+    ss << "xyz: \"" << t_cam2grip.at<double>(0) << " " << t_cam2grip.at<double>(1) << " "
+       << t_cam2grip.at<double>(2) << "\"\n";
+    ss << "rpy: \"" << roll << " " << pitch << " " << yaw << "\"\n\n";
+
+    // --- 2. 离线参考代码的 Ideal Deviation 输出 (Eigen Custom Eulers) ---
+
+    // (A) 转换 R_camera2gimbal 到 Eigen
+    Eigen::Matrix3d R_camera2gimbal_eigen;
+    cv::cv2eigen(r_cam2grip, R_camera2gimbal_eigen);
+
+    // (B) 定义理想变换 R_gimbal2ideal {{0, -1, 0}, {0, 0, -1}, {1, 0, 0}}
+    Eigen::Matrix3d R_gimbal2ideal;
+    R_gimbal2ideal << 0, -1, 0, 0, 0, -1, 1, 0, 0;
+
+    // (C) 计算 R_camera2ideal
+    Eigen::Matrix3d R_camera2ideal = R_gimbal2ideal * R_camera2gimbal_eigen;
+
+    // (D) 计算偏角 (Axis: 1, 0, 2)
+    Eigen::Vector3d ypr = custom_eulers(R_camera2ideal, 1, 0, 2, true);
+
+    ss << "=== Reference Code Format (Ideal Deviation) ===\n";
+    // 离线代码输出的是角度，这里我们按要求输出弧度
+    ss << "Ideal RPY (rad): \"" << ypr[0] << " " << ypr[1] << " " << ypr[2] << "\"\n";
+    ss << "(Note: Ref code uses Y-X-Z eulers for this deviation)";
 
     res->success = true;
     res->message = ss.str();
     RCLCPP_INFO(get_logger(), "\n%s", ss.str().c_str());
   }
 
-  // 参数
   std::string image_topic_, camera_info_topic_, joint_states_topic_;
   std::string yaw_joint_name_, pitch_joint_name_;
   int board_cols_, board_rows_;
   double square_size_, max_age_sec_;
   std::string method_;
   bool invert_pitch_;
-
-  // 阈值
-  double max_motion_vel_;
-  double min_blur_score_;
-  double min_angle_dist_;
-
-  // 状态
+  double max_motion_vel_, min_blur_score_, min_angle_dist_;
   std::mutex mtx_;
   bool have_intrinsics_ = false;
   cv::Mat k_, d_;
@@ -498,11 +566,9 @@ class HandEyeCalibrateNode : public rclcpp::Node
     double rmse;
   } current_vis_info_;
   std::vector<Detection> samples_;
-
   bool publish_debug_image_;
   std::string debug_image_topic_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;
-
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_;
   message_filters::Subscriber<sensor_msgs::msg::JointState> joint_sub_;
@@ -510,7 +576,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
       message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<
           sensor_msgs::msg::Image, sensor_msgs::msg::JointState>>>
       sync_;
-
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr capture_srv_, reset_srv_, solve_srv_;
 };
 

@@ -442,7 +442,7 @@ void ArmorTrackerNode::ArmorsCallback(
         RCLCPP_ERROR(this->get_logger(), "pitch or yaw is NAN!");
       }
 
-      send_msg.is_fire = is_fire;
+      send_msg.is_fire = true;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
     }
