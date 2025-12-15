@@ -226,7 +226,7 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
   {
     float aim_yaw =
         pre_position_[selected_idx].yaw +
-        SolveYaw(pre_position_[selected_idx].y, pre_position_[selected_idx].x);
+        SolveYaw(pre_position_[selected_idx].x, pre_position_[selected_idx].y);
     if (aim_yaw < min_yaw)
     {
       min_yaw = aim_yaw;
@@ -271,7 +271,7 @@ void SolveTrajectory::FireLogicDefault(
   {
     int idx = SelectArmor(msg);
     float toyaw = SolveYaw(pre_position_[idx].x, pre_position_[idx].y) - msg->camera_yaw;
-    PredictArmorPosition(msg, time_delay + toyaw / (0.58f + msg->v_yaw));
+    PredictArmorPosition(msg, time_delay + toyaw / (58.0f + msg->v_yaw));
     int selected_idx = SelectArmor(msg);
     UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
   }
@@ -284,10 +284,10 @@ void SolveTrajectory::FireLogicDefault(
     }
     else if (selected_idx != last_selected_idx_)
     {
-      yaw = SolveYaw(pre_position_[selected_idx].y, pre_position_[selected_idx].x);
-      last_yaw_ = SolveYaw(pre_position_[last_selected_idx_].y,
-                           pre_position_[last_selected_idx_].x);
-      if (fabsf(yaw - last_yaw_) < 0.08)
+      yaw = SolveYaw(pre_position_[selected_idx].x, pre_position_[selected_idx].y);
+      last_yaw_ = SolveYaw(pre_position_[last_selected_idx_].x,
+                           pre_position_[last_selected_idx_].y);
+      if (fabsf(yaw - last_yaw_) < 1)
       {
         fire_logic_mode_ = FireLogicMode::SPIN;
         selected_idx = CENTER;
