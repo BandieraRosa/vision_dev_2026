@@ -52,15 +52,18 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   //     this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity",
   //     10);
 
-  //打弹（t键打弹，g键停止）
+  // 打弹（t键打弹，g键停止）
   fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::SensorDataQoS(),
       [this](const geometry_msgs::msg::Twist::SharedPtr msg)
       {
-        if(msg->linear.z > 0.0){
-          fire_notify=1;
-        }else if(msg->linear.z == 0.0){
-          fire_notify=0;
+        if (msg->linear.z > 0.0)
+        {
+          fire_notify = 1;
+        }
+        else if (msg->linear.z == 0.0)
+        {
+          fire_notify = 0;
         }
       });
 
@@ -83,8 +86,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     if (++self->ahrs_receive_cnt % self->ahrs_print_freq == 0)
     {
       // RCLCPP_INFO(self->get_logger(),
-      //             "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f", gimbal.roll,
-      //             gimbal.pitch, gimbal.yaw);
+      //             "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f",
+      //             gimbal.roll, gimbal.pitch, gimbal.yaw);
       self->ahrs_receive_cnt = 0;
     }
     // ROS2发布云台关节状态
@@ -121,11 +124,13 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   //   LibXR::Thread::Sleep(10);  // 发送延迟，10ms
   // }
 
-  auto timer_ = this->create_wall_timer(10ms,
-                                        [this]()
-                                        {
-                                          LibXR::Thread::Sleep(10);  // 发送延迟，10ms
-                                        });
+  auto timer_ = this->create_wall_timer(
+      10ms,
+      [this]()
+      {
+        // LibXR::Thread::Sleep(10);  // 发送延迟，10ms
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      });
 }
 
 RMSerialDriver::~RMSerialDriver() {}
@@ -133,7 +138,6 @@ RMSerialDriver::~RMSerialDriver() {}
 // Send消息回调
 void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
-  
   LibXR::EulerAngle<float> target_euler;
   target_euler.Pitch() = static_cast<float>(msg->pitch);
   target_euler.Yaw() = static_cast<float>(msg->yaw);

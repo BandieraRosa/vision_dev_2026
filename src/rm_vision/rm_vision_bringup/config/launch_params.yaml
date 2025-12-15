@@ -10,6 +10,9 @@ odom2camera:
 
   # xyz: '"0.151806 0.0102188 0.0493898"'
   # rpy: '"-0.0106295 0.00652301 0.0129041"'
+
+  # xyz: '"0.147918 0.0109618 0.0459381"
+  # rpy: '-0.0194871 -0.00400656 0.00134353'
 detector_log_level: INFO
 tracker_log_level: INFO
 serial_log_level: INFO
