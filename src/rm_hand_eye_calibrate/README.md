@@ -50,4 +50,6 @@ ros2 service call /rm_hand_eye/reset std_srvs/srv/Trigger "{}"
 ros2 service call /rm_hand_eye/solve std_srvs/srv/Trigger "{}"
 ```
 
-随后终端会出现解算好的x y z/r p y，将其复制到`src/rm_vision/rm_vision_bringup/config/launch_params.yaml`
+或打开rqt，使用gui界面进行服务触发。
+
+求解后终端会出现解算好的x y z/r p y，将其复制到`src/rm_vision/rm_vision_bringup/config/launch_params.yaml`
