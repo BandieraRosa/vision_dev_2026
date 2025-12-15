@@ -31,7 +31,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
     square_size_ = declare_parameter<double>("square_size", 0.02);
 
     // 算法
-    method_ = declare_parameter<std::string>("handeye_method", "DANIILIDIS");
+    method_ = declare_parameter<std::string>("handeye_method", "TSAI");
     invert_pitch_ = declare_parameter<bool>("invert_pitch_sign", false);
 
     // -------- 检测阈值 --------
@@ -265,7 +265,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
       }
 
       cv::Mat rvec, tvec;
-      cv::solvePnP(obj_pts, corners, k_, d_, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
+      cv::solvePnP(obj_pts, corners, k_, d_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
 
       // 投影误差
       std::vector<cv::Point2f> proj;

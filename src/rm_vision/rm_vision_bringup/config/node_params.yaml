@@ -87,6 +87,6 @@
     square_size: 0.02 # 方格尺寸（米）
 
     max_age_sec: 0.25 # 采样时用于过滤过旧检测结果的时间阈值（秒）
-    handeye_method: "DANIILIDIS" # 手眼标定方法：TSAI, PARK, HORAUD, ANDREFF, DANIILIDIS
+    handeye_method: "TSAI" # 手眼标定方法：TSAI, PARK, HORAUD, ANDREFF, DANIILIDIS
     invert_pitch_sign: false # 若云台 pitch 角正方向与预期相反，则置 true
 
