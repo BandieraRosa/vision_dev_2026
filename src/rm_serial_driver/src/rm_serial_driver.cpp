@@ -82,9 +82,9 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
                                    gimbal.roll, gimbal.pitch, gimbal.yaw);
     if (++self->ahrs_receive_cnt % self->ahrs_print_freq == 0)
     {
-      RCLCPP_INFO(self->get_logger(),
-                  "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f", gimbal.roll,
-                  gimbal.pitch, gimbal.yaw);
+      // RCLCPP_INFO(self->get_logger(),
+      //             "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f", gimbal.roll,
+      //             gimbal.pitch, gimbal.yaw);
       self->ahrs_receive_cnt = 0;
     }
     // ROS2发布云台关节状态
@@ -105,7 +105,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
       [](bool, RMSerialDriver* self, LibXR::RawData& data)
   {
     auto bullet_speed = reinterpret_cast<float*>(data.addr_);
-    XR_LOG_INFO("Serial got bullet_speed:%f", *bullet_speed);
+    // XR_LOG_INFO("Serial got bullet_speed:%f", *bullet_speed);
 
     // ROS2发布弹速
     auto_aim_interfaces::msg::Velocity velocity_msg;
@@ -140,8 +140,8 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   target_euler.Roll() = 0.0f;
 
   // fire_notify = msg->is_fire ? 1 : 0;
-  RCLCPP_INFO(this->get_logger(), "Serial got send: is_fire:%d pitch:%f, yaw:%f,",
-              fire_notify, target_euler.Pitch(), target_euler.Yaw());
+  // RCLCPP_INFO(this->get_logger(), "Serial got send: is_fire:%d pitch:%f, yaw:%f,",
+  //             fire_notify, target_euler.Pitch(), target_euler.Yaw());
   target_euler_topic_.Publish(target_euler);
   fire_notify_topic_.Publish(fire_notify);
 }

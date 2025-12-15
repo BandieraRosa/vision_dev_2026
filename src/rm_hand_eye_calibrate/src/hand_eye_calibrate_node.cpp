@@ -1,27 +1,14 @@
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
-#include <rmw/qos_profiles.h>  // rmw_qos_profile_sensor_data
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/LinearMath/Quaternion.h>
 
-#include <cctype>  // std::toupper
-#include <cmath>
-#include <cstddef>
-#include <iomanip>
-#include <mutex>
 #include <opencv2/opencv.hpp>
-#include <optional>
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/image_encodings.hpp>  // sensor_msgs::image_encodings::BGR8
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-#include <sstream>
 #include <std_srvs/srv/trigger.hpp>
-#include <string>
-#include <vector>
+#include <tf2/LinearMath/Matrix3x3.hpp>
 
 class HandEyeCalibrateNode : public rclcpp::Node
 {
@@ -29,7 +16,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
   HandEyeCalibrateNode(const rclcpp::NodeOptions& options)
       : Node("hand_eye_calibrator_node", options)
   {
-    // -------- 参数 --------
     image_topic_ = declare_parameter<std::string>("image_topic", "/image_raw");
     camera_info_topic_ =
         declare_parameter<std::string>("camera_info_topic", "/camera_info");
@@ -39,12 +25,11 @@ class HandEyeCalibrateNode : public rclcpp::Node
     yaw_joint_name_ = declare_parameter<std::string>("yaw_joint_name", "yaw_joint");
     pitch_joint_name_ = declare_parameter<std::string>("pitch_joint_name", "pitch_joint");
 
-    // 棋盘格“内角点”数量（列，行）
     board_cols_ = static_cast<int>(declare_parameter<int>("board_cols", 11));
     board_rows_ = static_cast<int>(declare_parameter<int>("board_rows", 8));
     square_size_ = declare_parameter<double>("square_size", 0.02);  // 米
 
-    // 采样时用于过滤过旧检测结果的时间阈值（避免采到陈旧数据）
+    // 采样时用于过滤过旧检测结果的时间阈值
     max_age_sec_ = declare_parameter<double>("max_age_sec", 0.25);
 
     // 手眼标定方法：TSAI, PARK, HORAUD, ANDREFF, DANIILIDIS
@@ -53,7 +38,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
     // 若云台 pitch 角正方向与预期相反，则置 true
     invert_pitch_ = declare_parameter<bool>("invert_pitch_sign", false);
 
-    // -------- 可视化调试（发布画了角点的图像）--------
+    // -------- 可视化调试 --------
     publish_debug_image_ = declare_parameter<bool>("publish_debug_image", true);
     debug_image_topic_ =
         declare_parameter<std::string>("debug_image_topic", "/rm_hand_eye/debug_image");
@@ -97,7 +82,6 @@ class HandEyeCalibrateNode : public rclcpp::Node
   }
 
  private:
-  // ---------- 数据结构 ----------
   struct Detection
   {
     rclcpp::Time stamp;
@@ -137,11 +121,26 @@ class HandEyeCalibrateNode : public rclcpp::Node
     {
       ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
     }
-    if (u == "TSAI") return cv::CALIB_HAND_EYE_TSAI;
-    if (u == "PARK") return cv::CALIB_HAND_EYE_PARK;
-    if (u == "HORAUD") return cv::CALIB_HAND_EYE_HORAUD;
-    if (u == "ANDREFF") return cv::CALIB_HAND_EYE_ANDREFF;
-    if (u == "DANIILIDIS") return cv::CALIB_HAND_EYE_DANIILIDIS;
+    if (u == "TSAI")
+    {
+      return cv::CALIB_HAND_EYE_TSAI;
+    }
+    if (u == "PARK")
+    {
+      return cv::CALIB_HAND_EYE_PARK;
+    }
+    if (u == "HORAUD")
+    {
+      return cv::CALIB_HAND_EYE_HORAUD;
+    }
+    if (u == "ANDREFF")
+    {
+      return cv::CALIB_HAND_EYE_ANDREFF;
+    }
+    if (u == "DANIILIDIS")
+    {
+      return cv::CALIB_HAND_EYE_DANIILIDIS;
+    }
 
     RCLCPP_WARN(get_logger(), "Unknown handeye_method='%s', fallback to TSAI", m.c_str());
     return cv::CALIB_HAND_EYE_TSAI;
@@ -153,10 +152,19 @@ class HandEyeCalibrateNode : public rclcpp::Node
     int yaw_idx = -1, pitch_idx = -1;
     for (size_t i = 0; i < js.name.size(); ++i)
     {
-      if (js.name[i] == yaw_joint_name_) yaw_idx = static_cast<int>(i);
-      if (js.name[i] == pitch_joint_name_) pitch_idx = static_cast<int>(i);
+      if (js.name[i] == yaw_joint_name_)
+      {
+        yaw_idx = static_cast<int>(i);
+      }
+      if (js.name[i] == pitch_joint_name_)
+      {
+        pitch_idx = static_cast<int>(i);
+      }
     }
-    if (yaw_idx < 0 || pitch_idx < 0) return std::nullopt;
+    if (yaw_idx < 0 || pitch_idx < 0)
+    {
+      return std::nullopt;
+    }
 
     if (yaw_idx >= static_cast<int>(js.position.size()) ||
         pitch_idx >= static_cast<int>(js.position.size()))
@@ -192,9 +200,9 @@ class HandEyeCalibrateNode : public rclcpp::Node
     double err2 = 0.0;
     for (size_t i = 0; i < img.size(); ++i)
     {
-      const double dx = img[i].x - proj[i].x;
-      const double dy = img[i].y - proj[i].y;
-      err2 += dx * dx + dy * dy;
+      const double DX = img[i].x - proj[i].x;
+      const double DY = img[i].y - proj[i].y;
+      err2 += DX * DX + DY * DY;
     }
     return std::sqrt(err2 / static_cast<double>(
                                 std::max<int64_t>(1, static_cast<int64_t>(img.size()))));
@@ -227,13 +235,22 @@ class HandEyeCalibrateNode : public rclcpp::Node
   void PublishDebugImage(const std_msgs::msg::Header& header, const cv::Mat& bgr,
                          const std::string& text, bool ok_text) const
   {
-    if (!publish_debug_image_) return;
-    if (!debug_image_pub_) return;
-    if (bgr.empty()) return;
+    if (!publish_debug_image_)
+    {
+      return;
+    }
+    if (!debug_image_pub_)
+    {
+      return;
+    }
+    if (bgr.empty())
+    {
+      return;
+    }
 
     cv::Mat vis = bgr.clone();
-    const cv::Scalar color = ok_text ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
-    cv::putText(vis, text, cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 0.8, color, 2);
+    const cv::Scalar COLOR = ok_text ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
+    cv::putText(vis, text, cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 0.8, COLOR, 2);
 
     auto out =
         cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, vis).toImageMsg();
@@ -262,7 +279,10 @@ class HandEyeCalibrateNode : public rclcpp::Node
   void OnSynced(const sensor_msgs::msg::Image::ConstSharedPtr& img,
                 const sensor_msgs::msg::JointState::ConstSharedPtr& js)
   {
-    if (!have_intrinsics_) return;
+    if (!have_intrinsics_)
+    {
+      return;
+    }
 
     auto yp = ExtractYawPitch(*js);
     if (!yp.has_value())
@@ -281,7 +301,10 @@ class HandEyeCalibrateNode : public rclcpp::Node
 
     const double YAW = yp->first;
     double pitch = yp->second;
-    if (invert_pitch_) pitch = -pitch;
+    if (invert_pitch_)
+    {
+      pitch = -pitch;
+    }
 
     cv::Mat frame;
     try
@@ -358,8 +381,8 @@ class HandEyeCalibrateNode : public rclcpp::Node
       oss << std::fixed << std::setprecision(3) << "FOUND  yaw=" << YAW
           << "  pitch=" << pitch << "  rmse=" << rmse << " px";
       // rmse 小一般更可靠；这里简单设个阈值用于“绿/红”
-      const bool good = (rmse <= 1.0);
-      PublishDebugImage(img->header, vis, oss.str(), good);
+      const bool GOOD = (rmse <= 1.0);
+      PublishDebugImage(img->header, vis, oss.str(), GOOD);
     }
 
     Detection det;
@@ -457,9 +480,21 @@ class HandEyeCalibrateNode : public rclcpp::Node
       return;
     }
 
-    // 将旋转矩阵转换为 RPY（弧度），使用 tf2 的欧拉角约定
+    tf2::Matrix3x3 r_calib(r_cam2gripper.at<double>(0, 0), r_cam2gripper.at<double>(0, 1),
+                           r_cam2gripper.at<double>(0, 2), r_cam2gripper.at<double>(1, 0),
+                           r_cam2gripper.at<double>(1, 1), r_cam2gripper.at<double>(1, 2),
+                           r_cam2gripper.at<double>(2, 0), r_cam2gripper.at<double>(2, 1),
+                           r_cam2gripper.at<double>(2, 2));
+    tf2::Vector3 t_calib(t_cam2gripper.at<double>(0, 0), t_cam2gripper.at<double>(1, 0),
+                         t_cam2gripper.at<double>(2, 0));
+
+    tf2::Matrix3x3 r_link2opt;
+    r_link2opt.setRPY(-M_PI / 2.0, 0, -M_PI / 2.0);
+
+    tf2::Matrix3x3 r_target = r_calib * r_link2opt.transpose();  // 旋转矩阵逆即转置
+
     double roll = NAN, pitch = NAN, yaw = NAN;
-    RotToRpyTf2(r_cam2gripper, roll, pitch, yaw);
+    r_target.getRPY(roll, pitch, yaw);
 
     // 按 URDF <origin xyz="..." rpy="..."> 的格式输出
     std::ostringstream ss;
