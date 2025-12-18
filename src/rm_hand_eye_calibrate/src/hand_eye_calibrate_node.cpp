@@ -40,7 +40,7 @@ class HandEyeCalibrateNode : public rclcpp::Node
 
     // -------- 检测阈值 --------
     max_motion_vel_ = declare_parameter<double>("check_max_velocity", 0.05);
-    min_blur_score_ = declare_parameter<double>("check_min_blur_score", 100.0);
+    min_blur_score_ = declare_parameter<double>("check_min_blur_score", 60.0);
     min_angle_dist_ = declare_parameter<double>("check_min_angle_dist", 0.087);
     max_age_sec_ = declare_parameter<double>("max_age_sec", 0.5);
 
@@ -366,7 +366,12 @@ class HandEyeCalibrateNode : public rclcpp::Node
       cv::Rodrigues(rvec, det.R_target2cam);
       det.t_target2cam = tvec.clone();
 
-      det.R_gripper2base = Rz(yaw) * Ry(-pitch);
+      double pitch_true = pitch;
+      if (invert_pitch_)
+      {
+        pitch_true = -pitch_true;
+      }
+      det.R_gripper2base = Rz(yaw) * Ry(-pitch_true);
       det.t_gripper2base = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 0.0);
       det.yaw = yaw;
       det.pitch = pitch;
@@ -512,34 +517,12 @@ class HandEyeCalibrateNode : public rclcpp::Node
     r_link2opt.setRPY(-CV_PI / 2.0, 0, -CV_PI / 2.0);
     tf2::Matrix3x3 r_final = r_calib * r_link2opt.transpose();
 
-    double roll, pitch, yaw;
+    double roll = NAN, pitch = NAN, yaw = NAN;
     r_final.getRPY(roll, pitch, yaw);
 
-    ss << "=== ROS URDF Format ===\n";
     ss << "xyz: \"" << t_cam2grip.at<double>(0) << " " << t_cam2grip.at<double>(1) << " "
        << t_cam2grip.at<double>(2) << "\"\n";
     ss << "rpy: \"" << roll << " " << pitch << " " << yaw << "\"\n\n";
-
-    // --- 2. 离线参考代码的 Ideal Deviation 输出 (Eigen Custom Eulers) ---
-
-    // (A) 转换 R_camera2gimbal 到 Eigen
-    Eigen::Matrix3d R_camera2gimbal_eigen;
-    cv::cv2eigen(r_cam2grip, R_camera2gimbal_eigen);
-
-    // (B) 定义理想变换 R_gimbal2ideal {{0, -1, 0}, {0, 0, -1}, {1, 0, 0}}
-    Eigen::Matrix3d R_gimbal2ideal;
-    R_gimbal2ideal << 0, -1, 0, 0, 0, -1, 1, 0, 0;
-
-    // (C) 计算 R_camera2ideal
-    Eigen::Matrix3d R_camera2ideal = R_gimbal2ideal * R_camera2gimbal_eigen;
-
-    // (D) 计算偏角 (Axis: 1, 0, 2)
-    Eigen::Vector3d ypr = custom_eulers(R_camera2ideal, 1, 0, 2, true);
-
-    ss << "=== Reference Code Format (Ideal Deviation) ===\n";
-    // 离线代码输出的是角度，这里我们按要求输出弧度
-    ss << "Ideal RPY (rad): \"" << ypr[0] << " " << ypr[1] << " " << ypr[2] << "\"\n";
-    ss << "(Note: Ref code uses Y-X-Z eulers for this deviation)";
 
     res->success = true;
     res->message = ss.str();

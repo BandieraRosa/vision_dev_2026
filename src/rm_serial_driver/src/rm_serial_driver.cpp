@@ -129,6 +129,12 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
       [this]()
       {
         // LibXR::Thread::Sleep(10);  // 发送延迟，10ms
+        // LibXR::EulerAngle<float> target_euler;
+        // target_euler.Pitch() = static_cast<float>(0.6);
+        // target_euler.Yaw() = static_cast<float>(0.6);
+        // target_euler.Roll() = 0.0f;
+        // target_euler_topic_.Publish(target_euler);
+
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
       });
 }
@@ -142,10 +148,6 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   target_euler.Pitch() = static_cast<float>(msg->pitch);
   target_euler.Yaw() = static_cast<float>(msg->yaw);
   target_euler.Roll() = 0.0f;
-
-  // fire_notify = msg->is_fire ? 1 : 0;
-  // RCLCPP_INFO(this->get_logger(), "Serial got send: is_fire:%d pitch:%f, yaw:%f,",
-  //             fire_notify, target_euler.Pitch(), target_euler.Yaw());
   target_euler_topic_.Publish(target_euler);
   fire_notify_topic_.Publish(fire_notify);
 }
