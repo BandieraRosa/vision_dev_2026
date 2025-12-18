@@ -398,9 +398,7 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
 
-      // 获取当前相机的 yaw 与 tracking 目标的 x
-      float camera_yaw = 0.0f;
-
+      // 获取当前相机的 yaw 与 tracking 目标在相机坐标系中的 x 坐标
       auto transform_stamped = tf2_buffer_->lookupTransform(
           "gimbal_odom", "camera_optical_frame", tf2::TimePointZero);
 
@@ -409,19 +407,18 @@ void ArmorTrackerNode::ArmorsCallback(
           transform_stamped.transform.rotation.x, transform_stamped.transform.rotation.y,
           transform_stamped.transform.rotation.z, transform_stamped.transform.rotation.w);
 
-      double camera_roll{}, camera_pitch{}, camera_yaw_tf{};
-      tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw_tf);
-      try
-      {
-        camera_yaw = static_cast<float>(camera_yaw_tf);
-      }
-      catch (const tf2::TransformException& ex)
-      {
-        RCLCPP_WARN(this->get_logger(), "Could not get camera transform: %s", ex.what());
-        camera_yaw = 0.0f;
-      }
+      double camera_roll{}, camera_pitch{}, camera_yaw{};
+      tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw);
       target_msg.camera_yaw = camera_yaw;
-      target_msg.armor_x = tracker_->tracked_armor.pose.position.y;
+
+      // target_msg.armor_x = tracker_->tracked_armor.pose.position.y;
+      geometry_msgs::msg::PoseStamped armor_in_target;
+      armor_in_target.header.stamp = time;
+      armor_in_target.header.frame_id = target_frame_;
+      armor_in_target.pose = tracker_->tracked_armor.pose;
+
+      auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
+      target_msg.armor_x = armor_in_cam.pose.position.x;
       RCLCPP_INFO(this->get_logger(), "armor_x: %.6f", target_msg.armor_x);
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
