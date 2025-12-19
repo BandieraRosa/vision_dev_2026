@@ -26,7 +26,7 @@
   ros__parameters:
     debug: true
 
-    detect_color: 0 # 0: red, 1: blue
+    detect_color: 1 # 0: red, 1: blue
     binary_thres: 85
 
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
@@ -64,12 +64,12 @@
       tracking_thres: 5
       lost_time_thres: 1.0
       table:
-        max_x: 13.0
+        max_x: 6.0
         min_x: 0.0
         max_y: 2.0
         min_y: -1.0
-        resolution: 0.01
-        filename: "/home/bandiera/Desktop/AUTO-Aming-system/install/armor_tracker/share/armor_tracker/tools/hero_13_table.bin"
+        resolution: 0.005
+        filename: "/home/bandiera/Desktop/AUTO-Aming-system/install/armor_tracker/share/armor_tracker/tools/infantry_6_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

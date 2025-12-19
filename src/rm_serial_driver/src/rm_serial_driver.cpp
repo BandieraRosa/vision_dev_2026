@@ -29,12 +29,12 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   };
 
   // 从下位机接收的话题
-  camera_sync_quaternion_topic_ =
-      LibXR::Topic::FindOrCreate<LibXR::Quaternion<float>>("camera_sync_quaternion");
+  ahrs_quaternion_topic_ =
+      LibXR::Topic::FindOrCreate<LibXR::Quaternion<float>>("ahrs_quaternion");
 
   LibXR::Topic::Domain referee_domain = LibXR::Topic::Domain("referee");
-  // bullet_speed_topic_ =
-  //     LibXR::Topic::FindOrCreate<float>("bullet_speed", &referee_domain);
+  bullet_speed_topic_ =
+      LibXR::Topic::FindOrCreate<float>("bullet_speed", &referee_domain);
 
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
@@ -48,9 +48,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
       "/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
 
   // 弹速
-  // velocity_pub_ =
-  //     this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity",
-  //     10);
+  velocity_pub_ =
+      this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity", 10);
 
   // 打弹（t键打弹，g键停止）
   fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -75,8 +74,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   XRobotMain(peripherals);
 
   // 云台姿态回调
-  void (*camera_sync_quaternion_cb_fun)(bool, RMSerialDriver* self,
-                                        LibXR::RawData& data) =
+  void (*ahrs_quaternion_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
       [](bool, RMSerialDriver* self, LibXR::RawData& data)
   {
     auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
@@ -101,9 +99,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     joint_state.position.push_back(gimbal.yaw);
     self->joint_state_pub_->publish(joint_state);
   };
-  auto camera_sync_quaternion_cb =
-      LibXR::Topic::Callback::Create(camera_sync_quaternion_cb_fun, this);
-  camera_sync_quaternion_topic_.RegisterCallback(camera_sync_quaternion_cb);
+  auto ahrs_quaternion_cb = LibXR::Topic::Callback::Create(ahrs_quaternion_cb_fun, this);
+  ahrs_quaternion_topic_.RegisterCallback(ahrs_quaternion_cb);
 
   // 弹速回调
   void (*bullet_speed_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
@@ -118,8 +115,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     velocity_msg.velocity = static_cast<double>(*bullet_speed);
     self->velocity_pub_->publish(velocity_msg);
   };
-  // auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
-  // bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
+  auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
+  bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
   // while (1)
   // {

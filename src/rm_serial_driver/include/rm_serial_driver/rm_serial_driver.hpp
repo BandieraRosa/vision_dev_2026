@@ -42,9 +42,9 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   static ApplicationManager appmgr;
 
   // LibXR共享话题创建
-  // 从下位机接收: camera_sync_quaternion (云台姿态), bullet_speed (弹速)
+  // 从下位机接收: ahrs_quaternion (云台姿态), bullet_speed (弹速)
   // static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
-  //                                 {{"camera_sync_quaternion"}, {"bullet_speed",
+  //                                 {{"ahrs_quaternion"}, {"bullet_speed",
   //                                 "referee"}});
 
   // // 向下位机发送: target_eulr (目标欧拉角), fire_notify (开火通知)
@@ -53,7 +53,7 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   //     {{"target_euler", "tracker"}, {"fire_notify", "tracker"}});
 
   static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
-                                  {{"camera_sync_quaternion"}});
+                                  {{"ahrs_quaternion"}});
 
   static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
                                                {{"target_euler"}});
@@ -97,7 +97,7 @@ class RMSerialDriver : public rclcpp::Node
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr fire_sub_;
 
   /* LibXR Topic (用于发送到下位机) */
-  LibXR::Topic camera_sync_quaternion_topic_;
+  LibXR::Topic ahrs_quaternion_topic_;
   LibXR::Topic bullet_speed_topic_;
   LibXR::Topic target_euler_topic_;
   LibXR::Topic fire_notify_topic_;

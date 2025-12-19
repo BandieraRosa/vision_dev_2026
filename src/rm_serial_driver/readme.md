@@ -5,7 +5,7 @@
 
   - 弹速`bullet_speed`，发布至`/current_velocity`
 
-  - 云台姿态四元数`camera_sync_quaternion`，发布至`serial/gimbal_joint_state`
+  - 云台姿态四元数`ahrs_quaternion`，发布至`serial/gimbal_joint_state`
 
     
 
@@ -33,7 +33,7 @@
 ### 如何接收下位机消息（下位机 -> 上位机 -> ROS2）
 1. 在代码中创建 LibXR 话题，例如：
    ```
-   auto ahrs_euler_topic = LibXR::Topic::CreateTopic<LibXR::Quaternion<float>>("camera_sync_quaternion");
+   auto ahrs_euler_topic = LibXR::Topic::CreateTopic<LibXR::Quaternion<float>>("ahrs_quaternion");
    ```
 2. 创建 ROS2 发布者：
    ```

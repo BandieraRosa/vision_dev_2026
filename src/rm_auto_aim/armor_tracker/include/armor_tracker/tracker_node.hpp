@@ -8,6 +8,7 @@
 #include <tf2_ros/message_filter.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -68,6 +69,9 @@ class ArmorTrackerNode : public rclcpp::Node
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
+
+  // debug publisher
+  // rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_detector_pub_;
 
   // Visualization marker publisher
   visualization_msgs::msg::Marker position_marker_;

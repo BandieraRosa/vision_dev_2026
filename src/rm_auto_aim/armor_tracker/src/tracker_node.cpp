@@ -244,6 +244,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS());
 
+  // debug publisher
+  // armor_detector_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+  //     "/debug/armor_pose", rclcpp::SensorDataQoS());
+
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
   position_marker_.ns = "position";
@@ -318,6 +322,12 @@ void ArmorTrackerNode::ArmorsCallback(
                        max_armor_distance_;
           }),
       armors_msg->armors.end());
+
+  // Publish armor pose
+  // geometry_msgs::msg::PoseStamped armor_pose;
+  // armor_pose.header = armors_msg->header;
+  // armor_pose.pose = armors_msg->armors[0].pose;
+  // armor_detector_pub_->publish(armor_pose);
 
   // Init message
   auto_aim_interfaces::msg::TrackerInfo info_msg;
