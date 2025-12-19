@@ -377,9 +377,9 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
-      RCLCPP_INFO(this->get_logger(), "EKF State: v_x=%.6f, v_y=%.6f",
-                  tracker_->target_state(EKF::STATE::V_X_CENTER),
-                  tracker_->target_state(EKF::STATE::V_Y_CENTER));
+      // RCLCPP_INFO(this->get_logger(), "EKF State: v_x=%.6f, v_y=%.6f",
+      //             tracker_->target_state(EKF::STATE::V_X_CENTER),
+      //             tracker_->target_state(EKF::STATE::V_Y_CENTER));
 
       target_msg.tracking = true;
       // Fill target message (CV模型：9维状态)
@@ -411,7 +411,6 @@ void ArmorTrackerNode::ArmorsCallback(
       tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw);
       target_msg.camera_yaw = camera_yaw;
 
-      // target_msg.armor_x = tracker_->tracked_armor.pose.position.y;
       geometry_msgs::msg::PoseStamped armor_in_target;
       armor_in_target.header.stamp = time;
       armor_in_target.header.frame_id = target_frame_;
@@ -419,7 +418,6 @@ void ArmorTrackerNode::ArmorsCallback(
 
       auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
       target_msg.armor_x = armor_in_cam.pose.position.x;
-      RCLCPP_INFO(this->get_logger(), "armor_x: %.6f", target_msg.armor_x);
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);

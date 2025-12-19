@@ -27,7 +27,9 @@ void SolveTrajectory::Init(
   if (!std::isnan(velocity_msg->velocity)) {
     current_v_ = velocity_msg->velocity;
     RCLCPP_DEBUG(logger_, "Velocity updated: %.2f m/s", current_v_);
-  } else {
+  }
+  else
+  {
     RCLCPP_WARN(logger_, "Invalid velocity, using default: 12.0 m/s");
     current_v_ = 12.0f;
   }
