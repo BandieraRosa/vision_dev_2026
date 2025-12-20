@@ -11,11 +11,11 @@
 // 表参数配置
 constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
 constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
-constexpr double MAX_X = 6.0;         // 最大水平距离 (m)
+constexpr double MAX_X = 10.0;         // 最大水平距离 (m)
 constexpr double MIN_X = 0.0;         // 最小水平距离 (m)
 constexpr double MAX_Y = 2.0;         // 最大高度 (m)
 constexpr double MIN_Y = -1.0;        // 最小高度 (m)
-constexpr double RESOLUTION = 0.005;  // 精度 (m)
+constexpr double RESOLUTION = 0.01;  // 精度 (m)
 constexpr double MAX_ERROR = 0.005;   // 允许误差 (m)
 constexpr int ERROR_LEVEL = 5;        // 误差等级
 constexpr double GUN = 0.10;          // 枪口到pitch轴电机的距离 (m)
@@ -298,7 +298,7 @@ static void build_table(double v0, bool bullet_type, const std::string& output_p
 
 int main(int argc, char* argv[])
 {
-  double v0 = 20;        // 默认弹速
+  double v0 = 19;        // 默认弹速
   bool bullet_type = 1;  // 默认42mm (英雄)
   std::string prefix = bullet_type ? "infantry" : "hero";
 

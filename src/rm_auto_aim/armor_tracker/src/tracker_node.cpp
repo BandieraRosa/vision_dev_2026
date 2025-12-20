@@ -24,7 +24,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
-  int bias_time = static_cast<int>(this->declare_parameter("tracker.bias_time", 100));
+  float bias_time = static_cast<float>(this->declare_parameter("tracker.bias_time", 1.0));
   float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
   float pitch_bias =
@@ -449,7 +449,7 @@ void ArmorTrackerNode::ArmorsCallback(
       auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
       target_msg.armor_x = armor_in_cam.pose.position.x;
 
-      double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
+      float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
@@ -469,7 +469,7 @@ void ArmorTrackerNode::ArmorsCallback(
         RCLCPP_DEBUG(this->get_logger(), "pitch or yaw is NAN!");
       }
 
-      send_msg.is_fire = true;
+      send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
     }

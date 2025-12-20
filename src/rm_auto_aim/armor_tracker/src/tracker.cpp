@@ -115,14 +115,14 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   }
 
   // 防止半径扩散
-  if (target_state(EKF::STATE::ROBOT_R) < 0.12)
+  if (target_state(EKF::STATE::ROBOT_R) < 0.18)
   {
-    target_state(EKF::STATE::ROBOT_R) = 0.12;
+    target_state(EKF::STATE::ROBOT_R) = 0.18;
     ekf_.SetState(target_state);
   }
-  else if (target_state(EKF::STATE::ROBOT_R) > 0.4)
+  else if (target_state(EKF::STATE::ROBOT_R) > 0.22)
   {
-    target_state(EKF::STATE::ROBOT_R) = 0.4;
+    target_state(EKF::STATE::ROBOT_R) = 0.22;
     ekf_.SetState(target_state);
   }
 

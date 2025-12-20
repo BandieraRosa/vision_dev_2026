@@ -39,14 +39,14 @@
 /armor_tracker:
   ros__parameters:
     target_frame: gimbal_odom # 目标坐标系
-    max_armor_distance: 13.0 # 极限最远可观测装甲板距离
+    max_armor_distance: 10.0 # 极限最远可观测装甲板距离
 
     ekf:
-      sigma2_q_xyz: 0.5 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 5.0 #偏航角过程噪声方差
-      sigma2_q_r: 10.0 #位置坐标过程噪声方差
+      sigma2_q_xyz: 1600.0 # 位置坐标过程噪声方差
+      sigma2_q_yaw: 16.0 #偏航角过程噪声方差
+      sigma2_q_r: 10.0 #半径过程噪声方差
 
-      r_xyz_factor: 0.15 #位置坐标观测噪声协方差系数
+      r_xyz_factor: 0.05 #位置坐标观测噪声协方差系数
       r_yaw: 0.1 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
@@ -55,21 +55,21 @@
 
       # 弹道解算
       k: 0.0
-      bias_time: 10
+      bias_time: 0.05
       s_bias: 0.0
-      z_bias: 0.0
+      z_bias: 0.02
       pitch_bias: 0.0
       calculate_mode: true
 
       tracking_thres: 5
       lost_time_thres: 1.0
       table:
-        max_x: 6.0
+        max_x: 10.0
         min_x: 0.0
         max_y: 2.0
         min_y: -1.0
-        resolution: 0.005
-        filename: "/home/bandiera/Desktop/AUTO-Aming-system/install/armor_tracker/share/armor_tracker/tools/infantry_6_table.bin"
+        resolution: 0.01
+        filename: "/home/find/code/rm_dev/RM26_vision_development/src/rm_auto_aim/armor_tracker/tools/infantry_10_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

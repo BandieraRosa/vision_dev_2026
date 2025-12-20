@@ -5,7 +5,7 @@
 namespace rm_auto_aim {
 
 SolveTrajectory::SolveTrajectory(
-    const float &k, const int &bias_time, const float &s_bias,
+    const float &k, const float &bias_time, const float &s_bias,
     const float &z_bias, const float &pitch_bias, CalculateMode calculate_mode,
     const TrajectoryTable::TableConfig &table_config)
     : table_(std::make_unique<TrajectoryTable>(table_config)),
@@ -60,11 +60,15 @@ void SolveTrajectory::PredictArmorPosition(
   pre_x_center_ = msg->position.x + msg->velocity.x * time_delay;
   pre_y_center_ = msg->position.y + msg->velocity.y * time_delay;
   pre_z_center_ = msg->position.z;
+  RCLCPP_DEBUG(logger_, "vx: %.2f, vy: %.2f, vz: %.2f, vyaw: %.2f,time_delay: %.2f",
+               msg->velocity.x, msg->velocity.y, msg->velocity.z,
+               msg->v_yaw,time_delay);
   pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
 
   for (int i = 0; i < msg->armors_num; i++) {
     // float radius = i % 2 ? msg->radius_2 : msg->radius_1;
     float radius = msg->radius_1;
+    RCLCPP_DEBUG(logger_, "Radius: %.2f", radius);
     float tmp_yaw = pre_yaw_ + i * 2.0f * M_PI / msg->armors_num;
 
     pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
@@ -99,6 +103,8 @@ float SolveTrajectory::MonoDirectionalAirResistanceModel(float s, float angle,
 float SolveTrajectory::SolvePitch(float x, float y, float z) {
   // 计算水平距离
   float distance = std::sqrt(x * x + y * y);
+  // RCLCPP_DEBUG(logger_, "Distance: %.2f， Target x: %.2f, Target y: %.2f",
+  //              distance, x, y);
   float target_s = distance + s_bias_;
   float target_z = z + z_bias_;
 
@@ -110,18 +116,14 @@ float SolveTrajectory::SolvePitch(float x, float y, float z) {
     if (!std::isnan(res.pitch)) {
       fly_time_ = res.t;
       pitch = res.pitch;
-      RCLCPP_DEBUG(logger_, "Table lookup - s: %.2f, z: %.2f, pitch: %.4f",
-                   target_s, target_z, pitch);
+      RCLCPP_DEBUG(logger_, "Table lookup - s: %.2f, z: %.2f, pitch: %.4f,t: %.2f",
+                   target_s, target_z, pitch,fly_time_);
     } else {
       fly_time_ = 0;
       pitch = 0.0f;
       RCLCPP_WARN(logger_, "Table lookup nan for s: %.2f, z: %.2f", target_s,
                   target_z);
     }
-    fly_time_ = res.t;
-    pitch = static_cast<float>(res.pitch) + pitch_bias_;
-    RCLCPP_DEBUG(logger_, "Table lookup - s: %.2f, z: %.2f, pitch: %.4f",
-                 target_s, target_z, pitch);
   } else {
     // 正常模式下的迭代计算
     float z_temp = target_z;
@@ -143,8 +145,8 @@ float SolveTrajectory::SolvePitch(float x, float y, float z) {
         break;
       }
     }
-    pitch += pitch_bias_;
   }
+  pitch += pitch_bias_;
   return pitch;
 }
 
@@ -169,8 +171,8 @@ bool SolveTrajectory::CanFire(
                msg->armor_x);
   return fabs(msg->velocity.x - last_x_v_) < 0.1f &&
          fabs(msg->velocity.y - last_y_v_) < 0.1f &&
-         fabs(aim_yaw - msg->camera_yaw) < 0.05 &&
-         fabs(msg->armor_x - 0.07f) < 0.07f;
+         fabs(aim_yaw - msg->camera_yaw) < 0.1 &&
+         fabs(msg->armor_x - 0.07f) < 0.03f;
 }
 
 // 选择最优装甲板,使得同样时间里aiming时间占比最长，且尽量连续,尽量以中心展开
@@ -228,13 +230,15 @@ void SolveTrajectory::FireLogicIsTop(
   aim_x = pre_x_center_;
   aim_y = pre_y_center_;
   aim_z = pre_z_center_;
-  if (last_selected_idx_ == LOST) {
+ // if (last_selected_idx_ == LOST) {
     float toyaw =
         fabs(SolveYaw(pre_x_center_, pre_y_center_) - msg->camera_yaw);
     float turn_time = fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
     PredictArmorPosition(msg, time_delay + turn_time); ////////////  }
     UpdateSolveState(CENTER, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
-  }
+    RCLCPP_DEBUG(logger_, "pitch=%.3f,yaw=%.3f,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", pitch, yaw, aim_x, aim_y,
+                 aim_z);
+  //}
 }
 
 // 择板，判断此时发弹是否有合适的目标
@@ -243,6 +247,7 @@ void SolveTrajectory::FireLogicDefault(
     float &aim_z, const auto_aim_interfaces::msg::Target::SharedPtr &msg) {
 
   float time_delay = bias_time_ + fly_time_;
+  RCLCPP_DEBUG(logger_, "aaaatime_delay= %.3fs", bias_time_);
   PredictArmorPosition(msg, time_delay);
 
   if (last_selected_idx_ == LOST) {
@@ -270,8 +275,8 @@ void SolveTrajectory::FireLogicDefault(
           logger_,
           "selected_idx=%d,last_selected_idx_=%d, yaw - last_yaw_=%.3f",
           selected_idx, last_selected_idx_, yaw - last_yaw_);
-      if (fabsf(yaw - last_yaw_) < 0.08) {
-        if (vert_count_ >= 3) {
+      if (fabsf(yaw - last_yaw_) < 0.01) {
+        if (vert_count_ >= 5) {
           fire_logic_mode_ = FireLogicMode::SPIN;
           selected_idx = CENTER;
         } else {
@@ -298,10 +303,14 @@ void SolveTrajectory::UpdateSolveState(
     aim_x = pre_x_center_;
     aim_y = pre_y_center_;
     aim_z = pre_z_center_;
+    RCLCPP_DEBUG(logger_, "selected_idx=%d,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f",
+                 selected_idx, aim_x, aim_y, aim_z);
   } else {
     aim_x = pre_position_[selected_idx].x;
     aim_y = pre_position_[selected_idx].y;
     aim_z = pre_position_[selected_idx].z;
+    RCLCPP_DEBUG(logger_, "selected_idx=%d,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f",
+                 selected_idx, aim_x, aim_y, aim_z);
   }
   last_x_v_ = msg->velocity.x;
   last_y_v_ = msg->velocity.y;
@@ -325,6 +334,7 @@ void SolveTrajectory::AutoSolveTrajectory(
   }
 
   FireLogicDefault(pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
+
   auto end = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(end - start);

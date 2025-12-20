@@ -165,7 +165,7 @@ public:
   };
 
   // 构造函数
-  SolveTrajectory(const float &k, const int &bias_time, const float &s_bias,
+  SolveTrajectory(const float &k, const float &bias_time, const float &s_bias,
                   const float &z_bias, const float &pitch_bias,
                   CalculateMode calculate_mode,
                   const TrajectoryTable::TableConfig &table_config);
@@ -219,7 +219,7 @@ public:
 
 private:
   // Logger
-  rclcpp::Logger logger_{rclcpp::get_logger("SolveTrajectory")};
+  rclcpp::Logger logger_{rclcpp::get_logger("armor_tracker")};
 
   // 自身参数
   double current_v_; // 当前弹速
@@ -238,7 +238,7 @@ private:
   // 目标参数
   float k_; // 弹道系数
   float pitch_bias_;
-  int bias_time_; // 偏置时间
+  float bias_time_; // 偏置时间
   float s_bias_;  // 枪口前推的距离
   float z_bias_;  // yaw轴电机到枪口水平面的垂直距离
 

@@ -147,6 +147,7 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   target_euler.Pitch() = static_cast<float>(msg->pitch);
   target_euler.Yaw() = static_cast<float>(msg->yaw);
   target_euler.Roll() = 0.0f;
+  fire_notify = msg->is_fire;
   target_euler_topic_.Publish(target_euler);
   fire_notify_topic_.Publish(fire_notify);
 }
