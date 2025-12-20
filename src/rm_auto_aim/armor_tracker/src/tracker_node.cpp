@@ -245,8 +245,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
       "/tracker/send", rclcpp::SensorDataQoS());
 
   // debug publisher
-  // armor_detector_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
-  //     "/debug/armor_pose", rclcpp::SensorDataQoS());
+  armor_detector_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "/debug/armor_pose", rclcpp::SensorDataQoS());
+  armor_pnp_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "/debug/armor_pnp_pose", rclcpp::SensorDataQoS());
 
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -294,6 +296,17 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  // RCLCPP_INFO(this->get_logger(), "Received %zu armors", armors_msg->armors.size());
+
+  geometry_msgs::msg::PoseStamped armor_pose;
+  if (armors_msg->armors.size() > 0)
+  {
+    armor_pose.header = armors_msg->header;
+    armor_pose.pose = armors_msg->armors[0].pose;
+    armor_pnp_pose_pub_->publish(armor_pose);
+  }
+  // RCLCPP_INFO(this->get_logger(), "publishing armor pnp pose!");
+
   // Tranform armor position from image frame to world coordinate
   for (auto& armor : armors_msg->armors)
   {
@@ -311,6 +324,8 @@ void ArmorTrackerNode::ArmorsCallback(
     }
   }
 
+  // RCLCPP_INFO(this->get_logger(), "Transform armor to odom!");
+
   // Filter abnormal armors
   armors_msg->armors.erase(
       std::remove_if(
@@ -323,11 +338,16 @@ void ArmorTrackerNode::ArmorsCallback(
           }),
       armors_msg->armors.end());
 
+  // RCLCPP_INFO(this->get_logger(), "Filter abnormal armors!");
+
   // Publish armor pose
-  // geometry_msgs::msg::PoseStamped armor_pose;
-  // armor_pose.header = armors_msg->header;
-  // armor_pose.pose = armors_msg->armors[0].pose;
-  // armor_detector_pub_->publish(armor_pose);
+  if (armors_msg->armors.size() > 0)
+  {
+    armor_pose.header = armors_msg->header;
+    armor_pose.pose = armors_msg->armors[0].pose;
+    armor_detector_pub_->publish(armor_pose);
+  }
+  // RCLCPP_INFO(this->get_logger(), "Publishing armor odom pose!");
 
   // Init message
   auto_aim_interfaces::msg::TrackerInfo info_msg;
@@ -387,9 +407,9 @@ void ArmorTrackerNode::ArmorsCallback(
     else if (tracker_->tracker_state == Tracker::TRACKING ||
              tracker_->tracker_state == Tracker::TEMP_LOST)
     {
-      // RCLCPP_INFO(this->get_logger(), "EKF State: v_x=%.6f, v_y=%.6f",
-      //             tracker_->target_state(EKF::STATE::V_X_CENTER),
-      //             tracker_->target_state(EKF::STATE::V_Y_CENTER));
+      RCLCPP_DEBUG(this->get_logger(), "EKF State: v_x=%.6f, v_y=%.6f",
+                   tracker_->target_state(EKF::STATE::V_X_CENTER),
+                   tracker_->target_state(EKF::STATE::V_Y_CENTER));
 
       target_msg.tracking = true;
       // Fill target message (CV模型：9维状态)
@@ -409,8 +429,8 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.dz = tracker_->dz;
 
       // 获取当前相机的 yaw 与 tracking 目标在相机坐标系中的 x 坐标
-      auto transform_stamped = tf2_buffer_->lookupTransform(
-          "gimbal_odom", "camera_optical_frame", tf2::TimePointZero);
+      auto transform_stamped =
+          tf2_buffer_->lookupTransform("gimbal_odom", "camera_link", tf2::TimePointZero);
 
       // 从变换中提取四元数并转换为欧拉角
       tf2::Quaternion q(
@@ -429,10 +449,12 @@ void ArmorTrackerNode::ArmorsCallback(
       auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
       target_msg.armor_x = armor_in_cam.pose.position.x;
 
-      float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
+      double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
+      RCLCPP_DEBUG(this->get_logger(), "target_msg: %.6f, %.6f, %.6f", msg->position.x,
+                   msg->position.y, msg->position.z);
       solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
 
       if (abs(aim_x) > 0.01)
@@ -444,7 +466,7 @@ void ArmorTrackerNode::ArmorsCallback(
 
       if (pitch == NAN || yaw == NAN)
       {
-        RCLCPP_ERROR(this->get_logger(), "pitch or yaw is NAN!");
+        RCLCPP_DEBUG(this->get_logger(), "pitch or yaw is NAN!");
       }
 
       send_msg.is_fire = true;
@@ -455,11 +477,12 @@ void ArmorTrackerNode::ArmorsCallback(
 
   last_time_ = time;
 
-  // RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
-  //             send_msg.yaw);
+  RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
+              send_msg.yaw);
   if (send_msg.pitch == NAN || send_msg.yaw == NAN)
   {
-    RCLCPP_ERROR(this->get_logger(), "target pitch or yaw is NAN!");
+    // RCLCPP_ERROR(this->get_logger(), "target pitch or yaw is NAN!");
+    std::cerr << "target pitch or yaw is NAN!" << '\n';
     send_msg.pitch = 0.0;
     send_msg.yaw = 0.0;
   }

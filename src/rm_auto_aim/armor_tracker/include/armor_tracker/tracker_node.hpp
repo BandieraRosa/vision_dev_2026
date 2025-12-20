@@ -71,7 +71,8 @@ class ArmorTrackerNode : public rclcpp::Node
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
 
   // debug publisher
-  // rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_detector_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_detector_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pnp_pose_pub_;
 
   // Visualization marker publisher
   visualization_msgs::msg::Marker position_marker_;
