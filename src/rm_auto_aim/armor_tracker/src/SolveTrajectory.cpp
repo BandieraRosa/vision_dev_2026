@@ -53,17 +53,117 @@ void SolveTrajectory::ReBuild() { last_selected_idx_ = SpecialArmor::LOST; }
 void SolveTrajectory::CalculateArmorPosition(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  for (int i = 0; i < msg->armors_num; i++)
+  if (msg->id == "outpost")
   {
-    // float radius = static_cast<float>(i % 2 ? msg->radius_2 : msg->radius_1);
-    float radius = msg->radius_1;
-    float tmp_yaw = static_cast<float>(msg->yaw + static_cast<float>(i) * 2.0f * M_PI /
-                                                      msg->armors_num);
+    for (int i = 0; i < msg->armors_num; ++i)
+    {
+      // 以目标 yaw 为基准，按数量等间隔分布
+      double tmp_yaw = tar_yaw_ + static_cast<double>(i) * 2.0f * M_PI /
+                                      static_cast<double>(msg->armors_num);
+      // tmp_yaws.push_back(tmp_yaw);
+      // min_yaw_in_cycle = std::min(min_yaw_in_cycle, tmp_yaw);
+      // max_yaw_in_cycle = std::max(max_yaw_in_cycle, tmp_yaw);
 
-    tar_position_[i].x = static_cast<float>(msg->position.x - radius * std::cos(tmp_yaw));
-    tar_position_[i].y = static_cast<float>(msg->position.y - radius * std::sin(tmp_yaw));
-    tar_position_[i].z = static_cast<float>(msg->position.z);
-    tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+      // 半径选择
+      double r = msg->radius_1;
+
+      // // 世界坐标推算（简单平面圆周 + 保持 z 不变）
+      // tar_position_[i].x = static_cast<float>(msg->position.x()) - r *
+      // std::cos(TMP_YAW); tar_position_[i].y =
+      // static_cast<float>(msg->position.y()) - r
+      // * std::sin(TMP_YAW);
+      tar_position_[i].z = static_cast<float>(msg->position.z);
+      std::cout << tar_position_[i].z;
+      // tar_position_[i].yaw = TMP_YAW;
+
+      if (msg->position.z >= 1.076 && msg->position.z <= 1.156 && msg->v_yaw > 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[i].z = static_cast<float>(msg->position.z) +
+                             static_cast<float>(i) * static_cast<float>(0.1);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+
+      else if (msg->position.z >= 1.176 && msg->position.z <= 1.256 && msg->v_yaw > 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[2].z =
+            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
+        tar_position_[3].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+
+      else if (msg->position.z >= 1.276 && msg->position.z <= 1.356 && msg->v_yaw > 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[2].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
+        tar_position_[3].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.2);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+
+      else if (msg->position.z >= 1.076 && msg->position.z <= 1.156 && msg->v_yaw < 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[2].z =
+            static_cast<float>(msg->position.z) + static_cast<float>(0.2);
+        tar_position_[3].z =
+            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+
+      else if (msg->position.z >= 1.176 && msg->position.z <= 1.256 && msg->v_yaw < 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[2].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
+        tar_position_[3].z =
+            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+
+      else if (msg->position.z >= 1.276 && msg->position.z <= 1.356 && msg->v_yaw < 0)
+      {
+        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
+        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
+        tar_position_[2].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
+        tar_position_[3].z =
+            static_cast<float>(msg->position.z) - static_cast<float>(0.2);
+        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+        std::cout << tar_position_[i].z << '\n';
+      }
+    }
+  }
+
+  else
+  {
+    for (int i = 0; i < msg->armors_num; i++)
+    {
+      // float radius = static_cast<float>(i % 2 ? msg->radius_2 : msg->radius_1);
+      double radius = msg->radius_1;
+      double tmp_yaw =
+          (msg->yaw + static_cast<double>(i) * 2.0f * M_PI / msg->armors_num);
+
+      tar_position_[i].x =
+          static_cast<float>(msg->position.x - radius * std::cos(tmp_yaw));
+      tar_position_[i].y =
+          static_cast<float>(msg->position.y - radius * std::sin(tmp_yaw));
+      tar_position_[i].z = static_cast<float>(msg->position.z);
+      tar_position_[i].yaw = static_cast<float>(tmp_yaw);
+    }
   }
 }
 
