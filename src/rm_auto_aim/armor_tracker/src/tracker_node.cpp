@@ -479,7 +479,7 @@ void ArmorTrackerNode::ArmorsCallback(
 
   RCLCPP_INFO(this->get_logger(), "Target Euler: pitch %.2f yaw %.2f", send_msg.pitch,
               send_msg.yaw);
-  if (send_msg.pitch == NAN || send_msg.yaw == NAN)
+  if (std::isnan(send_msg.pitch) || std::isnan(send_msg.yaw))
   {
     // RCLCPP_ERROR(this->get_logger(), "target pitch or yaw is NAN!");
     std::cerr << "target pitch or yaw is NAN!" << '\n';
