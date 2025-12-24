@@ -228,14 +228,11 @@ class SolveTrajectory
   // pitch弹道补偿 (集成查表逻辑)
   float PitchTrajectoryCompensation(float s, float z, float v);
 
-  bool CanFire(float tmp_yaw, float v_yaw, float timeDelay);
-
   void PredictArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                             float time_delay);
   float SolvePitch(float x, float y, float z);
   float SolveYaw(float x, float y);
-  bool CanFire(float aim_yaw, float max_yaw_diff,
-               const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  bool CanFire(float aim_yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   int SelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   void CalculateArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
