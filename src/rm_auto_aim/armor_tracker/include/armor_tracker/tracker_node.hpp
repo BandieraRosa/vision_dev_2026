@@ -14,11 +14,18 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+// STD
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "SolveTrajectory.hpp"
+#include "armor_tracker/tracker.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
+#include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
-#include "tracker.hpp"
+#include "auto_aim_interfaces/msg/velocity.hpp"
 
 namespace rm_auto_aim
 {
@@ -30,11 +37,11 @@ class ArmorTrackerNode : public rclcpp::Node
   explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
  private:
-  void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
+  void velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
-  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
+  void armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
-  void PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
+  void publishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
@@ -44,14 +51,14 @@ class ArmorTrackerNode : public rclcpp::Node
   double dt_;
 
   // Armor tracker
-  double s2qxyz_;
-  double s2qyaw_;
-  double s2qr_;
-  double r_xyz_factor_;
-  double r_yaw_;
+  double s2qxyz_, s2qyaw_, s2qr_;
+  double r_xyz_factor, r_yaw;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
-  std::unique_ptr<SolveTrajectory> solver_;
+  std::unique_ptr<SolveTrajectory> gaf_solver;
+
+  // Reset tracker service
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_tracker_srv_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;
@@ -69,10 +76,6 @@ class ArmorTrackerNode : public rclcpp::Node
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
-
-  // debug publisher
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_detector_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pnp_pose_pub_;
 
   // Visualization marker publisher
   visualization_msgs::msg::Marker position_marker_;

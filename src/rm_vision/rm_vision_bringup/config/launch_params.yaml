@@ -3,7 +3,7 @@ odom2camera:
   xyz: '"0.135 0.00 0.030"'
   # rpy: '"0.0 0.0 0.025"'
   # xyz: '"0.134554 0.000950 0.035122"'
-  rpy: '"-0.031 0.0 0.025"'
+  rpy: '"0.0 0.0 0.025"'
 
 detector_log_level: INFO
 tracker_log_level: DEBUG
