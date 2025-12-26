@@ -8,7 +8,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 500.0
+    exposure_time: 1300.0
     gain: 16.0
     autocap: true
     frame_rate: 249.0
@@ -43,21 +43,21 @@
 
     ekf:
       sigma2_q_xyz: 0.05 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 1.0 #偏航角过程噪声方差
-      sigma2_q_r: 40.0 #半径过程噪声方差
+      sigma2_q_yaw: 5.0 #偏航角过程噪声方差
+      sigma2_q_r: 80.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.0025 #位置坐标观测噪声协方差系数
-      r_yaw: 0.1 #偏航角观测噪声协方差
+      r_xyz_factor: 0.00025 #位置坐标观测噪声协方差系数
+      r_yaw: 0.005 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
-      max_match_distance: 0.5
+      max_match_distance: 1.0
       max_match_yaw_diff: 0.8
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.05
+      bias_time: 0.0
       s_bias: 0.0
-      z_bias: 0.02
+      z_bias: 0.0
       pitch_bias: 0.0
       calculate_mode: true
 

@@ -1,6 +1,7 @@
 #include "armor_tracker/SolveTrajectory.hpp"
 
 #include <cmath>
+#include <rclcpp/logging.hpp>
 
 namespace rm_auto_aim
 {
@@ -219,6 +220,7 @@ float SolveTrajectory::MonoDirectionalAirResistanceModel(float s, float angle, f
 // 计算俯仰角(两种模式)
 float SolveTrajectory::SolvePitch(float x, float y, float z)
 {
+  RCLCPP_WARN(logger_, "x: %.2f, y: %.2f, z: %.2f", x, y, z);
   // 计算水平距离
   float distance = std::sqrt(x * x + y * y);
   // RCLCPP_DEBUG(logger_, "Distance: %.2f， Target x: %.2f, Target y: %.2f",
@@ -236,8 +238,8 @@ float SolveTrajectory::SolvePitch(float x, float y, float z)
     {
       fly_time_ = res.t;
       pitch = res.pitch;
-      RCLCPP_DEBUG(logger_, "Table lookup - s: %.2f, z: %.2f, pitch: %.4f,t: %.2f",
-                   target_s, target_z, pitch, fly_time_);
+      //   RCLCPP_DEBUG(logger_, "Table lookup - s: %.2f, z: %.2f, pitch: %.4f,t: %.2f",
+      //                target_s, target_z, pitch, fly_time_);
     }
     else
     {
@@ -321,7 +323,7 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
   }
   else
   {
-    last_aim_yaw = M_PI_4 / 2;
+    last_aim_yaw = M_PI_2;
   }
   for (int i = 0; i < msg->armors_num; i++)
   {
@@ -429,11 +431,20 @@ void SolveTrajectory::UpdateSolveState(
     int selected_idx, float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
     float& aim_z, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  aim_x = pre_position_[selected_idx].x;
-  aim_y = pre_position_[selected_idx].y;
-  aim_z = pre_position_[selected_idx].z;
-  RCLCPP_DEBUG(logger_, "selected_idx=%d,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", selected_idx,
-               aim_x, aim_y, aim_z);
+  if (selected_idx == -1)
+  {
+    aim_x = pre_x_center_;
+    aim_y = pre_y_center_;
+    aim_z = pre_z_center_;
+  }
+  else
+  {
+    aim_x = pre_position_[selected_idx].x;
+    aim_y = pre_position_[selected_idx].y;
+    aim_z = pre_position_[selected_idx].z;
+  }
+  RCLCPP_WARN(logger_, "selected_idx=%d,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", selected_idx,
+              aim_x, aim_y, aim_z);
 
   pitch = SolvePitch(aim_x, aim_y, aim_z);
   if (fire_logic_mode_ == FireLogicMode::SPIN)
@@ -466,7 +477,8 @@ void SolveTrajectory::AutoSolveTrajectory(
     RCLCPP_ERROR(logger_, "Invalid target message");
     return;
   }
-
+  // RCLCPP_WARN(logger_, "msg->x: %.2f, msg->y: %.2f, msg->z: %.2f",
+  //              msg->position.x, msg->position.y, msg->position.z);
   FireLogicDefault(pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
 
   auto end = std::chrono::high_resolution_clock::now();
