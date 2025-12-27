@@ -361,10 +361,11 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
                  aim_yaw);
     if (aim_yaw < last_aim_yaw && i > last_selected_idx_)
     {
-      return i;
+      min_distance = distance;
+      selected_armor_idx = i;
     }
   }
-  return last_selected_idx_;
+  return selected_armor_idx;
 }
 
 // 不择板，判断此时发弹能否打击到目标
@@ -380,7 +381,7 @@ void SolveTrajectory::FireLogicIsTop(
   PredictArmorPosition(msg, time_delay + 0.05f * toyaw);
   for (int i = 0; i < msg->armors_num; i++)
   {
-    if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
+    // if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
     {
       UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
       return;
