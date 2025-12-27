@@ -314,7 +314,6 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
                        msg->camera_yaw);
     float turn_time = fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
     last_aim_yaw =
-        0.8f *
         fabs(pre_position_[last_selected_idx_].yaw + turn_time * msg->v_yaw -
              SolveYaw(pre_position_[last_selected_idx_].x + turn_time * msg->velocity.x,
                       pre_position_[last_selected_idx_].y + turn_time * msg->velocity.y));
@@ -325,6 +324,7 @@ int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedP
   {
     last_aim_yaw = M_PI_2;
   }
+
   for (int i = 0; i < msg->armors_num; i++)
   {
     if (i == last_selected_idx_)
@@ -385,7 +385,7 @@ void SolveTrajectory::FireLogicDefault(
   {
     int selected_idx = SelectArmor(msg);
     UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
-    RCLCPP_DEBUG(logger_, "selected_idx = % d ", selected_idx);
+    RCLCPP_DEBUG(logger_, "selected_idx = %d", selected_idx);
     return;
   }
   else
@@ -397,7 +397,7 @@ void SolveTrajectory::FireLogicDefault(
       UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
       return;
     }
-    else if (selected_idx != last_selected_idx_)
+    else  // selected_idx != last_selected_idx_
     {
       yaw = SolveYaw(pre_position_[selected_idx].x, pre_position_[selected_idx].y);
       RCLCPP_DEBUG(logger_, "selected_idx=%d,last_selected_idx_=%d, yaw - last_yaw_=%.3f",
