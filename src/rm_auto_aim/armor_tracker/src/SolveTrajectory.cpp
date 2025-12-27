@@ -304,48 +304,62 @@ bool SolveTrajectory::CanFire(float aim_yaw,
 // 选择最优装甲板,使得同样时间里aiming时间占比最长，且尽量连续,尽量以中心展开
 int SolveTrajectory::SelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  // 当无可开火装甲板时，选择到下一装甲板出现的位置预瞄
+  // // 当无可开火装甲板时，选择到下一装甲板出现的位置预瞄
 
-  float last_aim_yaw;
-  if (last_selected_idx_ != LOST)
-  {
-    float toyaw = fabs(SolveYaw(pre_position_[last_selected_idx_].x,
-                                pre_position_[last_selected_idx_].y) -
-                       msg->camera_yaw);
-    float turn_time = fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
-    last_aim_yaw =
-        0.8f *
-        fabs(pre_position_[last_selected_idx_].yaw + turn_time * msg->v_yaw -
-             SolveYaw(pre_position_[last_selected_idx_].x + turn_time * msg->velocity.x,
-                      pre_position_[last_selected_idx_].y + turn_time * msg->velocity.y));
-    RCLCPP_DEBUG(logger_, "turn_time= %.3fs,toyaw=%.3f,last_aim_yaw=%.3f", turn_time,
-                 toyaw, last_aim_yaw);
-  }
-  else
-  {
-    last_aim_yaw = M_PI_2;
-  }
+  // float last_aim_yaw;
+  // if (last_selected_idx_ != LOST)
+  // {
+  //   float toyaw = fabs(SolveYaw(pre_position_[last_selected_idx_].x,
+  //                               pre_position_[last_selected_idx_].y) -
+  //                      msg->camera_yaw);
+  //   float turn_time = 0.005;//fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
+  //   last_aim_yaw =0.*
+  //       fabs(pre_position_[last_selected_idx_].yaw + turn_time * msg->v_yaw -
+  //            SolveYaw(pre_position_[last_selected_idx_].x + turn_time * msg->velocity.x,
+  //                     pre_position_[last_selected_idx_].y + turn_time * msg->velocity.y));
+  //   RCLCPP_DEBUG(logger_, "turn_time= %.3fs,toyaw=%.3f,last_aim_yaw=%.3f", turn_time,
+  //                toyaw, last_aim_yaw);
+  // }
+  // else
+  // {
+  //   last_aim_yaw = M_PI_2;
+  // }
+  // for (int i = 0; i < msg->armors_num; i++)
+  // {
+  //   if (i == last_selected_idx_)
+  //   {
+  //     continue;
+  //   }
+  //   float toyaw =
+  //       fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - msg->camera_yaw);
+  //   float turn_time = fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
+
+  //   float aim_yaw = fabs(pre_position_[i].yaw + turn_time * msg->v_yaw -
+  //                        SolveYaw(pre_position_[i].x + turn_time * msg->velocity.x,
+  //                                 pre_position_[i].y + turn_time * msg->velocity.y));
+  //   RCLCPP_DEBUG(logger_, "turn_time= %.3fs,toyaw=%.3f,aim_yaw=%.3f", turn_time, toyaw,
+  //                aim_yaw);
+  //   if (aim_yaw < last_aim_yaw)
+  //   {
+  //     return i;
+  //   }
+  // }
+  // return last_selected_idx_;
+  int selected_armor_idx = -1;
+
+  float min_distance = std::numeric_limits<float>::max();
   for (int i = 0; i < msg->armors_num; i++)
   {
-    if (i == last_selected_idx_)
+    float distance = sqrt(pre_position_[i].x * pre_position_[i].x +
+                          pre_position_[i].y * pre_position_[i].y +
+                          pre_position_[i].z * pre_position_[i].z);
+    if (distance < min_distance)
     {
-      continue;
-    }
-    float toyaw =
-        fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - msg->camera_yaw);
-    float turn_time = fabsf(toyaw) / (17.45f + fabs(msg->v_yaw));
-
-    float aim_yaw = fabs(pre_position_[i].yaw + turn_time * msg->v_yaw -
-                         SolveYaw(pre_position_[i].x + turn_time * msg->velocity.x,
-                                  pre_position_[i].y + turn_time * msg->velocity.y));
-    RCLCPP_DEBUG(logger_, "turn_time= %.3fs,toyaw=%.3f,aim_yaw=%.3f", turn_time, toyaw,
-                 aim_yaw);
-    if (aim_yaw < last_aim_yaw)
-    {
-      return i;
+      min_distance = distance;
+      selected_armor_idx = i;
     }
   }
-  return last_selected_idx_;
+  return selected_armor_idx;
 }
 
 // 不择板，判断此时发弹能否打击到目标
@@ -362,7 +376,7 @@ void SolveTrajectory::FireLogicIsTop(
   PredictArmorPosition(msg, time_delay + turn_time);
   for (int i = 0; i < msg->armors_num; i++)
   {
-    if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
+    // if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
     {
       UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
       RCLCPP_DEBUG(logger_, "pitch=%.3f,yaw=%.3f,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", pitch,
@@ -449,8 +463,8 @@ void SolveTrajectory::UpdateSolveState(
   pitch = SolvePitch(aim_x, aim_y, aim_z);
   if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
-    yaw = SolveYaw(pre_x_center_, pre_y_center_);
-    is_fire = true;
+    yaw = SolveYaw(aim_x, aim_y);
+    is_fire = CanFire(yaw, msg);
   }
   else
   {
