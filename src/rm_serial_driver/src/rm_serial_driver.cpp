@@ -123,19 +123,19 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   //   LibXR::Thread::Sleep(10);  // 发送延迟，10ms
   // }
 
-  auto timer_ = this->create_wall_timer(
-      10ms,
-      [this]()
-      {
-        // LibXR::Thread::Sleep(10);  // 发送延迟，10ms
-        // LibXR::EulerAngle<float> target_euler;
-        // target_euler.Pitch() = static_cast<float>(0.6);
-        // target_euler.Yaw() = static_cast<float>(0.6);
-        // target_euler.Roll() = 0.0f;
-        // target_euler_topic_.Publish(target_euler);
+  // auto timer_ = this->create_wall_timer(
+  //     10ms,
+  //     [this]()
+  //     {
+  //       // LibXR::Thread::Sleep(10);  // 发送延迟，10ms
+  //       // LibXR::EulerAngle<float> target_euler;
+  //       // target_euler.Pitch() = static_cast<float>(0.6);
+  //       // target_euler.Yaw() = static_cast<float>(0.6);
+  //       // target_euler.Roll() = 0.0f;
+  //       // target_euler_topic_.Publish(target_euler);
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      });
+  //       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  //     });
 }
 
 RMSerialDriver::~RMSerialDriver() {}

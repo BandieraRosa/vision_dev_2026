@@ -387,7 +387,7 @@ void SolveTrajectory::FireLogicIsTop(
   PredictAllArmorPosition(msg, time_delay + 0.05f * toyaw);
   for (int i = 0; i < msg->armors_num; i++)
   {
-    if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
+    // if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
     {
      // UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
       return;
