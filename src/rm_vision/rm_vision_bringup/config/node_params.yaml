@@ -8,7 +8,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 1500.0
+    exposure_time: 500.0
     gain: 16.0
     autocap: true
     frame_rate: 249.0
@@ -17,7 +17,7 @@
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.0 #时间戳偏移量
+    timestamp_offset: 0.0045 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
 
@@ -27,7 +27,10 @@
     debug: true
 
     detect_color: 1 # 0: red, 1: blue
-    binary_thres: 85
+    binary_thres: 100
+
+
+    
 
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
     armor.min_light_ratio: 0.8 # 装甲板 (长/宽) 的比值 Detector::isArmor 函数中判断是否为装甲板
@@ -42,20 +45,20 @@
     max_armor_distance: 10.0 # 极限最远可观测装甲板距离
 
     ekf:
-      sigma2_q_xyz: 0.05 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 5.0 #偏航角过程噪声方差
-      sigma2_q_r: 85.0 #过程噪声方差
+      sigma2_q_xyz: 0.04 # 位置坐标过程噪声方差
+      sigma2_q_yaw: 4.0 #偏航角过程噪声方差
+      sigma2_q_r: 82.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.00025 #位置坐标观测噪声协方差系数
-      r_yaw: 0.005 #偏航角观测噪声协方差
+      r_xyz_factor: 0.0025 #位置坐标观测噪声协方差系数
+      r_yaw: 0.05 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
-      max_match_distance: 1.0
-      max_match_yaw_diff: 0.8
+      max_match_distance: 3.0
+      max_match_yaw_diff: 0.85
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.03
+      bias_time: 0.08
       s_bias: 0.0
       z_bias: 0.0
       pitch_bias: 0.0
@@ -69,7 +72,7 @@
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "/home/bandiera/Desktop/rm_test/RM26_vision_development/src/rm_auto_aim/armor_tracker/tools/infantry_10_table.bin"
+        filename: "src/rm_auto_aim/armor_tracker/tools/guard_10_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

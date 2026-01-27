@@ -31,7 +31,7 @@ struct State
 };
 
 // 弹道解算器
-class TrajectoryTableGenerator
+class TrajectoryTableGenerator  
 {
  private:
   double v0_;        // 初速度

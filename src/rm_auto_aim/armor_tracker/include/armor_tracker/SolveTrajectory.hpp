@@ -228,12 +228,16 @@ class SolveTrajectory
   // pitch弹道补偿 (集成查表逻辑)
   float PitchTrajectoryCompensation(float s, float z, float v);
 
-  void PredictArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                            float time_delay);
+  void PredictAllArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                               float time_delay);
+  void PredictOneArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                               float time_delay, int idx);
+
   float SolvePitch(float x, float y, float z);
   float SolveYaw(float x, float y);
   bool CanFire(float aim_yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  int SelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  int GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  int LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   void CalculateArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
@@ -246,16 +250,16 @@ class SolveTrajectory
                       float& aim_z,
                       const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
-  void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,
-                        float& aim_y, float& aim_z,
-                        const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  inline void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,
+                               float& aim_y, float& aim_z, int& idx,
+                               const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void UpdateSolveState(int selected_idx, float& pitch, float& yaw, bool& is_fire,
-                        float& aim_x, float& aim_y, float& aim_z,
+                        float& aim_x, float& aim_y, float& aim_z,int& idx,
                         const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   // 根据最优决策得出被击打装甲板 自动解算弹道
   void AutoSolveTrajectory(float& pitch, float& yaw, bool& is_fire, float& aim_x,
-                           float& aim_y, float& aim_z,
+                           float& aim_y, float& aim_z, int& idx,
                            const auto_aim_interfaces::msg::Target::SharedPtr msg);
 
  private:
@@ -295,8 +299,11 @@ class SolveTrajectory
   int last_selected_idx_{SpecialArmor::LOST};
   float last_x_v_{0.0f};
   float last_y_v_{0.0f};
+  float last_v_yaw_{0.0f};
+  bool is_turn_ = false;
+  int turn_count_{0};
+  std::chrono::high_resolution_clock::time_point start_turn_;
+  std::chrono::high_resolution_clock::time_point end_turn_;
 };
 
 }  // namespace rm_auto_aim
-
-#pragma once

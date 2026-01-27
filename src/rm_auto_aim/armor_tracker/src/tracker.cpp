@@ -59,7 +59,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-  bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
+  bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
   if (!armors_msg->armors.empty())
@@ -68,8 +68,8 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     auto predicted_position =
         getArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -120,9 +120,18 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     else
     {
       // 没找到匹配的装甲板
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                  "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]: No
-                                               // matched armor found!
+      if (same_id_armors_count == 2)
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                    "Same ID armor found!");  //[DEBUG] [timestamp] [armor_tracker]: Same
+                                              //ID armor found!
+      }
+      else
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                    "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]: No
+                                                 // matched armor found!
+      }
     }
   }
 

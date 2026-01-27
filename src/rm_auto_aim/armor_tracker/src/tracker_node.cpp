@@ -350,10 +350,11 @@ void ArmorTrackerNode::armorsCallback(
       target_msg.armor_x = armor_in_cam.pose.position.x;
 
       float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
+      int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
-      gaf_solver->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
+      gaf_solver->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z,idx, msg);
 
       if (abs(aim_x) > 0.01)
       {
@@ -370,6 +371,7 @@ void ArmorTrackerNode::armorsCallback(
       send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
+      send_msg.idx = idx;
 
       // std::cout << "aim_x: " << aim_x << " aim_y: " << aim_y << " aim_z: " << aim_z <<
       // " pitch: " << pitch << " yaw: " << yaw << std::endl;
