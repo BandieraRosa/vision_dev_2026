@@ -61,9 +61,15 @@ class Tracker  // 整车观测
   double info_position_diff;
   double info_yaw_diff;
 
+  static double outpost_dz;
+  static double outpost_r;
+  static int outpost_idx;
+
   Eigen::VectorXd measurement;  // 测量
 
   Eigen::VectorXd target_state;  // 目标状态
+
+  Eigen::Vector3d predicted_position{};
 
   //? 储存另一片装甲板信息
   double dz, another_r;

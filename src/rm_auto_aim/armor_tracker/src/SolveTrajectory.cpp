@@ -1,7 +1,5 @@
 #include "armor_tracker/SolveTrajectory.hpp"
 
-#include <math.h>
-
 #include <cmath>
 #include <rclcpp/logging.hpp>
 
@@ -58,124 +56,6 @@ void SolveTrajectory::ReBuild()
   last_yaw_ = 0.0f;
 }
 
-// 整车建模，计算各装甲板位置
-void SolveTrajectory::CalculateArmorPosition(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
-{
-  if (msg->id == "outpost")
-  {
-    for (int i = 0; i < msg->armors_num; ++i)
-    {
-      // 以目标 yaw 为基准，按数量等间隔分布
-      double tmp_yaw = tar_yaw_ + static_cast<double>(i) * 2.0f * M_PI /
-                                      static_cast<double>(msg->armors_num);
-      // tmp_yaws.push_back(tmp_yaw);
-      // min_yaw_in_cycle = std::min(min_yaw_in_cycle, tmp_yaw);
-      // max_yaw_in_cycle = std::max(max_yaw_in_cycle, tmp_yaw);
-
-      // 半径选择
-      double r = msg->radius_1;
-
-      // // 世界坐标推算（简单平面圆周 + 保持 z 不变）
-      // tar_position_[i].x = static_cast<float>(msg->position.x()) - r *
-      // std::cos(TMP_YAW); tar_position_[i].y =
-      // static_cast<float>(msg->position.y()) - r
-      // * std::sin(TMP_YAW);
-      tar_position_[i].z = static_cast<float>(msg->position.z);
-      std::cout << tar_position_[i].z;
-      // tar_position_[i].yaw = TMP_YAW;
-
-      if (msg->position.z >= 1.076 && msg->position.z <= 1.156 && msg->v_yaw > 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[i].z = static_cast<float>(msg->position.z) +
-                             static_cast<float>(i) * static_cast<float>(0.1);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-
-      else if (msg->position.z >= 1.176 && msg->position.z <= 1.256 && msg->v_yaw > 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[2].z =
-            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
-        tar_position_[3].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-
-      else if (msg->position.z >= 1.276 && msg->position.z <= 1.356 && msg->v_yaw > 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[2].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
-        tar_position_[3].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.2);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-
-      else if (msg->position.z >= 1.076 && msg->position.z <= 1.156 && msg->v_yaw < 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[2].z =
-            static_cast<float>(msg->position.z) + static_cast<float>(0.2);
-        tar_position_[3].z =
-            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-
-      else if (msg->position.z >= 1.176 && msg->position.z <= 1.256 && msg->v_yaw < 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[2].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
-        tar_position_[3].z =
-            static_cast<float>(msg->position.z) + static_cast<float>(0.1);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-
-      else if (msg->position.z >= 1.276 && msg->position.z <= 1.356 && msg->v_yaw < 0)
-      {
-        tar_position_[i].x = static_cast<float>(msg->position.x - r * std::cos(tmp_yaw));
-        tar_position_[i].y = static_cast<float>(msg->position.y - r * std::sin(tmp_yaw));
-        tar_position_[2].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.1);
-        tar_position_[3].z =
-            static_cast<float>(msg->position.z) - static_cast<float>(0.2);
-        tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-        std::cout << tar_position_[i].z << '\n';
-      }
-    }
-  }
-
-  else
-  {
-    for (int i = 0; i < msg->armors_num; i++)
-    {
-      // float radius = static_cast<float>(i % 2 ? msg->radius_2 : msg->radius_1);
-      double radius = msg->radius_1;
-      double tmp_yaw =
-          (msg->yaw + static_cast<double>(i) * 2.0f * M_PI / msg->armors_num);
-
-      tar_position_[i].x =
-          static_cast<float>(msg->position.x - radius * std::cos(tmp_yaw));
-      tar_position_[i].y =
-          static_cast<float>(msg->position.y - radius * std::sin(tmp_yaw));
-      tar_position_[i].z = static_cast<float>(msg->position.z);
-      tar_position_[i].yaw = static_cast<float>(tmp_yaw);
-    }
-  }
-}
-
 // 从图片时间到打到的时间：自瞄处理的时间+电控延迟(从视觉发信号到电机动和发弹延迟)+云台转动时间+飞行时间
 // msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
 void SolveTrajectory::PredictAllArmorPosition(
@@ -197,7 +77,58 @@ void SolveTrajectory::PredictAllArmorPosition(
 
       pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
       pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-      pre_position_[i].z = msg->position.z;
+      if (msg->armors_num == 4)
+      {
+        pre_position_[i].z = msg->position.z;
+      }
+      else if (msg->armors_num == 3)
+      {
+        if (Tracker::outpost_idx == 0)
+        {
+          if (i == 0)
+          {
+            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
+          }
+          else if (i == 1)
+          {
+            pre_position_[i].z = msg->position.z;
+          }
+          else
+          {
+            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
+          }
+        }
+        else if (Tracker::outpost_idx == 1)
+        {
+          if (i == 0)
+          {
+            pre_position_[i].z = msg->position.z;
+          }
+          else if (i == 1)
+          {
+            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
+          }
+          else
+          {
+            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
+          }
+        }
+        else if (Tracker::outpost_idx == 2)
+        {
+          if (i == 0)
+          {
+            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
+          }
+          else if (i == 1)
+          {
+            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
+          }
+          else
+          {
+            pre_position_[i].z = msg->position.z;
+          }
+        }
+      }
       pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
     }
   }
@@ -321,8 +252,9 @@ bool SolveTrajectory::CanFire(float aim_yaw,
   {
     return false;
   }
-  else {
-  return true;
+  else
+  {
+    return true;
   }
 
   float cam_yaw = msg->camera_yaw + 0.05 * (aim_yaw - msg->camera_yaw);
@@ -365,12 +297,13 @@ int SolveTrajectory::LocalSelectArmor(
   float s_1 =
       pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
   if (fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw) <=
-      fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw)&& s_1 <= s_0)
+          fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw) &&
+      s_1 <= s_0)
   {
-    RCLCPP_WARN(logger_, "Select 1");
+    // RCLCPP_WARN(logger_, "Select 1");
     return 1;
   }
-  RCLCPP_WARN(logger_, "Select 0");
+  // RCLCPP_WARN(logger_, "Select 0");
   return 0;
 }
 
@@ -389,19 +322,19 @@ void SolveTrajectory::FireLogicIsTop(
   {
     // if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
     {
-     // UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
+      // UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
       return;
     }
     RCLCPP_DEBUG(logger_, "pitch=%.3f,yaw=%.3f,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", pitch,
                  yaw, aim_x, aim_y, aim_z);
   }
-  //UpdateSolveState(CENTER, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
+  // UpdateSolveState(CENTER, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
 }
 
 // 择板，判断此时发弹是否有合适的目标
 inline void SolveTrajectory::FireLogicDefault(
-    float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y, float& aim_z, int& idx,
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+    float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y, float& aim_z,
+    int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   float time_delay = bias_time_ + fly_time_;
   PredictAllArmorPosition(msg, time_delay);
@@ -409,7 +342,7 @@ inline void SolveTrajectory::FireLogicDefault(
   if (last_selected_idx_ == LOST)
   {
     int selected_idx = GlobalSelectArmor(msg);
-    UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,msg);
+    UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
     return;
   }
   else
@@ -419,7 +352,7 @@ inline void SolveTrajectory::FireLogicDefault(
     {
       is_turn_ = false;
       vert_count_ = 0;
-      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z,idx, msg);
+      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
       return;
     }
     else
@@ -435,14 +368,14 @@ inline void SolveTrajectory::FireLogicDefault(
         is_turn_ = true;
         vert_count_++;
       }
-      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z,idx, msg);
+      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
     }
   }
 }
 
 void SolveTrajectory::UpdateSolveState(
     int selected_idx, float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
-    float& aim_z,int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+    float& aim_z, int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   idx = selected_idx;
   if (selected_idx == CENTER)
@@ -485,8 +418,8 @@ void SolveTrajectory::UpdateSolveState(
 }
 
 void SolveTrajectory::AutoSolveTrajectory(
-    float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y, float& aim_z,int& idx,
-    const auto_aim_interfaces::msg::Target::SharedPtr msg)
+    float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y, float& aim_z,
+    int& idx, const auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
   auto start = std::chrono::high_resolution_clock::now();
 
@@ -495,7 +428,7 @@ void SolveTrajectory::AutoSolveTrajectory(
     RCLCPP_ERROR(logger_, "Invalid target message");
     return;
   }
-  FireLogicDefault(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,msg);
+  FireLogicDefault(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);

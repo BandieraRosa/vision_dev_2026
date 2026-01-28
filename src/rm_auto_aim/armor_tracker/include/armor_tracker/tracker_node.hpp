@@ -10,6 +10,8 @@
 
 #include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/detail/int32__struct.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -72,6 +74,8 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Tracker info publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr outpost_idx_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pose_pub_;
 
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;

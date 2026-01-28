@@ -301,6 +301,14 @@ void HikCameraNode::CaptureInit()
   SetFloatValue("ExposureTime", params_.exposure_time);
   SetFloatValue("Gain", params_.gain);
 
+  // 设置 ADC 位深为 8 Bits (对应枚举值 2)
+  ret = MV_CC_SetEnumValue(handle_, "ADCBitDepth", 2);
+  if (MV_OK != ret)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
+    return;
+  }
+
   // 帧率
   ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate", 249.0);
   if (ret != MV_OK)

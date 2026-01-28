@@ -14,8 +14,10 @@
 #include <string>
 
 namespace rm_auto_aim
-
 {
+double Tracker::outpost_dz = 0.1;
+double Tracker::outpost_r = 0.2765;
+int Tracker::outpost_idx = 0;
 
 Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
     : tracker_state(LOST),
@@ -59,17 +61,17 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-  bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
+  bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
   if (!armors_msg->armors.empty())
   {
     Armor same_id_armor;
     int same_id_armors_count = 0;
-    auto predicted_position =
+    predicted_position =
         getArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -105,7 +107,27 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
       // 更新 EKF
       double measured_yaw =
           orientationToYaw(tracked_armor.pose.orientation);  // 测量的yaw值
-      measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
+      if (tracked_armors_num == ArmorsNum::NORMAL_4)
+      {
+        measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
+      }
+      else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
+      {
+        double z_measured{};
+        if (outpost_idx == 0)
+        {
+          z_measured = p.z + outpost_dz;
+        }
+        else if (outpost_idx == 2)
+        {
+          z_measured = p.z - outpost_dz;
+        }
+        else
+        {
+          z_measured = p.z;
+        }
+        measurement = Eigen::Vector4d(p.x, p.y, z_measured, measured_yaw);
+      }
       target_state = ekf.update(measurement);
       RCLCPP_DEBUG(
           rclcpp::get_logger("armor_tracker"),
@@ -124,7 +146,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
       {
         RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
                     "Same ID armor found!");  //[DEBUG] [timestamp] [armor_tracker]: Same
-                                              //ID armor found!
+                                              // ID armor found!
       }
       else
       {
@@ -144,6 +166,11 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
   else if (target_state(8) > 0.4)
   {
     target_state(8) = 0.4;
+    ekf.setState(target_state);
+  }
+  else if (tracked_id == "outpost")
+  {
+    target_state(8) = outpost_r;
     ekf.setState(target_state);
   }
 
@@ -234,9 +261,27 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   if (tracked_armors_num == ArmorsNum::NORMAL_4)
   {
     dz = target_state(4) - current_armor.pose.position.z;
-    target_state(4) = current_armor.pose.position.z;
     std::swap(target_state(8), another_r);
   }
+  else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
+  {
+    if (std::abs(current_armor.pose.position.z - target_state(4)) > 0.15)
+    {
+      RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+                  "Outpost armor index changed to 0!");
+      outpost_idx = 0;
+    }
+    else
+    {
+      outpost_idx = (outpost_idx + 1) % 3;
+    }
+
+    dz = (outpost_idx - 1) * outpost_dz;
+    RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+                "Outpost Jump: z_diff=%.3f, new_idx=%d", dz, outpost_idx);
+  }
+  target_state(4) = current_armor.pose.position.z;
+
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
 
   // 如果位置差大于 max_match_distance_，
@@ -253,6 +298,10 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     target_state(3) = 0;                   // vyc
     target_state(4) = p.z;                 // za
     target_state(5) = 0;                   // vza
+    if (tracked_armors_num == ArmorsNum::OUTPOST_3)
+    {
+      outpost_idx = 0;
+    }
     RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 

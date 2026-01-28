@@ -8,7 +8,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 500.0
+    exposure_time: 300.0
     gain: 16.0
     autocap: true
     frame_rate: 249.0
@@ -29,9 +29,6 @@
     detect_color: 1 # 0: red, 1: blue
     binary_thres: 100
 
-
-    
-
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
     armor.min_light_ratio: 0.8 # 装甲板 (长/宽) 的比值 Detector::isArmor 函数中判断是否为装甲板
 
@@ -49,7 +46,7 @@
       sigma2_q_yaw: 4.0 #偏航角过程噪声方差
       sigma2_q_r: 82.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.0025 #位置坐标观测噪声协方差系数
+      r_xyz_factor: 0.0036 #位置坐标观测噪声协方差系数
       r_yaw: 0.05 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
@@ -72,7 +69,7 @@
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "src/rm_auto_aim/armor_tracker/tools/guard_10_table.bin"
+        filename: "/home/bandiera/Desktop/v/vision_dev/src/rm_auto_aim/armor_tracker/tools/infantry_10_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:
