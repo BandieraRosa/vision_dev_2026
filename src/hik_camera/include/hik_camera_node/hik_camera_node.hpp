@@ -1,16 +1,11 @@
 #pragma once
 
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <opencv2/core/mat.hpp>
-#include <string>
-#include <thread>
+#include <opencv2/imgproc.hpp>
 
 #include "CameraParams.h"
+#include "MvCameraControl.h"
 #include "camera_info_manager/camera_info_manager.hpp"
-#include "image_transport/camera_publisher.hpp"
-#include "sensor_msgs/msg/detail/camera_info__struct.hpp"
+#include "image_transport/image_transport.hpp"
 
 namespace HikCamera
 {

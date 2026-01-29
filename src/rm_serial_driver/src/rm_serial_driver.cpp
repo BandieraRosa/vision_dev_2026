@@ -1,7 +1,6 @@
 #include "rm_serial_driver/rm_serial_driver.hpp"
 
-#include <iostream>
-#include <rclcpp/logging.hpp>
+
 
 using namespace std::chrono_literals;
 
@@ -84,9 +83,9 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
                                    gimbal.roll, gimbal.pitch, gimbal.yaw);
     if (++self->ahrs_receive_cnt % self->ahrs_print_freq == 0)
     {
-      RCLCPP_INFO(self->get_logger(),
-                  "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f",
-                  gimbal.roll, gimbal.pitch, gimbal.yaw);
+    //   RCLCPP_INFO(self->get_logger(),
+    //               "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f",
+    //               gimbal.roll, gimbal.pitch, gimbal.yaw);
       self->ahrs_receive_cnt = 0;
     }
     // ROS2发布云台关节状态

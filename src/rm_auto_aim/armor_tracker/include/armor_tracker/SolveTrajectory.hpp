@@ -2,11 +2,10 @@
 
 #include <cmath>
 #include <fstream>
-#include <iostream>
 
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"
-#include "rclcpp/rclcpp.hpp"
+#include "tracker.hpp"
 
 namespace rm_auto_aim
 {
@@ -239,22 +238,20 @@ class SolveTrajectory
   int GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   int LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
-  void CalculateArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-
   std::pair<float, float> CalculatePitchAndYaw(
       int idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg, float timeDelay,
       float s_bias, float z_bias, float current_v, bool use_target_center_for_yaw,
       float& aim_x, float& aim_y, float& aim_z);
 
   void FireLogicIsTop(float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
-                      float& aim_z,
+                      float& aim_z, int& idx,
                       const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   inline void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,
                                float& aim_y, float& aim_z, int& idx,
                                const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void UpdateSolveState(int selected_idx, float& pitch, float& yaw, bool& is_fire,
-                        float& aim_x, float& aim_y, float& aim_z,int& idx,
+                        float& aim_x, float& aim_y, float& aim_z, int& idx,
                         const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   // 根据最优决策得出被击打装甲板 自动解算弹道

@@ -29,9 +29,6 @@
     detect_color: 1 # 0: red, 1: blue
     binary_thres: 100
 
-
-    
-
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
     armor.min_light_ratio: 0.8 # 装甲板 (长/宽) 的比值 Detector::isArmor 函数中判断是否为装甲板
 
@@ -49,19 +46,20 @@
       sigma2_q_yaw: 4.0 #偏航角过程噪声方差
       sigma2_q_r: 82.0 #位置坐标过程噪声方差
 
-      r_xyz_factor: 0.0025 #位置坐标观测噪声协方差系数
+      r_xyz_factor: 0.0036 #位置坐标观测噪声协方差系数
       r_yaw: 0.05 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
       max_match_distance: 3.0
       max_match_yaw_diff: 0.85
+      outpost_cast_threshold: 0.16
 
       # 弹道解算
       k: 0.0
       bias_time: 0.08
       s_bias: 0.0
       z_bias: 0.0
-      pitch_bias: 0.0
+      pitch_bias: 0.
       calculate_mode: true
 
       tracking_thres: 5
@@ -72,7 +70,7 @@
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "src/rm_auto_aim/armor_tracker/tools/guard_10_table.bin"
+        filename: "src/rm_auto_aim/armor_tracker/tools/hero_10_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

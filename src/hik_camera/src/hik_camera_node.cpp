@@ -1,12 +1,5 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
-#include <chrono>
-#include <opencv2/imgproc.hpp>
-#include <rclcpp/logging.hpp>
-#include <rclcpp/qos.hpp>
-
-#include "MvCameraControl.h"
-#include "image_transport/image_transport.hpp"
 
 using namespace std::chrono_literals;
 
@@ -300,6 +293,14 @@ void HikCameraNode::CaptureInit()
   SetEnumValue("GainAuto", MV_GAIN_MODE_OFF);
   SetFloatValue("ExposureTime", params_.exposure_time);
   SetFloatValue("Gain", params_.gain);
+
+  // 设置 ADC 位深为 8 Bits (对应枚举值 2)
+  ret = MV_CC_SetEnumValue(handle_, "ADCBitDepth", 2);
+  if (MV_OK != ret)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
+    return;
+  }
 
   // 帧率
   ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate", 249.0);

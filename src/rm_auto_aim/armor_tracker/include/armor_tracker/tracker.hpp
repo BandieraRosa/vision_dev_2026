@@ -2,27 +2,19 @@
 #ifndef ARMOR_PROCESSOR__TRACKER_HPP_
 #define ARMOR_PROCESSOR__TRACKER_HPP_
 
-// Eigen
-#include <Eigen/Eigen>
-
 // ROS
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/quaternion.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
+#include <angles/angles.h>
 
-// STD
-#include <memory>
-#include <string>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "armor_tracker/extended_kalman_filter.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
-#include "auto_aim_interfaces/msg/target.hpp"
 
 namespace rm_auto_aim
 {
 
 // 装甲板数量 正常的4块 前哨站三块
-enum class ArmorsNum
+enum class ArmorsNum : uint8_t
 {
   NORMAL_4 = 4,
   OUTPOST_3 = 3
@@ -61,9 +53,16 @@ class Tracker  // 整车观测
   double info_position_diff;
   double info_yaw_diff;
 
+  static double outpost_dz;
+  static double outpost_r;
+  static int outpost_idx;
+  static double outpost_cast_threshold;
+
   Eigen::VectorXd measurement;  // 测量
 
   Eigen::VectorXd target_state;  // 目标状态
+
+  Eigen::Vector3d predicted_position{};
 
   //? 储存另一片装甲板信息
   double dz, another_r;

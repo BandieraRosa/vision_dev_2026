@@ -1,11 +1,18 @@
 camera: hik
 odom2camera:
-  xyz: '"0.1 0.005 0.03"'
-  # rpy: '"0.0 0.0 0.025"'
-  # xyz: '"0.134554 0.000950 0.035122"'
-  rpy: '"0.0 0.0 0.0066"'
+  # 腿：
+  # xyz: '"0.135 0.00 0.030"'
+  # rpy: '"0.05 0.0 0.025"'
+  
+  # 英雄
+  xyz: '"0.163 0 -0.0635"'
+  rpy: '"0 0 0"'
+
+  # 哨兵
+  # xyz: '"0.1644 0 0.0379"'
+  # rpy: '"0 0 0"'
 
 detector_log_level: INFO
-tracker_log_level: ERROR
+tracker_log_level: INFO
 serial_log_level: INFO
 simulator_log_level: INFO

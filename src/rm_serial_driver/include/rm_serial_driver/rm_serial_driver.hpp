@@ -5,17 +5,12 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 
 #include <geometry_msgs/msg/twist.hpp>
-#include <rclcpp/publisher.hpp>
-#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/node.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-
 // LibXR
 #include "SharedTopic.hpp"
 #include "SharedTopicClient.hpp"
-#include "app_framework.hpp"
 #include "linux_uart.hpp"
-#include "message.hpp"
-#include "thread.hpp"
 
 // ROS2自定义消息包
 #include "auto_aim_interfaces/msg/send.hpp"

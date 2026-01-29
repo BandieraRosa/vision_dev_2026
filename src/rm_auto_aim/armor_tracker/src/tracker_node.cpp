@@ -1,8 +1,5 @@
 #include "armor_tracker/tracker_node.hpp"
 
-#include <memory>
-#include <vector>
-
 namespace rm_auto_aim
 {
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
@@ -27,6 +24,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
   float pitch_bias =
       static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
+
+  Tracker::outpost_cast_threshold = static_cast<double>(
+      this->declare_parameter("tracker.outpost_cast_threshold", 0.18));
 
   bool use_table = this->declare_parameter("tracker.calculate_mode", true);
 
@@ -70,15 +70,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   {
     Eigen::MatrixXd f(9, 9);
     // clang-format off 临时禁用格式化工具，确保矩阵按指定格式排列
-    f <<1, dt_, 0, 0, 0, 0, 0, 0, 0, 
-        0, 1, 0, 0, 0, 0, 0, 0, 0, 
-        0, 0, 1, dt_, 0, 0, 0, 0,
-        0, 0, 0, 0, 1, 0, 0, 0, 0, 
-        0, 0, 0, 0, 0, 1, dt_, 0, 0, 
-        0, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 1, dt_, 
-        0, 0, 0, 0, 0, 0, 0, 0, 1, 
-        0, 0, 0, 0, 0, 0, 0, 0, 0,
+    f << 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0,
+        0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         1;
     // clang-format on
     return f;
@@ -147,20 +141,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   p0.setIdentity();
   tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
 
-  // Reset tracker service
   using std::placeholders::_1;
-  using std::placeholders::_2;
-  using std::placeholders::_3;
-  reset_tracker_srv_ = this->create_service<std_srvs::srv::Trigger>(
-      "/tracker/reset",
-      [this](const std_srvs::srv::Trigger::Request::SharedPtr,
-             std_srvs::srv::Trigger::Response::SharedPtr response)
-      {
-        tracker_->tracker_state = Tracker::LOST;
-        response->success = true;
-        RCLCPP_INFO(this->get_logger(), "Tracker reset!");
-        return;
-      });
 
   // Subscriber with tf2 message_filter
   // tf2 relevant
@@ -197,12 +178,18 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   info_pub_ =
       this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
 
+  armor_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "/tracker/armor_pose", rclcpp::SensorDataQoS());
+
   // Publisher
   target_pub_ = this->create_publisher<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS());
 
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS());
+
+  outpost_idx_pub_ = this->create_publisher<std_msgs::msg::Int32>(
+      "/tracker/outpost_idx", rclcpp::SensorDataQoS());
 
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -281,6 +268,12 @@ void ArmorTrackerNode::armorsCallback(
   target_msg.header.stamp = time;
   target_msg.header.frame_id = target_frame_;
 
+  geometry_msgs::msg::PoseStamped armor_in_gimbal;
+  armor_in_gimbal.header.stamp = time;
+  armor_in_gimbal.header.frame_id = target_frame_;
+  armor_in_gimbal.pose = tracker_->tracked_armor.pose;
+  armor_pose_pub_->publish(armor_in_gimbal);
+
   // Update tracker
   if (tracker_->tracker_state == Tracker::LOST)
   {
@@ -354,7 +347,7 @@ void ArmorTrackerNode::armorsCallback(
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
-      gaf_solver->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z,idx, msg);
+      gaf_solver->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
 
       if (abs(aim_x) > 0.01)
       {
@@ -383,6 +376,10 @@ void ArmorTrackerNode::armorsCallback(
   send_pub_->publish(send_msg);
 
   target_pub_->publish(target_msg);
+
+  std_msgs::msg::Int32 outpost_idx_msg;
+  outpost_idx_msg.data = Tracker::outpost_idx;
+  outpost_idx_pub_->publish(outpost_idx_msg);
 
   publishMarkers(target_msg);
 }
@@ -442,10 +439,56 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
         p_a.z = za + (is_current_pair ? 0 : dz);
         is_current_pair = !is_current_pair;
       }
-      else
+      else if (a_n == 3)
       {
-        r = r1;
-        p_a.z = za;
+        // r = Tracker::outpost_r;
+        // p_a.z = za;
+        if (tracker_->outpost_idx == 0)
+        {
+          if (i == 0)
+          {
+            p_a.z = za - Tracker::outpost_dz;
+          }
+          else if (i == 1)
+          {
+            p_a.z = za;
+          }
+          else
+          {
+            p_a.z = za + Tracker::outpost_dz;
+          }
+        }
+        if (tracker_->outpost_idx == 1)
+        {
+          if (i == 0)
+          {
+            p_a.z = za;
+          }
+          else if (i == 1)
+          {
+            p_a.z = za + Tracker::outpost_dz;
+          }
+          else
+          {
+            p_a.z = za - Tracker::outpost_dz;
+          }
+        }
+        if (tracker_->outpost_idx == 2)
+        {
+          if (i == 0)
+          {
+            p_a.z = za + Tracker::outpost_dz;
+          }
+          else if (i == 1)
+          {
+            p_a.z = za - Tracker::outpost_dz;
+          }
+          else
+          {
+            p_a.z = za;
+          }
+        }
+        r = Tracker::outpost_r;
       }
       p_a.x = xc - r * cos(tmp_yaw);
       p_a.y = yc - r * sin(tmp_yaw);
