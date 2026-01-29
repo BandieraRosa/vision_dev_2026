@@ -47,7 +47,7 @@ void SolveTrajectory::Init(
 
 void SolveTrajectory::ReBuild()
 {
-  last_selected_idx_ = SpecialArmor::LOST;
+  selected_idx_ = SpecialArmor::LOST;
   last_x_v_ = 0.0f;
   last_y_v_ = 0.0f;
   last_yaw_ = 0.0f;
@@ -263,11 +263,11 @@ bool SolveTrajectory::CanFire(float aim_yaw,
 }
 
 // 选择最优装甲板,使得同样时间里aiming时间占比最长，且尽量连续,尽量以中心展开
-int SolveTrajectory::GlobalSelectArmor(
+void SolveTrajectory::GlobalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   float max_aim_yaw = M_PI;
-  int selected_idx = last_selected_idx_;
+  int selected_idx;
   for (int i = 0; i < msg->armors_num; i++)
   {
     float toyaw =
@@ -282,10 +282,10 @@ int SolveTrajectory::GlobalSelectArmor(
     }
   }
   RCLCPP_ERROR(logger_, "GGGGGG");
-  return selected_idx;
+  selected_idx_ = selected_idx;
 }
 
-int SolveTrajectory::LocalSelectArmor(
+void SolveTrajectory::LocalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   float center_yaw = SolveYaw(pre_x_center_, pre_y_center_);
@@ -293,15 +293,10 @@ int SolveTrajectory::LocalSelectArmor(
       pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
   float s_1 =
       pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
-  if (fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw) <=
+  is_turn_ = fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw) <=
           fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw) &&
-      s_1 <= s_0)
-  {
-    // RCLCPP_WARN(logger_, "Select 1");
-    return 1;
-  }
-  // RCLCPP_WARN(logger_, "Select 0");
-  return 0;
+      s_1 <= s_0;
+  selected_idx_ = is_turn_ ? 1 : 0;
 }
 
 // 不择板，判断此时发弹能否打击到目标
@@ -332,38 +327,48 @@ inline void SolveTrajectory::FireLogicDefault(
   float time_delay = bias_time_ + fly_time_;
   PredictAllArmorPosition(msg, time_delay);
 
-  if (last_selected_idx_ == LOST)
+  if (selected_idx_ == LOST)
   {
-    int selected_idx = GlobalSelectArmor(msg);
-    UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
-    return;
+    GlobalSelectArmor(msg);
   }
   else
   {
-    int selected_idx = LocalSelectArmor(msg);
-    if (selected_idx == 0)
-    {
-      is_turn_ = false;
-      vert_count_ = 0;
-      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
-      return;
-    }
-    else
-    {
-      if (vert_count_ >= 5000)
-      {
-        fire_logic_mode_ = FireLogicMode::SPIN;
-        selected_idx = CENTER;
-      }
-      else
-      {
-        fire_logic_mode_ = FireLogicMode::COMMON;
-        is_turn_ = true;
-        vert_count_++;
-      }
-      UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
-    }
+    LocalSelectArmor(msg);
   }
+}
+
+void SolveTrajectory::UpdateFireLogicMode()
+{
+  if (selected_idx_ == 0)
+  {
+    if (is_turn_)
+    {
+      end_turn_ = std::chrono::high_resolution_clock::now();
+    }
+    is_turn_ = false;
+  }
+  if (selected_idx_ == 1)
+  {
+    if (!is_turn_)
+    {
+      start_turn_ = std::chrono::high_resolution_clock::now();
+    }
+    is_turn_ = true;
+  }
+
+  auto turn_duration = end_turn_ - start_turn_;
+  auto one_step_duration = end_turn_ - last_end_turn_;
+
+  if (turn_duration / one_step_duration < 0.99)
+  {
+    fire_logic_mode_ = FireLogicMode::COMMON;
+  }
+  else
+  {
+    fire_logic_mode_ = FireLogicMode::SPIN;
+  }
+
+  last_end_turn_ = end_turn_;
 }
 
 void SolveTrajectory::UpdateSolveState(

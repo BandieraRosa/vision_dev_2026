@@ -235,13 +235,10 @@ class SolveTrajectory
   float SolvePitch(float x, float y, float z);
   float SolveYaw(float x, float y);
   bool CanFire(float aim_yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  int GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  int LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
-  std::pair<float, float> CalculatePitchAndYaw(
-      int idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg, float timeDelay,
-      float s_bias, float z_bias, float current_v, bool use_target_center_for_yaw,
-      float& aim_x, float& aim_y, float& aim_z);
+  void CalculateArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   void FireLogicIsTop(float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
                       float& aim_z, int& idx,
@@ -250,6 +247,7 @@ class SolveTrajectory
   inline void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,
                                float& aim_y, float& aim_z, int& idx,
                                const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void UpdateFireLogicMode();
   void UpdateSolveState(int selected_idx, float& pitch, float& yaw, bool& is_fire,
                         float& aim_x, float& aim_y, float& aim_z, int& idx,
                         const auto_aim_interfaces::msg::Target::SharedPtr& msg);
@@ -294,6 +292,7 @@ class SolveTrajectory
   float last_pitch_;
   float last_yaw_;
   int last_selected_idx_{SpecialArmor::LOST};
+  int selected_idx_{SpecialArmor::LOST};
   float last_x_v_{0.0f};
   float last_y_v_{0.0f};
   float last_v_yaw_{0.0f};
@@ -301,6 +300,7 @@ class SolveTrajectory
   int turn_count_{0};
   std::chrono::high_resolution_clock::time_point start_turn_;
   std::chrono::high_resolution_clock::time_point end_turn_;
+  std::chrono::high_resolution_clock::time_point last_end_turn_;
 };
 
 }  // namespace rm_auto_aim
