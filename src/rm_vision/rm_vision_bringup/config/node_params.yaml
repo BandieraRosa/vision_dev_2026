@@ -8,7 +8,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 300.0
+    exposure_time: 500.0
     gain: 16.0
     autocap: true
     frame_rate: 249.0
@@ -59,7 +59,7 @@
       bias_time: 0.08
       s_bias: 0.0
       z_bias: 0.0
-      pitch_bias: 0.0
+      pitch_bias: 0.
       calculate_mode: true
 
       tracking_thres: 5
@@ -70,7 +70,7 @@
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "/home/bandiera/Desktop/v/vision_dev/src/rm_auto_aim/armor_tracker/tools/hero_13_table.bin"
+        filename: "src/rm_auto_aim/armor_tracker/tools/hero_10_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

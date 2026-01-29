@@ -41,7 +41,7 @@ void SolveTrajectory::Init(
   else
   {
     RCLCPP_WARN(logger_, "Invalid velocity, using default: 20.0 m/s");
-    current_v_ = 20.0f;
+    current_v_ = 12.0f;
   }
 }
 
@@ -307,25 +307,21 @@ int SolveTrajectory::LocalSelectArmor(
 // 不择板，判断此时发弹能否打击到目标
 void SolveTrajectory::FireLogicIsTop(
     float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y, float& aim_z,
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+    int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   fire_logic_mode_ = FireLogicMode::SPIN;
   float time_delay = bias_time_ + fly_time_;
   PredictAllArmorPosition(msg, time_delay);
-  // if (last_selected_idx_ == LOST) {
-  float toyaw = fabs(SolveYaw(pre_x_center_, pre_y_center_) - msg->camera_yaw);
-  PredictAllArmorPosition(msg, time_delay + 0.05f * toyaw);
-  for (int i = 0; i < msg->armors_num; i++)
+  if (last_selected_idx_ == LOST)
   {
-    // if (CanFire(SolveYaw(pre_position_[i].x, pre_position_[i].y), msg))
-    {
-      // UpdateSolveState(i, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
-      return;
-    }
-    RCLCPP_DEBUG(logger_, "pitch=%.3f,yaw=%.3f,aim_x=%.3f,aim_y=%.3f,aim_z=%.3f", pitch,
-                 yaw, aim_x, aim_y, aim_z);
+    int selected_idx = GlobalSelectArmor(msg);
+    UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
   }
-  // UpdateSolveState(CENTER, pitch, yaw, is_fire, aim_x, aim_y, aim_z, msg);
+  else
+  {
+    int selected_idx = LocalSelectArmor(msg);
+    UpdateSolveState(selected_idx, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
+  }
 }
 
 // 择板，判断此时发弹是否有合适的目标
@@ -375,14 +371,18 @@ void SolveTrajectory::UpdateSolveState(
     float& aim_z, int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   idx = selected_idx;
-  if (selected_idx == CENTER)
+  if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
     aim_x = pre_position_[0].x;
     aim_y = pre_position_[0].y;
     aim_z = pre_position_[0].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(pre_x_center_, pre_y_center_);
-    is_fire = CanFire(SolveYaw(aim_x, aim_y), msg);
+    is_fire = fabs(SolveYaw(aim_x, aim_y) - yaw) < 0.01f;
+    if (is_fire)
+    {
+      yaw = SolveYaw(aim_x, aim_y);
+    }
   }
   // 理论上不会有selected_idx == LOST
   else if (selected_idx == LOST)

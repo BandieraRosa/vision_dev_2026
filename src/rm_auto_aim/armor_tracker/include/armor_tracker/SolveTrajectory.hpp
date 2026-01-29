@@ -244,7 +244,7 @@ class SolveTrajectory
       float& aim_x, float& aim_y, float& aim_z);
 
   void FireLogicIsTop(float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
-                      float& aim_z,
+                      float& aim_z, int& idx,
                       const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   inline void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,

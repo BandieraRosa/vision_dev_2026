@@ -18,7 +18,7 @@ constexpr double MIN_Y = -1.0;        // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;  // 精度 (m)
 constexpr double MAX_ERROR = 0.005;   // 允许误差 (m)
 constexpr int ERROR_LEVEL = 5;        // 误差等级
-constexpr double GUN = 0.10;          // 枪口到pitch轴电机的距离 (m)
+constexpr double GUN = 0.15;          // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.8;        // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)
@@ -298,8 +298,8 @@ static void build_table(double v0, bool bullet_type, const std::string& output_p
 
 int main(int argc, char* argv[])
 {
-  double v0 = 19;        // 默认弹速
-  bool bullet_type = 1;  // 默认42mm (英雄)
+  double v0 = 12;        // 默认弹速
+  bool bullet_type = 0;  // 默认42mm (英雄)
   std::string prefix = bullet_type ? "infantry" : "hero";
 
   if (argc >= 2)
