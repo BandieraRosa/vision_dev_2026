@@ -1,6 +1,5 @@
 #include "armor_tracker/tracker.hpp"
 
-
 namespace rm_auto_aim
 {
 double Tracker::outpost_dz = 0.1;
@@ -16,6 +15,7 @@ Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
       max_match_distance_(max_match_distance),
       max_match_yaw_diff_(max_match_yaw_diff)
 {
+  outpost_idx = 0;
 }
 
 void Tracker::init(const Armors::SharedPtr& armors_msg)
@@ -251,10 +251,14 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   {
     dz = target_state(4) - current_armor.pose.position.z;
     std::swap(target_state(8), another_r);
+
+    target_state(4) = current_armor.pose.position.z;
   }
   else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    if (std::abs(current_armor.pose.position.z - target_state(4)) >
+    // if (std::abs(current_armor.pose.position.z - target_state(4)) >
+    //     outpost_cast_threshold)
+    if (std::abs(current_armor.pose.position.z - tracked_armor.pose.position.z) >
         outpost_cast_threshold)
     {
       RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
@@ -265,11 +269,28 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     {
       outpost_idx = (outpost_idx + 1) % 3;
     }
-    dz = (outpost_idx - 1) * outpost_dz;
+    // dz = (outpost_idx - 1) * outpost_dz;
+    if (outpost_idx == 0)
+    {
+      dz = -2 * outpost_dz;
+
+      target_state(4) = current_armor.pose.position.z + outpost_dz;
+    }
+    else
+    {
+      if (outpost_idx == 1)
+      {
+        target_state(4) = current_armor.pose.position.z;
+      }
+      else
+      {
+        target_state(4) = current_armor.pose.position.z - outpost_dz;
+      }
+      dz = outpost_dz;
+    }
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
                 "Outpost Jump: z_diff=%.3f, current_idx=%d", dz, outpost_idx);
   }
-  target_state(4) = current_armor.pose.position.z;
 
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
 

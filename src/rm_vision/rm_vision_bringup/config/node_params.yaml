@@ -52,7 +52,7 @@
     tracker: #标记{tracker 参数}
       max_match_distance: 3.0
       max_match_yaw_diff: 0.85
-      outpost_cast_threshold: 0.18
+      outpost_cast_threshold: 0.16
 
       # 弹道解算
       k: 0.0
