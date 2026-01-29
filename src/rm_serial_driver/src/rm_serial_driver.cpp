@@ -1,7 +1,6 @@
 #include "rm_serial_driver/rm_serial_driver.hpp"
 
-#include <iostream>
-#include <rclcpp/logging.hpp>
+
 
 using namespace std::chrono_literals;
 

@@ -1,8 +1,5 @@
 #include "armor_tracker/SolveTrajectory.hpp"
 
-#include <cmath>
-#include <rclcpp/logging.hpp>
-
 namespace rm_auto_aim
 {
 

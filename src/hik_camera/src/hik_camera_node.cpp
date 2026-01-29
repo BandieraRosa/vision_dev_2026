@@ -1,12 +1,5 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
-#include <chrono>
-#include <opencv2/imgproc.hpp>
-#include <rclcpp/logging.hpp>
-#include <rclcpp/qos.hpp>
-
-#include "MvCameraControl.h"
-#include "image_transport/image_transport.hpp"
 
 using namespace std::chrono_literals;
 

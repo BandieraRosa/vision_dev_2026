@@ -2,11 +2,9 @@
 
 #include <cmath>
 #include <fstream>
-#include <iostream>
 
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"
-#include "rclcpp/rclcpp.hpp"
 #include "tracker.hpp"
 
 namespace rm_auto_aim

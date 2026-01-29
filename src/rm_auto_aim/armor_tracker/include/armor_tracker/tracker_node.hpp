@@ -3,31 +3,19 @@
 
 // ROS
 #include <message_filters/subscriber.h>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/create_timer_ros.h>
 #include <tf2_ros/message_filter.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <geometry_msgs/msg/detail/pose_stamped__struct.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/detail/int32__struct.hpp>
 #include <std_msgs/msg/int32.hpp>
-#include <std_srvs/srv/trigger.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-// STD
-#include <memory>
-#include <string>
-#include <vector>
-
 #include "SolveTrajectory.hpp"
-#include "armor_tracker/tracker.hpp"
-#include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"
+#include "tracker.hpp"
 
 namespace rm_auto_aim
 {
@@ -58,9 +46,6 @@ class ArmorTrackerNode : public rclcpp::Node
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
   std::unique_ptr<SolveTrajectory> gaf_solver;
-
-  // Reset tracker service
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_tracker_srv_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;

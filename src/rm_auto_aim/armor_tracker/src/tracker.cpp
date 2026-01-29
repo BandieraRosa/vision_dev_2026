@@ -1,23 +1,12 @@
 #include "armor_tracker/tracker.hpp"
 
-#include <angles/angles.h>
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/convert.h>
-
-#include <rclcpp/logger.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
-// STD
-#include <cfloat>
-#include <memory>
-#include <string>
 
 namespace rm_auto_aim
 {
 double Tracker::outpost_dz = 0.1;
 double Tracker::outpost_r = 0.2765;
 int Tracker::outpost_idx = 0;
+double Tracker::outpost_cast_threshold = 0.0;
 
 Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
     : tracker_state(LOST),
@@ -265,7 +254,8 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   }
   else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    if (std::abs(current_armor.pose.position.z - target_state(4)) > 0.15)
+    if (std::abs(current_armor.pose.position.z - target_state(4)) >
+        outpost_cast_threshold)
     {
       RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
                   "Outpost armor index changed to 0!");
@@ -275,10 +265,9 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     {
       outpost_idx = (outpost_idx + 1) % 3;
     }
-
     dz = (outpost_idx - 1) * outpost_dz;
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-                "Outpost Jump: z_diff=%.3f, new_idx=%d", dz, outpost_idx);
+                "Outpost Jump: z_diff=%.3f, current_idx=%d", dz, outpost_idx);
   }
   target_state(4) = current_armor.pose.position.z;
 
