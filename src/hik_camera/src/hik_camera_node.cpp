@@ -1,5 +1,6 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
+#include <opencv2/core.hpp>
 
 using namespace std::chrono_literals;
 
@@ -75,6 +76,11 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             // read_frame 内部已经负责在严重错误时切换状态并通知守护线程
             continue;
           }
+
+          cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+          image_msg_.height = image.rows;
+          image_msg_.width = image.cols;
+          image_msg_.step = static_cast<uint32_t>(image.cols * image.channels());
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
