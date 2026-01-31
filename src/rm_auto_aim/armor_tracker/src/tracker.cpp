@@ -261,7 +261,7 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     if (std::abs(current_armor.pose.position.z - tracked_armor.pose.position.z) >
         outpost_cast_threshold)
     {
-      RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
                   "Outpost armor index changed to 0!");
       outpost_idx = 0;
     }
