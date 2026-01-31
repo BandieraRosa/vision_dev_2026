@@ -9,19 +9,23 @@
 #include <vector>
 
 // 表参数配置
-constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
-constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
-constexpr double MAX_X = 10.0;         // 最大水平距离 (m)
-constexpr double MIN_X = 0.0;         // 最小水平距离 (m)
-constexpr double MAX_Y = 2.0;         // 最大高度 (m)
-constexpr double MIN_Y = -1.0;        // 最小高度 (m)
+// constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
+// constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
+constexpr double MIN_PITCH = -0.7;  // 最小pitch限位 (rad)
+constexpr double MAX_PITCH = 0.3;    // 最大pitch限位 (rad)
+constexpr double MAX_X = 8.0;       // 最大水平距离 (m)
+constexpr double MIN_X = 0.0;        // 最小水平距离 (m)
+constexpr double MAX_Y = 2;       // 最大高度 (m)
+constexpr double MIN_Y = -1;       // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;  // 精度 (m)
-constexpr double MAX_ERROR = 0.005;   // 允许误差 (m)
-constexpr int ERROR_LEVEL = 5;        // 误差等级
-constexpr double GUN = 0.15;          // 枪口到pitch轴电机的距离 (m)
+constexpr double MAX_ERROR = 0.005;  // 允许误差 (m)
+constexpr int ERROR_LEVEL = 5;       // 误差等级
+constexpr double GUN = 0.07;         // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.8;        // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)
+static double v0 = 20;            // 默认弹速
+static bool bullet_type = 1;     // 默认42mm (英雄)
 
 // 弹丸状态
 struct State
@@ -31,7 +35,7 @@ struct State
 };
 
 // 弹道解算器
-class TrajectoryTableGenerator  
+class TrajectoryTableGenerator
 {
  private:
   double v0_;        // 初速度
@@ -298,8 +302,6 @@ static void build_table(double v0, bool bullet_type, const std::string& output_p
 
 int main(int argc, char* argv[])
 {
-  double v0 = 12;        // 默认弹速
-  bool bullet_type = 0;  // 默认42mm (英雄)
   std::string prefix = bullet_type ? "infantry" : "hero";
 
   if (argc >= 2)
