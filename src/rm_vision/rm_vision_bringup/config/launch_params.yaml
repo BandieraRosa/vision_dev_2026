@@ -13,8 +13,8 @@ odom2camera:
   # rpy: '"0 0 0"'
 
   # 无人机
-  xyz: '"0.16934 -0.03 -0.04231"'
-  rpy: '"0.0 0.0 0.0"'
+  xyz: '"0.16934 0.0 -0.05231"'
+  rpy: '"0.0 0.0236 0.0"'
 
 detector_log_level: INFO
 tracker_log_level: WARN

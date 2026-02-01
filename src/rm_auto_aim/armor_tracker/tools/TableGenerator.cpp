@@ -9,14 +9,14 @@
 #include <vector>
 
 // 表参数配置
-// constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
-// constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
-constexpr double MIN_PITCH = -0.7;  // 最小pitch限位 (rad)
-constexpr double MAX_PITCH = 0.3;    // 最大pitch限位 (rad)
+constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
+constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
+// constexpr double MIN_PITCH = -1.2;  // 最小pitch限位 (rad)
+// constexpr double MAX_PITCH = 0.3;    // 最大pitch限位 (rad)
 constexpr double MAX_X = 8.0;       // 最大水平距离 (m)
 constexpr double MIN_X = 0.0;        // 最小水平距离 (m)
 constexpr double MAX_Y = 2;       // 最大高度 (m)
-constexpr double MIN_Y = -1;       // 最小高度 (m)
+constexpr double MIN_Y = -2;       // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;  // 精度 (m)
 constexpr double MAX_ERROR = 0.005;  // 允许误差 (m)
 constexpr int ERROR_LEVEL = 5;       // 误差等级
