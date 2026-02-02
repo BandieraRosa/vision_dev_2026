@@ -12,6 +12,10 @@ odom2camera:
   # xyz: '"0.1644 0 0.0379"'
   # rpy: '"0 0 0"'
 
+  # # 全向
+  # xyz: '"0.12 -0.05 0.15"'
+  # rpy: '"0 0.02 0.013"'
+
 detector_log_level: INFO
 tracker_log_level: INFO
 serial_log_level: INFO

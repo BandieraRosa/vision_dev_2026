@@ -8,16 +8,16 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 500.0
-    gain: 16.0
+    exposure_time: 1500.0
+    gain: 10.0
     autocap: true
-    frame_rate: 249.0
+    frame_rate: 80.0
     frame_id: camera_optical_frame
 
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.0045 #时间戳偏移量
+    timestamp_offset: 0.009 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
 
@@ -27,7 +27,7 @@
     debug: true
 
     detect_color: 1 # 0: red, 1: blue
-    binary_thres: 100
+    binary_thres: 175
 
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
     armor.min_light_ratio: 0.8 # 装甲板 (长/宽) 的比值 Detector::isArmor 函数中判断是否为装甲板
@@ -56,10 +56,10 @@
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.08
+      bias_time: 0.15
       s_bias: 0.0
       z_bias: 0.0
-      pitch_bias: 0.
+      pitch_bias: 0.0
       calculate_mode: true
 
       tracking_thres: 5
