@@ -425,7 +425,7 @@ void SolveTrajectory::AutoSolveTrajectory(
     RCLCPP_ERROR(logger_, "Invalid target message");
     return;
   }
-  FireLogicDefault(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
+  FireLogicIsTop(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
