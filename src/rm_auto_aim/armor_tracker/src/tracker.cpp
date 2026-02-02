@@ -256,20 +256,29 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   }
   else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    // if (std::abs(current_armor.pose.position.z - target_state(4)) >
-    //     outpost_cast_threshold)
-    if (std::abs(current_armor.pose.position.z - tracked_armor.pose.position.z) >
-        outpost_cast_threshold)
+    float z_diff = static_cast<float>(current_armor.pose.position.z - target_state(4));
+    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "z_diff=%.3f", z_diff);
+
+    if (z_diff < outpost_cast_threshold)
     {
-      RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
                   "Outpost armor index changed to 0!");
       outpost_idx = 0;
     }
     else
     {
-      outpost_idx = (outpost_idx + 1) % 3;
+      outpost_idx = outpost_idx + 1;
+      if (outpost_idx > 2)
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Outpost index update error!");
+        outpost_idx = 0;
+      }
+      else
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                    "Outpost armor index changed to %d!", outpost_idx);
+      }
     }
-    // dz = (outpost_idx - 1) * outpost_dz;
     if (outpost_idx == 0)
     {
       dz = -2 * outpost_dz;

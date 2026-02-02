@@ -8,8 +8,8 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     # exposure_time: 10000.0
-    exposure_time: 500.0
-    gain: 16.0
+    exposure_time: 1200.0
+    gain: 0.0
     autocap: true
     frame_rate: 249.0
     frame_id: camera_optical_frame
@@ -52,7 +52,7 @@
     tracker: #标记{tracker 参数}
       max_match_distance: 3.0
       max_match_yaw_diff: 0.85
-      outpost_cast_threshold: 0.16
+      outpost_cast_threshold: -0.05
 
       # 弹道解算
       k: 0.0
