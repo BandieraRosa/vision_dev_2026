@@ -256,10 +256,9 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   }
   else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    float z_diff = static_cast<float>(current_armor.pose.position.z - target_state(4));
-    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "z_diff=%.3f", z_diff);
-
-    if (z_diff < outpost_cast_threshold)
+    double z_diff = target_state(4) - current_armor.pose.position.z;
+    if (z_diff >
+        outpost_cast_threshold)  // 可能不保证卡尔曼里是哪个装甲板的高度，但总是两个相邻的装甲板相减
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
                   "Outpost armor index changed to 0!");
@@ -270,35 +269,34 @@ void Tracker::handleArmorJump(const Armor& current_armor)
       outpost_idx = outpost_idx + 1;
       if (outpost_idx > 2)
       {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Outpost index update error!");
         outpost_idx = 0;
-      }
-      else
-      {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                    "Outpost armor index changed to %d!", outpost_idx);
+        RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"),
+                     "Outpost armor index update error");
       }
     }
-    if (outpost_idx == 0)
-    {
-      dz = -2 * outpost_dz;
+    //// 以下为有神秘影响的建模部分，建议注释，波形更平滑
+    // if (outpost_idx == 0)
+    // {
+    //   dz = -2 * outpost_dz;
 
-      target_state(4) = current_armor.pose.position.z + outpost_dz;
-    }
-    else
-    {
-      if (outpost_idx == 1)
-      {
-        target_state(4) = current_armor.pose.position.z;
-      }
-      else
-      {
-        target_state(4) = current_armor.pose.position.z - outpost_dz;
-      }
-      dz = outpost_dz;
-    }
+    //   target_state(4) = current_armor.pose.position.z + outpost_dz;
+    // }
+    // else
+    // {
+    //   if (outpost_idx == 1)
+    //   {
+    //     target_state(4) = current_armor.pose.position.z;
+    //   }
+    //   else
+    //   {
+    //     target_state(4) = current_armor.pose.position.z - outpost_dz;
+    //   }
+    //   dz = outpost_dz;
+    // }
+
+    target_state(5) *= 0.9;
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-                "Outpost Jump: z_diff=%.3f, current_idx=%d", dz, outpost_idx);
+                "Outpost Jump: z_diff=%.3f, current_idx=%d", z_diff, outpost_idx);
   }
 
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
