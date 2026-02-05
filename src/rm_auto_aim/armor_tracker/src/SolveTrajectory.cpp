@@ -342,16 +342,16 @@ void SolveTrajectory::UpdateSolveState(
   // 英雄打击前哨站和步兵打击高速旋转
   else if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
-    aim_x = pre_position_[0].x;
-    aim_y = pre_position_[0].y;
-    aim_z = pre_position_[0].z;
+    aim_x = pre_position_[selected_idx_].x;
+    aim_y = pre_position_[selected_idx_].y;
+    aim_z = pre_position_[selected_idx_].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(pre_x_center_, pre_y_center_);
 
     float aim_yaw = SolveYaw(aim_x, aim_y);
     is_fire = fabs(aim_yaw - yaw) < 0.03f;
-    RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
-                 fabs(aim_yaw - yaw));
+    // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
+    //              fabs(aim_yaw - yaw));
     if (is_fire)
     {
       yaw = aim_yaw;

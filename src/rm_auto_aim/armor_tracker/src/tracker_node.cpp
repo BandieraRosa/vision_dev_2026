@@ -26,14 +26,12 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
-  float bias_time = static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
+  float bias_time =
+      static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
   float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
   float pitch_bias =
       static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
-
-  Tracker::outpost_cast_threshold = static_cast<double>(
-      this->declare_parameter("tracker.outpost_cast_threshold", 0.18));
 
   bool use_table = this->declare_parameter("tracker.calculate_mode", true);
 

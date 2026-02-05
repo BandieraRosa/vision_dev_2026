@@ -1,6 +1,5 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
-
 using namespace std::chrono_literals;
 
 namespace HikCamera
@@ -231,7 +230,7 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  unsigned int n_image_node_num = 3;
+  unsigned int n_image_node_num = 1;
   ret = MV_CC_SetImageNodeNum(handle_, n_image_node_num);
   if (MV_OK != ret)
   {
