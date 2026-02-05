@@ -16,6 +16,13 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
   tracker_->tracking_thres =
       static_cast<int>(this->declare_parameter("tracker.tracking_thres", 5));
+  Tracker::outpost_cast_threshold = static_cast<double>(
+      this->declare_parameter("tracker.outpost.outpost_cast_threshold", 0.18));
+  Tracker::outpost_dz =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_dz", 0.1));
+  Tracker::outpost_r =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
+
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));

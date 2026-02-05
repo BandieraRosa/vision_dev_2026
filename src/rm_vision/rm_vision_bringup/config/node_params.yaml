@@ -59,11 +59,17 @@
       bias_time: 0.15
       s_bias: 0.0
       z_bias: 0.0
-      pitch_bias: 0.
+      pitch_bias: 0.0
       calculate_mode: true
 
       tracking_thres: 5
       lost_time_thres: 1.0
+
+      outpost:
+        outpost_cast_threshold: 0.07
+        outpost_dz: 0.1
+        outpost_r: 0.2765
+
       table:
         max_x: 12.0
         min_x: 0.0
