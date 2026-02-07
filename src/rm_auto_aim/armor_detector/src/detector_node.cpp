@@ -95,13 +95,13 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 }
 
 void ArmorDetectorNode::ImageCallback(
-    const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG)
+    const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
-  auto armors = DetectArmors(IMG_MSG);
+  auto armors = DetectArmors(img_msg);
 
   if (pnp_solver_ != nullptr)
   {
-    armors_msg_.header = armor_marker_.header = text_marker_.header = IMG_MSG->header;
+    armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
     armors_msg_.armors.clear();
     marker_array_.markers.clear();
     armor_marker_.id = 0;

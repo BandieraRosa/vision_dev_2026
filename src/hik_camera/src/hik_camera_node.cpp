@@ -78,6 +78,10 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           image_msg_.height = image.rows;
           image_msg_.width = image.cols;
 
+          // cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+          // image_msg_.height = image.rows;
+          // image_msg_.width = image.cols;
+
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
           image_msg_.header.frame_id = params_.frame_id;
@@ -229,7 +233,7 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  unsigned int n_image_node_num = 3;
+  unsigned int n_image_node_num = 1;
   ret = MV_CC_SetImageNodeNum(handle_, n_image_node_num);
   if (MV_OK != ret)
   {

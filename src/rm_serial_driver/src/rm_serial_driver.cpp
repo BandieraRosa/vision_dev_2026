@@ -1,7 +1,5 @@
 #include "rm_serial_driver/rm_serial_driver.hpp"
 
-
-
 using namespace std::chrono_literals;
 
 namespace rm_serial_driver
@@ -83,10 +81,10 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
                                    gimbal.roll, gimbal.pitch, gimbal.yaw);
     if (++self->ahrs_receive_cnt % self->ahrs_print_freq == 0)
     {
-      RCLCPP_INFO(self->get_logger(),
-                  "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f",
-                  gimbal.roll, gimbal.pitch, gimbal.yaw);
-        self->ahrs_receive_cnt = 0;
+        // RCLCPP_INFO(self->get_logger(),
+        //             "Current gimbal Euler angles: roll:%f, pitch:%f, yaw:%f",
+        //             gimbal.roll, gimbal.pitch, gimbal.yaw);
+      self->ahrs_receive_cnt = 0;
     }
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
@@ -117,24 +115,36 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
   bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
-  // while (1)
-  // {
-  //   LibXR::Thread::Sleep(10);  // 发送延迟，10ms
-  // }
+#define PUBLISH_TEST 0
+#if PUBLISH_TEST
+  auto thread_ = std::make_shared<LibXR::Thread>();
+  auto thread_func = [](LibXR::Topic* topic)
+  {
+    while (true)
+    {
+      LibXR::EulerAngle<float> target_euler;
+      float pitch = 0.1f;
+      float yaw = -0.1f;
+      target_euler.Pitch() = pitch;
+      target_euler.Yaw() = yaw;
+      target_euler.Roll() = 0.0f;
+      LibXR::Thread::Sleep(2);
+      topic->Publish(target_euler);
+      // RCLCPP_INFO(rclcpp::get_logger("rm_serial_driver"),
+      //             "Publish test target_euler: pitch %f, yaw %f", pitch, yaw);
 
-  // auto timer_ = this->create_wall_timer(
-  //     10ms,
-  //     [this]()
-  //     {
-  //       // LibXR::Thread::Sleep(10);  // 发送延迟，10ms
-  //       // LibXR::EulerAngle<float> target_euler;
-  //       // target_euler.Pitch() = static_cast<float>(0.6);
-  //       // target_euler.Yaw() = static_cast<float>(0.6);
-  //       // target_euler.Roll() = 0.0f;
-  //       // target_euler_topic_.Publish(target_euler);
+      // uint8_t fire_notify = 1;
+      // LibXR::Thread::Sleep(100);  // 发送延迟，100ms
+      // topic->Publish(fire_notify);
+      // RCLCPP_INFO(rclcpp::get_logger("rm_serial_driver"), "Publish test fire_notify:
+      // %d",
+      //             fire_notify);
+    }
+  };
+  thread_->Create<LibXR::Topic*>(&target_euler_topic_, thread_func, "thread", 81900,
+                                 LibXR::Thread::Priority::MEDIUM);
 
-  //       std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  //     });
+#endif
 }
 
 RMSerialDriver::~RMSerialDriver() {}
