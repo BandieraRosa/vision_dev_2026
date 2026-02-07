@@ -7,7 +7,7 @@ constexpr double MIN_PITCH = -0.6;  // 限位
 constexpr double MAX_PITCH = 1.2;
 constexpr double MIN_Y = -1;         // 中心为车的pitch轴电机
 constexpr double MAX_ERROR = 0.005;  // 允许误差，m
-constexpr int ERROR_LEVEL = 5;    // 误差等级
+constexpr int ERROR_LEVEL = 5;       // 误差等级
 constexpr double GUN = 0.15;         // 枪口到pitch轴电机的距离，m
 
 constexpr double G = 9.8;        // 重力加速度，m/s^2
@@ -222,8 +222,8 @@ int main(int argc, char** argv)
   }
   else
   {
-    std::cout << "Usage: trajectory_test <pitch>\n"
-              << "       trajectory_test <distance> <height>\n";
+    std::cout << "Usage: trajectory_test <pitch>(Rad)\n"
+              << "       trajectory_test <distance>(m) <height>(m)\n";
     return 0;
   }
   if (ans.size() == 2)

@@ -42,9 +42,18 @@ rclcpp_components_register_node(${PROJECT_NAME} PLUGIN HikCamera::HikCameraNode
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_copyright ament_cmake_cpplint
-       ament_cmake_uncrustify)
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_copyright
+       ament_cmake_uncrustify ament_cmake_cpplint)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest)
+
+  file(GLOB TEST_SOURCES test/*.cpp)
+  foreach(TEST_SOURCE ${TEST_SOURCES})
+    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+    ament_add_gtest(${TEST_NAME} ${TEST_SOURCE})
+    target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
+  endforeach()
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE config launch)
