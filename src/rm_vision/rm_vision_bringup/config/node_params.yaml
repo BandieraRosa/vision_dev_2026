@@ -7,9 +7,8 @@
 /camera_node:
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
-    # exposure_time: 10000.0
-    exposure_time: 500.0
-    gain: 16.0
+    exposure_time: 1000.0
+    gain: 6.0
     autocap: true
     frame_rate: 249.0
     frame_id: camera_optical_frame
@@ -17,7 +16,7 @@
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.0045 #时间戳偏移量
+    timestamp_offset: 0.005 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
 
@@ -42,35 +41,40 @@
     max_armor_distance: 10.0 # 极限最远可观测装甲板距离
 
     ekf:
-      sigma2_q_xyz: 0.04 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 4.0 #偏航角过程噪声方差
-      sigma2_q_r: 82.0 #位置坐标过程噪声方差
+      sigma2_q_xyz: 0.005 # 位置坐标过程噪声方差
+      sigma2_q_yaw: 2.0 #偏航角过程噪声方差
+      sigma2_q_r: 0.0 #半径过程噪声方差
 
-      r_xyz_factor: 0.0036 #位置坐标观测噪声协方差系数
-      r_yaw: 0.05 #偏航角观测噪声协方差
+      r_xyz_factor: 0.0005 #位置坐标观测噪声协方差系数
+      r_yaw: 0.04 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
       max_match_distance: 3.0
-      max_match_yaw_diff: 0.85
-      outpost_cast_threshold: 0.16
+      max_match_yaw_diff: 1.4
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.08
+      bias_time: 0.08 # 65ms 发弹延迟
       s_bias: 0.0
       z_bias: 0.0
-      pitch_bias: 0.
+      pitch_bias: 0.0
       calculate_mode: true
 
       tracking_thres: 5
       lost_time_thres: 1.0
+
+      outpost:
+        outpost_cast_threshold: 0.18
+        outpost_dz: 0.10
+        outpost_r: 0.2765
+
       table:
-        max_x: 10.0
+        max_x: 12.0
         min_x: 0.0
         max_y: 2.0
         min_y: -1.0
         resolution: 0.01
-        filename: "src/rm_auto_aim/armor_tracker/tools/hero_10_table.bin"
+        filename: "src/rm_auto_aim/armor_tracker/tools/hero_12_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

@@ -88,7 +88,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     info_yaw_diff = yaw_diff;
 
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
-    if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_)
+    if (min_position_diff < max_match_distance_ && yaw_diff <= max_match_yaw_diff_)
     {  // 最近装甲板距离与yaw差值比阈值小
       // 找到匹配的装甲板
       matched = true;  // 注意之前的 matched = false
@@ -124,6 +124,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     }
     else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_)
     {
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
       // 且偏航角发生了跳变，将此情况视为目标正在旋转并且装甲发生了 **跳变**
       handleArmorJump(same_id_armor);  // 跳变处理
@@ -133,15 +134,13 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
       // 没找到匹配的装甲板
       if (same_id_armors_count == 2)
       {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                    "Same ID armor found!");  //[DEBUG] [timestamp] [armor_tracker]: Same
-                                              // ID armor found!
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Same ID armor found!");
+        //[DEBUG] [timestamp] [armor_tracker]: Same ID armor found!
       }
       else
       {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                    "No matched armor found!");  //[DEBUG] [timestamp] [armor_tracker]: No
-                                                 // matched armor found!
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "No matched armor found!");
+        // [DEBUG] [timestamp] [armor_tracker]: No matched armor found!
       }
     }
   }
@@ -211,6 +210,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
 // 初始化ekf
 void Tracker::initEKF(const Armor& a)
 {
+  first_tracked = true;
   double xa = a.pose.position.x;
   double ya = a.pose.position.y;
   double za = a.pose.position.z;
@@ -220,6 +220,10 @@ void Tracker::initEKF(const Armor& a)
   // 设置初始位置在目标后面0.2米
   target_state = Eigen::VectorXd::Zero(9);
   double r = 0.26;
+  if (a.number == "outpost")
+  {
+    r = outpost_r;
+  }
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
@@ -243,6 +247,11 @@ void Tracker::updateArmorsNum(const Armor& armor)
 // 处理装甲板 **跳变**
 void Tracker::handleArmorJump(const Armor& current_armor)
 {
+  if (first_tracked)
+  {
+    first_tracked = false;
+    last_tracked_armor = current_armor;
+  }
   double yaw = orientationToYaw(current_armor.pose.orientation);
   target_state(6) = yaw;
   updateArmorsNum(current_armor);
@@ -256,40 +265,30 @@ void Tracker::handleArmorJump(const Armor& current_armor)
   }
   else if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    // if (std::abs(current_armor.pose.position.z - target_state(4)) >
-    //     outpost_cast_threshold)
-    if (std::abs(current_armor.pose.position.z - tracked_armor.pose.position.z) >
-        outpost_cast_threshold)
+    double z_diff = last_tracked_armor.pose.position.z - current_armor.pose.position.z;
+    if (z_diff >
+        outpost_cast_threshold)  // 可能不保证卡尔曼里是哪个装甲板的高度，但总是两个相邻的装甲板相减
     {
-      RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
                   "Outpost armor index changed to 0!");
       outpost_idx = 0;
     }
     else
     {
-      outpost_idx = (outpost_idx + 1) % 3;
-    }
-    // dz = (outpost_idx - 1) * outpost_dz;
-    if (outpost_idx == 0)
-    {
-      dz = -2 * outpost_dz;
-
-      target_state(4) = current_armor.pose.position.z + outpost_dz;
-    }
-    else
-    {
-      if (outpost_idx == 1)
+      outpost_idx = outpost_idx + 1;
+      if (outpost_idx > 2)
       {
-        target_state(4) = current_armor.pose.position.z;
+        outpost_idx = 0;
+        RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"),
+                     "Outpost armor index update error");
       }
-      else
-      {
-        target_state(4) = current_armor.pose.position.z - outpost_dz;
-      }
-      dz = outpost_dz;
     }
+    float scale = 0.5;
+    target_state(1) *= scale;
+    target_state(3) *= scale;
+    target_state(5) *= scale;
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-                "Outpost Jump: z_diff=%.3f, current_idx=%d", dz, outpost_idx);
+                "Outpost Jump: z_diff=%.3f, current_idx=%d", z_diff, outpost_idx);
   }
 
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
@@ -315,6 +314,7 @@ void Tracker::handleArmorJump(const Armor& current_armor)
     RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 
+  last_tracked_armor = current_armor;
   ekf.setState(target_state);
 }
 

@@ -16,17 +16,22 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
   tracker_->tracking_thres =
       static_cast<int>(this->declare_parameter("tracker.tracking_thres", 5));
+  Tracker::outpost_cast_threshold = static_cast<double>(
+      this->declare_parameter("tracker.outpost.outpost_cast_threshold", 0.18));
+  Tracker::outpost_dz =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_dz", 0.1));
+  Tracker::outpost_r =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
+
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
-  float bias_time = static_cast<float>(this->declare_parameter("tracker.bias_time", 1.0));
+  float bias_time =
+      static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
   float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
   float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
   float pitch_bias =
       static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
-
-  Tracker::outpost_cast_threshold = static_cast<double>(
-      this->declare_parameter("tracker.outpost_cast_threshold", 0.18));
 
   bool use_table = this->declare_parameter("tracker.calculate_mode", true);
 
@@ -451,11 +456,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za;
+            p_a.z = za + Tracker::outpost_dz;
           }
           else
           {
-            p_a.z = za + Tracker::outpost_dz;
+            p_a.z = za;
           }
         }
         if (tracker_->outpost_idx == 1)
@@ -466,11 +471,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za + Tracker::outpost_dz;
+            p_a.z = za - Tracker::outpost_dz;
           }
           else
           {
-            p_a.z = za - Tracker::outpost_dz;
+            p_a.z = za + Tracker::outpost_dz;
           }
         }
         if (tracker_->outpost_idx == 2)
@@ -481,11 +486,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za - Tracker::outpost_dz;
+            p_a.z = za;
           }
           else
           {
-            p_a.z = za;
+            p_a.z = za - Tracker::outpost_dz;
           }
         }
         r = Tracker::outpost_r;

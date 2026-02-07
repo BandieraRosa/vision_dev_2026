@@ -151,7 +151,7 @@ class SolveTrajectory
  public:
   static constexpr float GRAVITY = 9.78f;
 
-  enum CalculateMode : std::uint8_t
+  enum CalculateMode : uint8_t
   {
     NORMAL = 0,
     TABLE_LOOKUP = 1
@@ -175,12 +175,6 @@ class SolveTrajectory
     SPIN = 1,
     COMMON = 2,
     BUFF = 3
-  };
-
-  enum AimingState : uint8_t
-  {
-    AIMING = 0,
-    TURNING = 1
   };
 
   enum SpecialArmor : int8_t
@@ -234,24 +228,15 @@ class SolveTrajectory
 
   float SolvePitch(float x, float y, float z);
   float SolveYaw(float x, float y);
-  bool CanFire(float aim_yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  int GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  int LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  bool CanFire(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void LocalSelectArmor();
+  void PreSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
-  std::pair<float, float> CalculatePitchAndYaw(
-      int idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg, float timeDelay,
-      float s_bias, float z_bias, float current_v, bool use_target_center_for_yaw,
-      float& aim_x, float& aim_y, float& aim_z);
-
-  void FireLogicIsTop(float& pitch, float& yaw, bool& is_fire, float& aim_x, float& aim_y,
-                      float& aim_z, int& idx,
-                      const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-
-  inline void FireLogicDefault(float& pitch, float& yaw, bool& is_fire, float& aim_x,
-                               float& aim_y, float& aim_z, int& idx,
-                               const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  void UpdateSolveState(int selected_idx, float& pitch, float& yaw, bool& is_fire,
-                        float& aim_x, float& aim_y, float& aim_z, int& idx,
+  void AutoSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void UpdateFireLogicMode();
+  void UpdateSolveState(float& pitch, float& yaw, bool& is_fire, float& aim_x,
+                        float& aim_y, float& aim_z, int& idx,
                         const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   // 根据最优决策得出被击打装甲板 自动解算弹道
@@ -269,7 +254,6 @@ class SolveTrajectory
 
   float tar_yaw_;  // 目标yaw
 
-  struct TargetPostion tar_position_[4];
   struct TargetPostion pre_position_[4];
 
   // 弹道查找表
@@ -284,8 +268,6 @@ class SolveTrajectory
   float s_bias_;     // 枪口前推的距离
   float z_bias_;     // yaw轴电机到枪口水平面的垂直距离
 
-  int vert_count_{0};
-
   float pre_x_center_{0.0f};
   float pre_y_center_{0.0f};
   float pre_z_center_{0.0f};
@@ -294,13 +276,16 @@ class SolveTrajectory
   float last_pitch_;
   float last_yaw_;
   int last_selected_idx_{SpecialArmor::LOST};
+  int selected_idx_{SpecialArmor::LOST};
   float last_x_v_{0.0f};
   float last_y_v_{0.0f};
   float last_v_yaw_{0.0f};
   bool is_turn_ = false;
-  int turn_count_{0};
+  bool pre_turn_ = false;
+
   std::chrono::high_resolution_clock::time_point start_turn_;
   std::chrono::high_resolution_clock::time_point end_turn_;
+  std::chrono::high_resolution_clock::time_point last_end_turn_;
 };
 
 }  // namespace rm_auto_aim
