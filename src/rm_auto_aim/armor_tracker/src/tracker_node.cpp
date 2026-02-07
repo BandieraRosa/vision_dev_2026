@@ -456,11 +456,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za;
+            p_a.z = za + Tracker::outpost_dz;
           }
           else
           {
-            p_a.z = za + Tracker::outpost_dz;
+            p_a.z = za;
           }
         }
         if (tracker_->outpost_idx == 1)
@@ -471,11 +471,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za + Tracker::outpost_dz;
+            p_a.z = za - Tracker::outpost_dz;
           }
           else
           {
-            p_a.z = za - Tracker::outpost_dz;
+            p_a.z = za + Tracker::outpost_dz;
           }
         }
         if (tracker_->outpost_idx == 2)
@@ -486,11 +486,11 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& ta
           }
           else if (i == 1)
           {
-            p_a.z = za - Tracker::outpost_dz;
+            p_a.z = za;
           }
           else
           {
-            p_a.z = za;
+            p_a.z = za - Tracker::outpost_dz;
           }
         }
         r = Tracker::outpost_r;
