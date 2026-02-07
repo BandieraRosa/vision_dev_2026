@@ -85,6 +85,10 @@ void SolveTrajectory::PredictAllArmorPosition(
     pre_y_center_ = msg->position.y;
     pre_z_center_ = msg->position.z;
     pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
+    if (time_delay > 0.64)
+    {
+      RCLCPP_WARN(logger_, "Time delay: %.2f", time_delay);
+    }
 
     float radius = msg->radius_1;
     for (int i = 0; i < msg->armors_num; i++)
@@ -95,7 +99,7 @@ void SolveTrajectory::PredictAllArmorPosition(
       pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
 
       int id = (i + Tracker::outpost_idx) % msg->armors_num;
-      pre_position_[i].z = msg->position.z + Tracker::outpost_dz * (id - 1);
+      pre_position_[i].z = pre_z_center_ + Tracker::outpost_dz * (id - 1);
 
       pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
     }
@@ -345,11 +349,14 @@ void SolveTrajectory::UpdateSolveState(
     aim_x = pre_position_[selected_idx_].x;
     aim_y = pre_position_[selected_idx_].y;
     aim_z = pre_position_[selected_idx_].z;
+    // aim_x = pre_position_[0].x;
+    // aim_y = pre_position_[0].y;
+    // aim_z = pre_position_[0].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(pre_x_center_, pre_y_center_);
 
     float aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = fabs(aim_yaw - yaw) < 0.03f;
+    is_fire = fabs(aim_yaw - yaw) < 0.02f&& is_turn_;
     // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
     //              fabs(aim_yaw - yaw));
     if (is_fire)

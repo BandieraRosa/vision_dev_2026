@@ -88,7 +88,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     info_yaw_diff = yaw_diff;
 
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
-    if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_)
+    if (min_position_diff < max_match_distance_ && yaw_diff <= max_match_yaw_diff_)
     {  // 最近装甲板距离与yaw差值比阈值小
       // 找到匹配的装甲板
       matched = true;  // 注意之前的 matched = false

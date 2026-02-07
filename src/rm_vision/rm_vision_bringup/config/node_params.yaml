@@ -8,7 +8,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     exposure_time: 1000.0
-    gain: 5.0
+    gain: 6.0
     autocap: true
     frame_rate: 249.0
     frame_id: camera_optical_frame
@@ -16,7 +16,7 @@
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.008 #时间戳偏移量
+    timestamp_offset: 0.005 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
 
@@ -42,19 +42,19 @@
 
     ekf:
       sigma2_q_xyz: 0.005 # 位置坐标过程噪声方差
-      sigma2_q_yaw: 1.0 #偏航角过程噪声方差
+      sigma2_q_yaw: 2.0 #偏航角过程噪声方差
       sigma2_q_r: 0.0 #半径过程噪声方差
 
-      r_xyz_factor: 0.00075 #位置坐标观测噪声协方差系数
-      r_yaw: 0.05 #偏航角观测噪声协方差
+      r_xyz_factor: 0.0005 #位置坐标观测噪声协方差系数
+      r_yaw: 0.04 #偏航角观测噪声协方差
 
     tracker: #标记{tracker 参数}
       max_match_distance: 3.0
-      max_match_yaw_diff: 1.3
+      max_match_yaw_diff: 1.4
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.13
+      bias_time: 0.08 # 65ms 发弹延迟
       s_bias: 0.0
       z_bias: 0.0
       pitch_bias: 0.0
@@ -64,8 +64,8 @@
       lost_time_thres: 1.0
 
       outpost:
-        outpost_cast_threshold: 0.20
-        outpost_dz: 0.1
+        outpost_cast_threshold: 0.18
+        outpost_dz: 0.10
         outpost_r: 0.2765
 
       table:
