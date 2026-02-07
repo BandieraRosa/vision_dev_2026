@@ -277,7 +277,18 @@ void SolveTrajectory::AutoSelectArmor(
   {
     GlobalSelectArmor(msg);
   }
-  else
+  if (selected_idx_ == 1)
+  {
+    if (!is_turn_)
+    {
+      start_turn_ = std::chrono::high_resolution_clock::now();
+    }
+    is_turn_ = true;
+  }
+
+  if (end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      last_end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      start_turn_ != std::chrono::high_resolution_clock::time_point::min())
   {
     LocalSelectArmor();
     if (selected_idx_ == 0)

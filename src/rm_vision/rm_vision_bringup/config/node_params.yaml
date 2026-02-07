@@ -10,7 +10,7 @@
     exposure_time: 1000.0
     gain: 6.0
     autocap: true
-    frame_rate: 249.0
+    frame_rate: 80.0
     frame_id: camera_optical_frame
 
 # 串口节点
@@ -26,7 +26,7 @@
     debug: true
 
     detect_color: 1 # 0: red, 1: blue
-    binary_thres: 100
+    binary_thres: 175
 
     light.min_ratio: 0.1 # 灯条 (长/宽) 的比值 Detector::isLight 函数中判断是否为灯条
     armor.min_light_ratio: 0.8 # 装甲板 (长/宽) 的比值 Detector::isArmor 函数中判断是否为装甲板
