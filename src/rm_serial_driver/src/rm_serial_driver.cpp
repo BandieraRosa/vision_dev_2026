@@ -60,7 +60,7 @@ void TestMotorController::Stop()
   // 等待测试线程实际退出，防止在对象析构后继续访问 driver_/controller
   if (thread_)
   {
-    thread_->Join();
+    thread_->Yield();
   }
 }
 
