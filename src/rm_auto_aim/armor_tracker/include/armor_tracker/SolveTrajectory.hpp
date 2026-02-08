@@ -231,6 +231,7 @@ class SolveTrajectory
   bool CanFire(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void LocalSelectArmor();
+  void PreSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   void AutoSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void UpdateFireLogicMode();
@@ -280,6 +281,7 @@ class SolveTrajectory
   float last_y_v_{0.0f};
   float last_v_yaw_{0.0f};
   bool is_turn_ = false;
+  bool pre_turn_ = false;
 
   std::chrono::high_resolution_clock::time_point start_turn_;
   std::chrono::high_resolution_clock::time_point end_turn_;

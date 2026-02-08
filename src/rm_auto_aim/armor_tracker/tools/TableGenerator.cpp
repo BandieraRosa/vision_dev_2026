@@ -9,18 +9,16 @@
 #include <vector>
 
 // 表参数配置
-constexpr double MIN_PITCH = -0.6;    // 最小pitch限位 (rad)
-constexpr double MAX_PITCH = 1.2;     // 最大pitch限位 (rad)
-// constexpr double MIN_PITCH = -1.2;  // 最小pitch限位 (rad)
-// constexpr double MAX_PITCH = 0.3;    // 最大pitch限位 (rad)
-constexpr double MAX_X = 8.0;       // 最大水平距离 (m)
+constexpr double MIN_PITCH = -0.6;   // 最小pitch限位 (rad)
+constexpr double MAX_PITCH = 1.2;    // 最大pitch限位 (rad)
+constexpr double MAX_X = 12.0;       // 最大水平距离 (m)
 constexpr double MIN_X = 0.0;        // 最小水平距离 (m)
-constexpr double MAX_Y = 2;       // 最大高度 (m)
-constexpr double MIN_Y = -2;       // 最小高度 (m)
+constexpr double MAX_Y = 2.0;        // 最大高度 (m)
+constexpr double MIN_Y = -1.0;       // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;  // 精度 (m)
 constexpr double MAX_ERROR = 0.005;  // 允许误差 (m)
 constexpr int ERROR_LEVEL = 5;       // 误差等级
-constexpr double GUN = 0.07;         // 枪口到pitch轴电机的距离 (m)
+constexpr double GUN = 0.15;         // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.8;        // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)
@@ -317,12 +315,6 @@ int main(int argc, char* argv[])
   {
     prefix = argv[3];
   }
-
-  std::cerr << "========================================" << '\n';
-  std::cerr << "弹道查找表生成器" << '\n';
-  std::cerr << "用法: " << argv[0] << " [弹速] [弹丸类型:0=42mm,1=17mm] [输出前缀]"
-            << '\n';
-  std::cerr << "========================================" << '\n';
 
   build_table(v0, bullet_type, prefix);
   return 0;

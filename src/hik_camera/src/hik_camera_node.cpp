@@ -74,6 +74,13 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             // read_frame 内部已经负责在严重错误时切换状态并通知守护线程
             continue;
           }
+          cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+          image_msg_.height = image.rows;
+          image_msg_.width = image.cols;
+
+          // cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+          // image_msg_.height = image.rows;
+          // image_msg_.width = image.cols;
 
           cv::rotate(image, image, cv::ROTATE_180);
 
@@ -228,7 +235,7 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  unsigned int n_image_node_num = 3;
+  unsigned int n_image_node_num = 1;
   ret = MV_CC_SetImageNodeNum(handle_, n_image_node_num);
   if (MV_OK != ret)
   {
@@ -300,7 +307,7 @@ void HikCameraNode::CaptureInit()
   if (MV_OK != ret)
   {
     RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
-    return;
+    // return;
   }
 
   // 帧率

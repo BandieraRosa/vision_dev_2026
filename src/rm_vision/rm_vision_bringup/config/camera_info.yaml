@@ -1,5 +1,5 @@
-image_width: 1440
-image_height: 1080
+image_width: 1080
+image_height: 1440 
 camera_name: narrow_stereo
 # 英雄
 # camera_matrix:
@@ -45,6 +45,24 @@ camera_name: narrow_stereo
 #      1788.965686206621, 0.0, 714.8662140180892, 0.0, 0.0, 1788.5595476639628, 545.1467577120629, 0.0, 0.0, 0.0, 1.0, 0.0
 #     ]
 
+# 全向
+# camera_matrix:
+#   rows: 3
+#   cols: 3
+#   data: [1695.796500873946, 0.0, 626.3914863938751, 0.0, 1698.8344958320668, 509.0501423330679, 0.0, 0.0, 1.0]
+# distortion_model: plumb_bob
+# distortion_coefficients:
+#   rows: 5
+#   cols: 1
+#   data: [-0.10403812363325518, 0.3836963075448036, 0.0015943186926882307, 0.0004626798873778022, 0.0]
+# rectification_matrix:
+#   rows: 3
+#   cols: 3
+#   data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+# projection_matrix:
+#   rows: 3
+#   cols: 4
+#   data: [1691.9270212178028, 0.0, 627.0627124435013, 0.0, 0.0, 1694.5613907449724, 510.20026942020314, 0.0, 0.0, 0.0, 1.0, 0.0]
 # 无人机
 camera_matrix:
   rows: 3

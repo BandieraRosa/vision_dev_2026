@@ -65,7 +65,7 @@ void SolveTrajectory::PredictAllArmorPosition(
     pre_z_center_ = msg->position.z;
     pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
 
-    float sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
+    float sign = msg->v_yaw < 0 ? 1.0f : -1.0f;
 
     for (int i = 0; i < msg->armors_num; i++)
     {
@@ -85,6 +85,10 @@ void SolveTrajectory::PredictAllArmorPosition(
     pre_y_center_ = msg->position.y;
     pre_z_center_ = msg->position.z;
     pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
+    if (time_delay > 0.64)
+    {
+      RCLCPP_WARN(logger_, "Time delay: %.2f", time_delay);
+    }
 
     float radius = msg->radius_1;
     for (int i = 0; i < msg->armors_num; i++)
@@ -95,7 +99,7 @@ void SolveTrajectory::PredictAllArmorPosition(
       pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
 
       int id = (i + Tracker::outpost_idx) % msg->armors_num;
-      pre_position_[i].z = msg->position.z + Tracker::outpost_dz * (id - 1);
+      pre_position_[i].z = pre_z_center_ + Tracker::outpost_dz * (id - 1);
 
       pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
     }
@@ -200,9 +204,6 @@ float fast_atan(float x, float y)
 // 判断是否满足开火条件,保守打击，只打真正在跟踪的装甲板
 bool SolveTrajectory::CanFire(const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  if (msg->armors_num == 3)
-  {
-  }
   if (is_turn_)
   {
     return false;
@@ -233,7 +234,7 @@ void SolveTrajectory::GlobalSelectArmor(
       selected_idx = i;
     }
   }
-  RCLCPP_ERROR(logger_, "GGGGGG");
+  RCLCPP_ERROR(logger_, "Global Select idx: %d", selected_idx);
   selected_idx_ = selected_idx;
 }
 
@@ -248,7 +249,22 @@ void SolveTrajectory::LocalSelectArmor()
                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw) &&
              s_1 <= s_0;
   selected_idx_ = is_turn_ ? 1 : 0;
-  RCLCPP_ERROR(logger_, "selected_idx_: %d", selected_idx_);
+}
+
+void SolveTrajectory::PreSelectArmor(
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+{
+  float pre_time = bias_time_ * 2 + fly_time_;
+  PredictAllArmorPosition(msg, pre_time);
+  LocalSelectArmor();
+  if (selected_idx_ == 1)
+  {
+    pre_turn_ = true;
+  }
+  else
+  {
+    pre_turn_ = false;
+  }
 }
 
 void SolveTrajectory::AutoSelectArmor(
@@ -261,9 +277,24 @@ void SolveTrajectory::AutoSelectArmor(
   {
     GlobalSelectArmor(msg);
   }
-  else
+  if (selected_idx_ == 1)
+  {
+    if (!is_turn_)
+    {
+      start_turn_ = std::chrono::high_resolution_clock::now();
+    }
+    is_turn_ = true;
+  }
+
+  if (end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      last_end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      start_turn_ != std::chrono::high_resolution_clock::time_point::min())
   {
     LocalSelectArmor();
+    if (selected_idx_ == 0)
+    {
+      // PreSelectArmor(msg);
+    }
   }
 }
 
@@ -311,21 +342,9 @@ void SolveTrajectory::UpdateSolveState(
     int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   idx = selected_idx_;
-  if (fire_logic_mode_ == FireLogicMode::SPIN)
-  {
-    aim_x = pre_position_[0].x;
-    aim_y = pre_position_[0].y;
-    aim_z = pre_position_[0].z;
-    pitch = SolvePitch(aim_x, aim_y, aim_z);
-    yaw = SolveYaw(pre_x_center_, pre_y_center_);
-    is_fire = fabs(SolveYaw(aim_x, aim_y) - yaw) < 0.01f;
-    if (is_fire)
-    {
-      yaw = SolveYaw(aim_x, aim_y);
-    }
-  }
-  // 理论上不会有selected_idx == LOST
-  else if (selected_idx_ == LOST)
+
+  // 理论上没有LOST
+  if (selected_idx_ == LOST)
   {
     aim_x = pre_position_[0].x;
     aim_y = pre_position_[0].y;
@@ -334,7 +353,30 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(aim_x, aim_y);
     is_fire = CanFire(msg);
   }
-  else
+
+  // 英雄打击前哨站和步兵打击高速旋转
+  else if (fire_logic_mode_ == FireLogicMode::SPIN)
+  {
+    aim_x = pre_position_[selected_idx_].x;
+    aim_y = pre_position_[selected_idx_].y;
+    aim_z = pre_position_[selected_idx_].z;
+    // aim_x = pre_position_[0].x;
+    // aim_y = pre_position_[0].y;
+    // aim_z = pre_position_[0].z;
+    pitch = SolvePitch(aim_x, aim_y, aim_z);
+    yaw = SolveYaw(pre_x_center_, pre_y_center_);
+
+    float aim_yaw = SolveYaw(aim_x, aim_y);
+    is_fire = fabs(aim_yaw - yaw) < 0.02f&& is_turn_;
+    // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
+    //              fabs(aim_yaw - yaw));
+    if (is_fire)
+    {
+      yaw = aim_yaw;
+    }
+  }
+
+  else  // COMMON模式
   {
     aim_x = pre_position_[selected_idx_].x;
     aim_y = pre_position_[selected_idx_].y;
@@ -365,8 +407,8 @@ void SolveTrajectory::AutoSolveTrajectory(
     return;
   }
 
-  AutoSelectArmor(msg);
   fire_logic_mode_ = FireLogicMode::SPIN;
+  AutoSelectArmor(msg);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
   // UpdateFireLogicMode();
   
