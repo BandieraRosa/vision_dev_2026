@@ -58,89 +58,45 @@ void SolveTrajectory::ReBuild()
 void SolveTrajectory::PredictAllArmorPosition(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg, float time_delay)
 {
-  pre_x_center_ = msg->position.x + msg->velocity.x * time_delay;
-  pre_y_center_ = msg->position.y + msg->velocity.y * time_delay;
-  pre_z_center_ = msg->position.z;
-  pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
-
-  if (msg->v_yaw > 0)
+  if (msg->armors_num == 4)
   {
+    pre_x_center_ = msg->position.x + msg->velocity.x * time_delay;
+    pre_y_center_ = msg->position.y + msg->velocity.y * time_delay;
+    pre_z_center_ = msg->position.z;
+    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
+
+    float sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
+
     for (int i = 0; i < msg->armors_num; i++)
     {
       float radius = i % 2 ? msg->radius_2 : msg->radius_1;
-      // float radius = msg->radius_1;
 
-      float tmp_yaw = pre_yaw_ - i * 2.0f * M_PI / msg->armors_num;
-
-      pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
-      pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-      if (msg->armors_num == 4)
-      {
-        pre_position_[i].z = msg->position.z;
-      }
-      else if (msg->armors_num == 3)
-      {
-        if (Tracker::outpost_idx == 0)
-        {
-          if (i == 0)
-          {
-            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            pre_position_[i].z = msg->position.z;
-          }
-          else
-          {
-            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
-          }
-        }
-        else if (Tracker::outpost_idx == 1)
-        {
-          if (i == 0)
-          {
-            pre_position_[i].z = msg->position.z;
-          }
-          else if (i == 1)
-          {
-            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
-          }
-          else
-          {
-            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
-          }
-        }
-        else if (Tracker::outpost_idx == 2)
-        {
-          if (i == 0)
-          {
-            pre_position_[i].z = msg->position.z + Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            pre_position_[i].z = msg->position.z - Tracker::outpost_dz;
-          }
-          else
-          {
-            pre_position_[i].z = msg->position.z;
-          }
-        }
-      }
-      pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
-    }
-  }
-  else
-  {
-    for (int i = 0; i < msg->armors_num; i++)
-    {
-      float radius = i % 2 ? msg->radius_2 : msg->radius_1;
-      // float radius = msg->radius_1;
-
-      float tmp_yaw = pre_yaw_ + i * 2.0f * M_PI / msg->armors_num;
+      float tmp_yaw = pre_yaw_ + sign * i * 2.0f * M_PI / msg->armors_num;
 
       pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
       pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
       pre_position_[i].z = msg->position.z;
+      pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+    }
+  }
+  else  // 3个装甲板,是前哨站
+  {
+    pre_x_center_ = msg->position.x;
+    pre_y_center_ = msg->position.y;
+    pre_z_center_ = msg->position.z;
+    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
+
+    float radius = msg->radius_1;
+    for (int i = 0; i < msg->armors_num; i++)
+    {
+      float tmp_yaw = pre_yaw_ - i * 2.0f * M_PI / msg->armors_num;
+
+      pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
+      pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
+
+      int id = (i + Tracker::outpost_idx) % msg->armors_num;
+      pre_position_[i].z = msg->position.z + Tracker::outpost_dz * (id - 1);
+
       pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
     }
   }
@@ -244,6 +200,9 @@ float fast_atan(float x, float y)
 // 判断是否满足开火条件,保守打击，只打真正在跟踪的装甲板
 bool SolveTrajectory::CanFire(const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
+  if (msg->armors_num == 3)
+  {
+  }
   if (is_turn_)
   {
     return false;
@@ -289,6 +248,7 @@ void SolveTrajectory::LocalSelectArmor()
                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw) &&
              s_1 <= s_0;
   selected_idx_ = is_turn_ ? 1 : 0;
+  RCLCPP_ERROR(logger_, "selected_idx_: %d", selected_idx_);
 }
 
 void SolveTrajectory::AutoSelectArmor(
@@ -326,16 +286,21 @@ void SolveTrajectory::UpdateFireLogicMode()
     is_turn_ = true;
   }
 
-  auto turn_duration = end_turn_ - start_turn_;
-  auto one_step_duration = end_turn_ - last_end_turn_;
+  if (end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      last_end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
+      start_turn_ != std::chrono::high_resolution_clock::time_point::min())
+  {
+    auto turn_duration = end_turn_ - start_turn_;
+    auto one_step_duration = end_turn_ - last_end_turn_;
 
-  if (turn_duration / one_step_duration < 0.99)
-  {
-    fire_logic_mode_ = FireLogicMode::COMMON;
-  }
-  else
-  {
-    fire_logic_mode_ = FireLogicMode::SPIN;
+    if (turn_duration / one_step_duration < 0.99)
+    {
+      fire_logic_mode_ = FireLogicMode::COMMON;
+    }
+    else
+    {
+      fire_logic_mode_ = FireLogicMode::SPIN;
+    }
   }
 
   last_end_turn_ = end_turn_;
@@ -401,6 +366,7 @@ void SolveTrajectory::AutoSolveTrajectory(
   }
 
   AutoSelectArmor(msg);
+  fire_logic_mode_ = FireLogicMode::SPIN;
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
   // UpdateFireLogicMode();
   
