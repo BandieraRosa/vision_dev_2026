@@ -212,13 +212,18 @@ int main(int argc, char** argv)
     double pitch = atof(argv[1]);
     SolveTrajectory solve = SolveTrajectory(BULLET_V, 0, {}, {});
     ans = solve.SolveHeightAndLength(pitch);
+
+    std::cout << "Max Height: " << ans[0] << " Max Length: " << ans[1] << '\n';
   }
-  if (argc == 3)
+  else if (argc == 3)
   {
     double distance = atof(argv[1]);
     double height = atof(argv[2]);
     SolveTrajectory solve = SolveTrajectory(BULLET_V, 0, distance, height);
     ans = solve.SolvePitchLevel(ERROR_LEVEL);
+
+    std::cout << "Pitch: " << ans[0] << " Time: " << ans[1] << " Velocity: " << ans[2]
+              << '\n';
   }
   else
   {
@@ -226,14 +231,6 @@ int main(int argc, char** argv)
               << "       trajectory_test <distance>(m) <height>(m)\n";
     return 0;
   }
-  if (ans.size() == 2)
-  {
-    std::cout << "Max Height: " << ans[0] << " Max Length: " << ans[1] << '\n';
-  }
-  if (ans.size() == 3)
-  {
-    std::cout << "Pitch: " << ans[0] << " Time: " << ans[1] << " Velocity: " << ans[2]
-              << '\n';
-  }
+
   return 0;
 }

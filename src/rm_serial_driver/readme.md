@@ -93,3 +93,58 @@
 ### 文件位置提示
 - 主要实现： src/ros2libxr.cpp  
 - 接口与话题定义： include/rm_serial_driver/ros2libxr.hpp
+
+## 测试
+
+本包含 GoogleTest 测试用例，位于 test/ 目录下。
+
+### 运行测试
+
+用 colcon test 统一运行：
+```bash
+colcon test --packages-select rm_serial_driver
+```
+
+也可以直接运行生成的测试可执行文件（如）：
+```bash
+./build/rm_serial_driver/test_gimbal_controll
+```
+
+### 传递自定义参数
+
+测试支持自定义参数，如：
+```bash
+./build/rm_serial_driver/test_gimbal_controll --pitch_min=-0.2 --pitch_max=0.2 --pitch_steps=5 --yaw_min=-0.3 --yaw_max=0.3 --yaw_steps=5 --max_switches=10
+```
+
+测试结果会在终端输出，断言失败会有详细信息。
+
+### 测试参数说明
+
+可用参数及含义如下：
+
+| 参数名                  | 说明                   | 默认值   |
+|-------------------------|------------------------|---------|
+| --pitch_min             | pitch最小值(rad)       | -0.3    |
+| --pitch_max             | pitch最大值(rad)       | 0.3     |
+| --pitch_steps           | pitch步数              | 10      |
+| --yaw_min               | yaw最小值(rad)         | -0.5    |
+| --yaw_max               | yaw最大值(rad)         | 0.5     |
+| --yaw_steps             | yaw步数                | 10      |
+| --switch_period         | 每多少周期切换目标     | 250     |
+| --max_switches          | 最大切换次数           | 20      |
+| --pitch_tolerance       | pitch误差容忍(rad)     | 0.03    |
+| --yaw_tolerance         | yaw误差容忍(rad)       | 0.03    |
+| --control_period_ms     | 控制周期(ms)           | 2       |
+| --pose_wait_timeout_ms  | 等待初始姿态超时(ms)   | 5000    |
+| --pitch_mode            | pitch模式(见下表)      | pingpong|
+| --yaw_mode              | yaw模式(见下表)        | pingpong|
+
+pitch_mode/yaw_mode 可选值：
+
+| 值         | 说明         |
+|------------|--------------|
+| up         | 顺序         |
+| down       | 逆序         |
+| pingpong   | 往返         |
+| fixed      | 固定         |
