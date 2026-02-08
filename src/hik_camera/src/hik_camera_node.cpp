@@ -1,6 +1,5 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
-
 using namespace std::chrono_literals;
 
 namespace HikCamera
@@ -75,6 +74,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             // read_frame 内部已经负责在严重错误时切换状态并通知守护线程
             continue;
           }
+
+          cv::rotate(image, image, cv::ROTATE_180);
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;

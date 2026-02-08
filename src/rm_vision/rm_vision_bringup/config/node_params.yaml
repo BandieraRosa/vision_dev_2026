@@ -11,9 +11,22 @@
 # 串口节点
 /serial_driver:
   ros__parameters:
-    timestamp_offset: 0.0045 #时间戳偏移量
+    timestamp_offset: 0.008 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
+
+    test:
+      pitch:
+        # mode: "PINGPONG" # 测试模式: UP, DOWN, PINGPONG, FIXED
+        min: -0.3 # 最小角度 (弧度)
+        max: 0.3 # 最大角度 (弧度)
+        steps: 4 # 步数
+      yaw:
+        # mode: "PINGPONG" # 测试模式: UP, DOWN, PINGPONG, FIXED
+        min: -0.5 # 最小角度 (弧度)
+        max: 0.5 # 最大角度 (弧度)
+        steps: 4 # 步数
+      switch_period: 500 # 切换周期（轮询次数）
 
 # 装甲板识别节点
 /armor_detector:
@@ -50,21 +63,21 @@
 
       # 弹道解算
       k: 0.0
-      bias_time: 0.08
+      bias_time: 0.15
       s_bias: 0.0
-      z_bias: 0.0
-      pitch_bias: 0.
+      z_bias: -0.03
+      pitch_bias: 0.0
       calculate_mode: true
 
       tracking_thres: 5
       lost_time_thres: 1.0
       table:
-        max_x: 10.0
+        max_x: 8.0
         min_x: 0.0
         max_y: 2.0
-        min_y: -1.0
+        min_y: -2.0
         resolution: 0.01
-        filename: "src/rm_auto_aim/armor_tracker/tools/hero_10_table.bin"
+        filename: "src/rm_auto_aim/armor_tracker/tools/infantry_8_table.bin"
 
 /hand_eye_calibrate_node:
   ros__parameters:

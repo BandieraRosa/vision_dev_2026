@@ -369,6 +369,7 @@ void SolveTrajectory::AutoSolveTrajectory(
   fire_logic_mode_ = FireLogicMode::SPIN;
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
   // UpdateFireLogicMode();
+  
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
