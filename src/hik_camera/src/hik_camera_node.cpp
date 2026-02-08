@@ -7,7 +7,6 @@ namespace HikCamera
 HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("hik_camera_node", options)
 {
-  // 声明参数（默认值可根据你的实际情况调整）
   params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);  // us
   params_.gain = this->declare_parameter<double>("gain", 16.0);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
@@ -16,10 +15,11 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
       this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
   params_.camera_name =
       this->declare_parameter<std::string>("camera_name", "narrow_stereo");
+  params_.rotate = this->declare_parameter<uint8_t>("rotate", 0);
 
   RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
-  // 创建 publisher，话题名保持与原代码一致
+  // 创建 publisher
   camera_pub_ = image_transport::create_camera_publisher(this, "image_raw",
                                                          rmw_qos_profile_sensor_data);
   RCLCPP_INFO(this->get_logger(), "Camera publisher created.");
@@ -74,15 +74,24 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             // read_frame 内部已经负责在严重错误时切换状态并通知守护线程
             continue;
           }
-          cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+
+          switch (params_.rotate)
+          {
+            case 1:
+              cv::rotate(image, image, cv::ROTATE_90_CLOCKWISE);
+              break;
+            case 2:
+              cv::rotate(image, image, cv::ROTATE_180);
+              break;
+            case 3:
+              cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+            default:
+              break;
+          }
           image_msg_.height = image.rows;
           image_msg_.width = image.cols;
-
-          // cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
-          // image_msg_.height = image.rows;
-          // image_msg_.width = image.cols;
-
-          cv::rotate(image, image, cv::ROTATE_180);
+          camera_info_msg_.height = image.rows;
+          camera_info_msg_.width = image.cols;
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
@@ -299,15 +308,21 @@ void HikCameraNode::CaptureInit()
   SetEnumValue("BalanceWhiteAuto", MV_BALANCEWHITE_AUTO_CONTINUOUS);
   SetEnumValue("ExposureAuto", MV_EXPOSURE_AUTO_MODE_OFF);
   SetEnumValue("GainAuto", MV_GAIN_MODE_OFF);
+  SetEnumValue("PixelFormat", PixelType_Gvsp_BayerRG8);
   SetFloatValue("ExposureTime", params_.exposure_time);
   SetFloatValue("Gain", params_.gain);
 
-  // 设置 ADC 位深为 8 Bits (对应枚举值 2)
-  ret = MV_CC_SetEnumValue(handle_, "ADCBitDepth", 2);
-  if (MV_OK != ret)
+  MVCC_ENUMVALUE* adc_bit_depth{};
+  ret = MV_CC_GetEnumValue(handle_, "ADCBitDepth", adc_bit_depth);
+  if (ret == MV_OK) // 部分相机不支持 ADC
   {
-    RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
-    // return;
+    // 设置 ADC 位深为 8 Bits (对应枚举值 2)
+    ret = MV_CC_SetEnumValue(handle_, "ADCBitDepth", 2);
+    if (MV_OK != ret)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
+      return;
+    }
   }
 
   // 帧率

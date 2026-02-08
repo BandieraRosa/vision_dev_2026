@@ -16,7 +16,6 @@ class HikCameraNode : public rclcpp::Node
   ~HikCameraNode() override;
 
  private:
-  // 与原代码一致的状态机
   enum class HikStateEnum : uint8_t
   {
     STOPPED,
@@ -31,6 +30,7 @@ class HikCameraNode : public rclcpp::Node
     double frame_rate;
     std::string frame_id;
     std::string camera_name;
+    uint8_t rotate = 0;
   };
 
   struct Protect
