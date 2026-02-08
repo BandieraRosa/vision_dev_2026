@@ -1,7 +1,9 @@
 #ifndef RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
 #define RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
 
+#ifndef PUBLISH_TEST
 #define PUBLISH_TEST 0
+#endif  // PUBLISH_TEST
 // ROS2
 #include <tf2/LinearMath/Matrix3x3.h>
 
