@@ -13,6 +13,8 @@
 namespace rm_auto_aim
 {
 
+using VoidBoolFunc = std::function<void(bool)>;
+
 // 装甲板数量 正常的4块 前哨站三块
 enum class ArmorsNum : uint8_t
 {
@@ -51,6 +53,8 @@ class Tracker  // 整车观测
   ArmorsNum tracked_armors_num;  // 被跟踪装甲版数
   Armor last_tracked_armor{};    // 上一次被跟踪的装甲板
   bool first_tracked = true;
+  bool is_outpost = false;
+  VoidBoolFunc switch_q_;
 
   double info_position_diff;
   double info_yaw_diff;
@@ -79,6 +83,8 @@ class Tracker  // 整车观测
   double orientationToYaw(const geometry_msgs::msg::Quaternion& q);
 
   Eigen::Vector3d getArmorPositionFromState(const Eigen::VectorXd& x);
+
+  void SwitchEkfParams();
 
   double max_match_distance_;
   double max_match_yaw_diff_;

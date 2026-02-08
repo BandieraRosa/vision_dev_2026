@@ -50,7 +50,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-  bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
+  bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
   if (!armors_msg->armors.empty())
@@ -59,8 +59,8 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     predicted_position =
         getArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -195,10 +195,15 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
   }
 }
 
+// 切换EKF参数
+void Tracker::SwitchEkfParams() { switch_q_(is_outpost); }
+
 // 初始化ekf
 void Tracker::initEKF(const Armor& a)
 {
   first_tracked = true;
+  is_outpost = (a.number == "outpost");
+  SwitchEkfParams();
   double xa = a.pose.position.x;
   double ya = a.pose.position.y;
   double za = a.pose.position.z;
@@ -207,11 +212,7 @@ void Tracker::initEKF(const Armor& a)
 
   // 设置初始位置在目标后面0.2米
   target_state = Eigen::VectorXd::Zero(9);
-  double r = 0.26;
-  if (a.number == "outpost")
-  {
-    r = outpost_r;
-  }
+  double r = is_outpost ? outpost_r : 0.26;
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
