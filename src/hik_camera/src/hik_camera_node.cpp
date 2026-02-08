@@ -82,6 +82,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           // image_msg_.height = image.rows;
           // image_msg_.width = image.cols;
 
+          cv::rotate(image, image, cv::ROTATE_180);
+
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
           image_msg_.header.frame_id = params_.frame_id;

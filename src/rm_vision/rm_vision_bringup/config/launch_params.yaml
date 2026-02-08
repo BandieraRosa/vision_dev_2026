@@ -3,10 +3,10 @@ odom2camera:
   # 腿：
   # xyz: '"0.135 0.00 0.030"'
   # rpy: '"0.05 0.0 0.025"'
-  
+
   # 英雄
-  xyz: '"0.163 0.0 -0.0635"'
-  rpy: '"0.0 0.0 0.0"'
+#   xyz: '"0.163 0.0 -0.0635"'
+#   rpy: '"0.0 0.0 0.0"'
 
   # 哨兵
   # xyz: '"0.1644 0 0.0379"'
@@ -15,8 +15,12 @@ odom2camera:
   # # 全向
   # xyz: '"0.12 -0.05 0.15"'
   # rpy: '"0 0.02 0.013"'
+  
+  # 无人机
+  xyz: '"0.16934 0.0 -0.05231"'
+  rpy: '"0.0 0.0236 0.0"'
 
 detector_log_level: INFO
-tracker_log_level: INFO
+tracker_log_level: WARN
 serial_log_level: INFO
 simulator_log_level: INFO

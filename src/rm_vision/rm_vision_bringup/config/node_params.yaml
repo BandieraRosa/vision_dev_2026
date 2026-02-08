@@ -1,9 +1,3 @@
-# /camera_node:
-#   ros__parameters:
-#     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
-#     exposure_time: 500
-#     gain: 16.0
-
 /camera_node:
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
@@ -19,6 +13,19 @@
     timestamp_offset: 0.005 #时间戳偏移量
     vid: "16d0"
     pid: "1492"
+
+    test:
+      pitch:
+        # mode: "PINGPONG" # 测试模式: UP, DOWN, PINGPONG, FIXED
+        min: -0.3 # 最小角度 (弧度)
+        max: 0.3 # 最大角度 (弧度)
+        steps: 4 # 步数
+      yaw:
+        # mode: "PINGPONG" # 测试模式: UP, DOWN, PINGPONG, FIXED
+        min: -0.5 # 最小角度 (弧度)
+        max: 0.5 # 最大角度 (弧度)
+        steps: 4 # 步数
+      switch_period: 500 # 切换周期（轮询次数）
 
 # 装甲板识别节点
 /armor_detector:
@@ -72,7 +79,7 @@
         max_x: 12.0
         min_x: 0.0
         max_y: 2.0
-        min_y: -1.0
+        min_y: -2.0
         resolution: 0.01
         filename: "src/rm_auto_aim/armor_tracker/tools/hero_12_table.bin"
 

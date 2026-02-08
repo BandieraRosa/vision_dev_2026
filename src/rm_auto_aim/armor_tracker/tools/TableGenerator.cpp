@@ -22,6 +22,8 @@ constexpr double GUN = 0.15;         // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.8;        // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)
+static double v0 = 20;            // 默认弹速
+static bool bullet_type = 1;     // 默认42mm (英雄)
 
 // 弹丸状态
 struct State
@@ -298,8 +300,6 @@ static void build_table(double v0, bool bullet_type, const std::string& output_p
 
 int main(int argc, char* argv[])
 {
-  double v0 = 12;        // 默认弹速
-  bool bullet_type = 0;  // 默认42mm (英雄)
   std::string prefix = bullet_type ? "infantry" : "hero";
 
   if (argc >= 2)
