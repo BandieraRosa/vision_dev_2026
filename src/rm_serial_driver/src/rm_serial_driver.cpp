@@ -54,9 +54,14 @@ void TestMotorController::Start()
 
 void TestMotorController::Stop()
 {
+  // 通知测试线程退出其循环
   running_ = false;
-  // 线程清理（如果 LibXR::Thread 支持停止机制）
-  thread_->Yield();
+
+  // 等待测试线程实际退出，防止在对象析构后继续访问 driver_/controller
+  if (thread_)
+  {
+    thread_->Join();
+  }
 }
 
 std::vector<float> TestMotorController::GenerateSequence(std::pair<float, float> limit,
