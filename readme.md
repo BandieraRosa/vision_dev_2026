@@ -1,13 +1,36 @@
 # before all
 
-工作流程：
+获取源码：
+```bash
+git clone https://github.com/QDU-VRobot/vision_dev.git --recursive
+```
+
+第一次 `clone` 本仓库，则需配置 `hook`：
+```bash
+git config core.hooksPath .githooks
+```
+
+获取配置文件，请在 `src/rm_vision/rm_vision_bringup/config/` 目录下执行以下命令：
+```bash
+git switch <robot_type>
+```
+
+要使用 `launch` 脚本，方法如下：
+```bash
+ros2 launch rm_vision_bringup vision_bringup.launch.py robot:=<robot_type>
+```
+
+#### 基本的工作流程：
 
 `master` 为稳定分支，`dev` 为开发中分支。
 
-将dev分支fork下来，进行自己负责的模块的开发/改动。改动完成后首先将上游仓库的新commit都pull下来，如果有冲突则解决冲突，随后向上游仓库提交pr，随后进行review/update，确认没有问题后进行merge。master会在dev阶段性测试无误后被merge。
+将dev分支fork下来，进行自己负责的模块的开发/改动。
 
+改动完成后首先将上游仓库的新commit都pull下来，如果有冲突则解决冲突，随后向上游仓库提交pr。
 
+提交pr后进行review，此时也可在pr界面指定你期望的成员作为reviewer，会发邮件进行提醒。
 
+确认没有问题后进行merge。master会在dev阶段性测试无误后merge。
 
 # 简介
 
@@ -85,10 +108,10 @@ mkdir -p ~/AUTO_AIM
   在 `AUTO_AIM` 目录下
 
 ```Shell
-git clone https://github.com/QDU-VRobot/RM26_vision_development.git
-cd RM26_vision_development
-git switch auto_aming_system_dev # 开发分支
-git switch auto_aming_system # 稳定分支
+git clone https://github.com/QDU-VRobot/vision_dev.git --recursive
+cd vision_dev
+git switch dev # 开发分支
+git switch master # 稳定分支
 ```
 
 ```Shell
@@ -103,12 +126,6 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ```Shell
 colcon build --symlink-install
-```
-
-若使用clangd，则：
-
-```Shell
-colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
 ### 运行节点

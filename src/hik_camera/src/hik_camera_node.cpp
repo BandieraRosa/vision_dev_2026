@@ -312,10 +312,11 @@ void HikCameraNode::CaptureInit()
   SetFloatValue("ExposureTime", params_.exposure_time);
   SetFloatValue("Gain", params_.gain);
 
-  MVCC_ENUMVALUE* adc_bit_depth{};
-  ret = MV_CC_GetEnumValue(handle_, "ADCBitDepth", adc_bit_depth);
-  if (ret == MV_OK) // 部分相机不支持 ADC
+  MVCC_ENUMVALUE adc_bit_depth{};
+  ret = MV_CC_GetEnumValue(handle_, "ADCBitDepth", &adc_bit_depth);
+  if (ret == MV_OK)
   {
+    RCLCPP_INFO(this->get_logger(), "Current ADCBitDepth: %u", adc_bit_depth.nCurValue);
     // 设置 ADC 位深为 8 Bits (对应枚举值 2)
     ret = MV_CC_SetEnumValue(handle_, "ADCBitDepth", 2);
     if (MV_OK != ret)
@@ -323,6 +324,10 @@ void HikCameraNode::CaptureInit()
       RCLCPP_ERROR(this->get_logger(), "Set ADC Bit Depth to 8 Bits fail! 0x%X", ret);
       return;
     }
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "Get ADCBitDepth failed: 0x%X, skip", ret);
   }
 
   // 帧率

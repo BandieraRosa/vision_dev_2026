@@ -88,7 +88,9 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     info_yaw_diff = yaw_diff;
 
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
-    if (min_position_diff < max_match_distance_ && yaw_diff <= max_match_yaw_diff_)
+    if (min_position_diff < max_match_distance_ &&
+        yaw_diff <= (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                       : max_match_yaw_diff_ + 0.7))
     {  // 最近装甲板距离与yaw差值比阈值小
       // 找到匹配的装甲板
       matched = true;  // 注意之前的 matched = false
@@ -110,7 +112,9 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
           rclcpp::get_logger("armor_tracker"),
           "EKF update");  // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
     }
-    else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_)
+    else if (same_id_armors_count == 1 &&
+             (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                : max_match_yaw_diff_ + 0.6))
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
