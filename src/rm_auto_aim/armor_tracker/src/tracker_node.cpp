@@ -94,7 +94,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return z;
   };
   // J_h - Jacobian of observation function
-  auto j_h = [](const Eigen::VectorXd & x) {  //状体量到观测量的一个转换矩阵，将整车c的状态转换为装甲板a的状态，用预测之后的c推出预测之后的a
+  // 状态量到观测量的一个转换矩阵，将整车c的状态转换为装甲板a的状态，用预测之后的c推出预测之后的a
+  auto j_h = [](const Eigen::VectorXd& x)
+  {
     Eigen::MatrixXd h(4, 9);
     double yaw = x(6), r = x(8);
     // clang-format off
@@ -107,15 +109,21 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return h;
   };
   // update_Q - process noise covariance matrix 过程噪声协方差矩阵
-  s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 20.0);
-  s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 100.0);
-  s2qr_ = declare_parameter("ekf.sigma2_q_r", 800.0);
+  s2qxyz_armor_ = declare_parameter("ekf.sigma2_q_xyz", 20.0);
+  s2qyaw_armor_ = declare_parameter("ekf.sigma2_q_yaw", 100.0);
+  s2qr_armor_ = declare_parameter("ekf.sigma2_q_r", 800.0);
+  s2qxyz_outpost_ = declare_parameter("ekf.sigma2_q_xyz_outpost", 0.005);
+  s2qyaw_outpost_ = declare_parameter("ekf.sigma2_q_yaw_outpost", 2.0);
+  s2qr_outpost_ = declare_parameter("ekf.sigma2_q_r_outpost", 0.0);
+  s2qxyz_ = s2qxyz_armor_;
+  s2qyaw_ = s2qyaw_armor_;
+  s2qr_ = s2qr_armor_;
   auto u_q = [this]()
   {
     Eigen::MatrixXd q(9, 9);
     double t = dt_, x = s2qxyz_, y = s2qyaw_, r = s2qr_;
     double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
-    double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * x, q_vy_vy = pow(t, 2) * y;
+    double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y, q_vy_vy = pow(t, 2) * y;
     double q_r = pow(t, 4) / 4 * r;
     // clang-format off
     //    xc      v_xc    yc      v_yc    za      v_za    yaw     v_yaw   r
@@ -144,8 +152,17 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // P - error estimate covariance matrix
   Eigen::DiagonalMatrix<double, 9> p0;
   p0.setIdentity();
-  tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
 
+  // outpost的EKF参数与普通装甲不同，专门设置一套参数
+  auto switch_q = [this](bool flag)
+  {
+    s2qxyz_ = flag ? s2qxyz_outpost_ : s2qxyz_armor_;
+    s2qyaw_ = flag ? s2qyaw_outpost_ : s2qyaw_armor_;
+    s2qr_ = flag ? s2qr_outpost_ : s2qr_armor_;
+  };
+
+  tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
+  tracker_->switch_q_ = switch_q;
   using std::placeholders::_1;
 
   // Subscriber with tf2 message_filter

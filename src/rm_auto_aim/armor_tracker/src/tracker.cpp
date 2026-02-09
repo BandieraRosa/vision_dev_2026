@@ -199,10 +199,15 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
   }
 }
 
+// 切换EKF参数
+void Tracker::SwitchEkfParams() { switch_q_(is_outpost); }
+
 // 初始化ekf
 void Tracker::initEKF(const Armor& a)
 {
   first_tracked = true;
+  is_outpost = (a.number == "outpost");
+  SwitchEkfParams();
   double xa = a.pose.position.x;
   double ya = a.pose.position.y;
   double za = a.pose.position.z;
@@ -211,11 +216,7 @@ void Tracker::initEKF(const Armor& a)
 
   // 设置初始位置在目标后面0.2米
   target_state = Eigen::VectorXd::Zero(9);
-  double r = 0.26;
-  if (a.number == "outpost")
-  {
-    r = outpost_r;
-  }
+  double r = is_outpost ? outpost_r : 0.26;
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
