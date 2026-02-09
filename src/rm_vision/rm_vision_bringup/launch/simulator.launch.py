@@ -1,8 +1,10 @@
 import os
 import sys
 from ament_index_python.packages import get_package_share_directory
-sys.path.append(os.path.join(
-    get_package_share_directory('rm_vision_bringup'), 'launch'))
+
+sys.path.append(
+    os.path.join(get_package_share_directory("rm_vision_bringup"), "launch")
+)
 
 
 def generate_launch_description():
@@ -13,23 +15,29 @@ def generate_launch_description():
     from launch import LaunchDescription
 
     detector_node = Node(
-        package='armor_detector',
-        executable='armor_detector_node',
+        package="armor_detector",
+        executable="armor_detector_node",
         emulate_tty=True,
-        output='both',
+        output="both",
         parameters=[node_params],
-        arguments=['--ros-args', '--log-level',
-                   'armor_detector:='+launch_params['detector_log_level']],
+        arguments=[
+            "--ros-args",
+            "--log-level",
+            "armor_detector:=" + launch_params["detector_log_level"],
+        ],
     )
 
     simulator_driver_node = Node(
-        package='rm_simulator_driver',
-        executable='rm_simulator_driver_node',
-        name='simulator_driver',
-        output='both',
+        package="rm_simulator_driver",
+        executable="rm_simulator_driver_node",
+        name="simulator_driver",
+        output="both",
         emulate_tty=True,
-        ros_arguments=['--ros-args', '--log-level',
-                       ['simulator_driver:=', launch_params['simulator_log_level']]],
+        ros_arguments=[
+            "--ros-args",
+            "--log-level",
+            ["simulator_driver:=", launch_params["simulator_log_level"]],
+        ],
     )
 
     delay_simulator_node = TimerAction(
@@ -42,8 +50,10 @@ def generate_launch_description():
         actions=[tracker_node],
     )
 
-    return LaunchDescription([
-        detector_node,
-        delay_simulator_node,
-        delay_tracker_node,
-    ])
+    return LaunchDescription(
+        [
+            detector_node,
+            delay_simulator_node,
+            delay_tracker_node,
+        ]
+    )

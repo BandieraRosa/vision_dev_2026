@@ -15,6 +15,11 @@ git config core.hooksPath .githooks
 git switch <robot_type>
 ```
 
+要使用 `launch` 脚本，方法如下：
+```bash
+ros2 launch rm_vision_bringup vision_bringup.launch.py robot:=<robot_type>
+```
+
 #### 基本的工作流程：
 
 `master` 为稳定分支，`dev` 为开发中分支。
