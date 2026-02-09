@@ -1,13 +1,18 @@
 # before all
 
 获取源码：
-```Shell
+```bash
 git clone https://github.com/QDU-VRobot/vision_dev.git --recursive
 ```
 
 第一次 `clone` 本仓库，则需配置 `hook`：
 ```bash
 git config core.hooksPath .githooks
+```
+
+获取配置文件，请在 `src/rm_vision/rm_vision_bringup/config/` 目录下执行以下命令：
+```bash
+git switch <robot_type>
 ```
 
 #### 基本的工作流程：
