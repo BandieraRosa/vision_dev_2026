@@ -50,7 +50,7 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-  bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
+  bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
   if (!armors_msg->armors.empty())
@@ -59,8 +59,8 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     predicted_position =
         getArmorPositionFromState(ekf_prediction);  // 计算,根据原装甲板得到预测装甲板位置
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值
-    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值
+    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
     for (const auto& armor : armors_msg->armors)
     {  // 遍历当前装甲板
@@ -88,7 +88,9 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
     info_yaw_diff = yaw_diff;
 
     // 检查最近装甲的距离和偏航角差是否在阈值范围内
-    if (min_position_diff < max_match_distance_ && yaw_diff <= max_match_yaw_diff_)
+    if (min_position_diff < max_match_distance_ &&
+        yaw_diff <= (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                       : max_match_yaw_diff_ + 0.7))
     {  // 最近装甲板距离与yaw差值比阈值小
       // 找到匹配的装甲板
       matched = true;  // 注意之前的 matched = false
@@ -110,7 +112,9 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
           rclcpp::get_logger("armor_tracker"),
           "EKF update");  // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
     }
-    else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_)
+    else if (same_id_armors_count == 1 &&
+             (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                : max_match_yaw_diff_ + 0.6))
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲

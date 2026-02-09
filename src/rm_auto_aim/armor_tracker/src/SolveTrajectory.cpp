@@ -50,7 +50,7 @@ void SolveTrajectory::ReBuild()
   selected_idx_ = SpecialArmor::LOST;
   last_x_v_ = 0.0f;
   last_y_v_ = 0.0f;
-  last_yaw_ = 0.0f;
+  last_v_yaw_ = 0.0f;
 }
 
 // 从图片时间到打到的时间：自瞄处理的时间+电控延迟(从视觉发信号到电机动和发弹延迟)+云台转动时间+飞行时间
@@ -219,7 +219,7 @@ bool SolveTrajectory::CanFire(const auto_aim_interfaces::msg::Target::SharedPtr&
 void SolveTrajectory::GlobalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  float max_aim_yaw = M_PI;
+  float min_aim_yaw = M_PI;
   int selected_idx;
   for (int i = 0; i < msg->armors_num; i++)
   {
@@ -228,9 +228,9 @@ void SolveTrajectory::GlobalSelectArmor(
     float turn_time = 0.05f * toyaw;
     PredictAllArmorPosition(msg, turn_time + bias_time_ + fly_time_);
     float aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
-    if (aim_yaw < max_aim_yaw)
+    if (aim_yaw < min_aim_yaw)
     {
-      max_aim_yaw = aim_yaw;
+      min_aim_yaw = aim_yaw;
       selected_idx = i;
     }
   }
@@ -293,7 +293,7 @@ void SolveTrajectory::AutoSelectArmor(
     LocalSelectArmor();
     if (selected_idx_ == 0)
     {
-      // PreSelectArmor(msg);
+      PreSelectArmor(msg);
     }
   }
 }
@@ -367,7 +367,7 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(pre_x_center_, pre_y_center_);
 
     float aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = fabs(aim_yaw - yaw) < 0.02f&& is_turn_;
+    is_fire = fabs(aim_yaw - yaw) < 0.02f && is_turn_;
     // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
     //              fabs(aim_yaw - yaw));
     if (is_fire)
@@ -411,7 +411,6 @@ void SolveTrajectory::AutoSolveTrajectory(
   AutoSelectArmor(msg);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
   // UpdateFireLogicMode();
-  
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
