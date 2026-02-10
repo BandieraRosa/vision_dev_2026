@@ -2,6 +2,7 @@
 #define ARMOR_PROCESSOR__KALMAN_FILTER_HPP_
 
 #include <Eigen/Dense>
+#include <deque>
 #include <functional>
 
 namespace rm_auto_aim
@@ -29,6 +30,8 @@ class ExtendedKalmanFilter
 
   // Update the estimated state based on measurement
   Eigen::MatrixXd update(const Eigen::VectorXd& z);
+
+  bool isHealthy();
 
  private:
   // Process nonlinear vector function
@@ -66,6 +69,8 @@ class ExtendedKalmanFilter
   Eigen::VectorXd x_pri;
   // Posteriori state
   Eigen::VectorXd x_post;
+
+  std::deque<double> nis_window_;
 };
 
 }  // namespace rm_auto_aim

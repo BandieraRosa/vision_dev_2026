@@ -1,5 +1,4 @@
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <vector>
 
@@ -81,36 +80,6 @@ class SolveTrajectory
     return new_state;
   }
 
-  // 单次目标弹道解算，实际解算从枪口计算，这里考虑枪管长度做补偿
-  std::vector<double> SolvePitch(double pitch, double error)
-  {
-    double t_b = GUN / v0_;
-    while (pitch < MAX_PITCH)
-    {
-      double count = 0;
-      double x_b = -GUN * std::cos(pitch);
-      double y_b = -GUN * std::sin(pitch);
-      double x_to_gun = target_x_ + x_b;
-      double y_to_gun = target_y_ + y_b;
-      State state(0, 0, v0_ * std::cos(pitch), v0_ * std::sin(pitch));
-      while (state.x < x_to_gun + error)
-      {
-        state = RK4Step(state, dt_);
-        count++;
-        if (pow(state.x - x_to_gun, 2) + pow(state.y - y_to_gun, 2) <= pow(error, 2))
-        // if (std::fabs(state.x - x_to_gun) <= error &&
-        //     std::fabs(state.y - y_to_gun) <= error)
-        {
-          // std::cout << pitch << std::endl;
-          return {pitch, count * STEP + t_b,
-                  std::sqrt(state.vx * state.vx + state.vy * state.vy)};
-        }
-      }
-      pitch += 0.01;
-    }
-    return {NAN, NAN, NAN};
-  }
-
   // 重载SolvePitch，当不提供pitch时默认使用二分法搜索
   std::vector<double> SolvePitch(double error)
   {
@@ -148,18 +117,11 @@ class SolveTrajectory
         }
         else if (state.y < MIN_Y - 1 && state.x < x_to_gun)
         {
-          // if (pitch_binary > 0.5) {
-          //   pitch_top = pitch_binary;
-          // } else {
-          //   pitch_low = pitch_binary;
-          // }
           pitch_low = pitch_binary;
           break;
         }
-        // std::cerr << pitch_top << "和" << pitch_low << std::endl;
       }
     }
-    // std::cerr << "nan" << std::endl;
     return {NAN, NAN, NAN};
   }
 

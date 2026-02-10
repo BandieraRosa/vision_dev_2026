@@ -108,13 +108,20 @@ void Tracker::update(const Armors::SharedPtr& armors_msg)
         measurement = Eigen::Vector4d(p.x, p.y, z_measured, measured_yaw);
       }
       target_state = ekf.update(measurement);
-      RCLCPP_DEBUG(
-          rclcpp::get_logger("armor_tracker"),
-          "EKF update");  // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
+      RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
+      // 更新ekf [DEBUG] [timestamp] [armor_tracker]: EKF update
+      if (!ekf.isHealthy())
+      {
+        RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "EKF unhealthy -> LOST");
+        tracker_state = LOST;
+        detect_count_ = 0;
+        lost_count_ = 0;
+        return;  // 直接退出，让下一帧init()
+      }
     }
     else if (same_id_armors_count == 1 &&
-             (tracked_armor.number != "outpost" ? max_match_yaw_diff_
-                                                : max_match_yaw_diff_ + 0.6))
+             yaw_diff <= (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                            : max_match_yaw_diff_ + 0.7))
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
@@ -317,7 +324,7 @@ double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion& q)
   // Get armor yaw
   tf2::Quaternion tf_q;
   tf2::fromMsg(q, tf_q);
-  double roll, pitch, yaw;
+  double roll = NAN, pitch = NAN, yaw = NAN;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
   // Make yaw change continuous (-pi~pi to -inf~inf)
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);

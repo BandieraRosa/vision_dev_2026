@@ -54,7 +54,28 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
   x_post = x_pri + K * (z - h(x_pri));
   P_post = (I - K * H) * P_pri;
 
+  Eigen::VectorXd innovation = z - h(x_pri);
+  Eigen::MatrixXd s = H * P_pri * H.transpose() + R;
+  double nis = innovation.transpose() * s.inverse() * innovation;
+  nis_window_.push_back(nis);
+  if (nis_window_.size() > 100)
+  {
+    nis_window_.pop_front();
+  }
+
   return x_post;
+}
+
+bool ExtendedKalmanFilter::isHealthy()
+{
+  if (nis_window_.size() < 20)
+  {
+    return true;
+  }
+  int fail =
+      static_cast<int>(std::count_if(nis_window_.begin(), nis_window_.end(), [](double v)
+                                     { return v > 0.711; }));  // chi2(4, 0.05)
+  return fail < static_cast<int>(static_cast<double>(nis_window_.size()) * 0.4);
 }
 
 }  // namespace rm_auto_aim
