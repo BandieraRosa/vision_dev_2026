@@ -2,3 +2,4 @@
 	path = src/rm_vision/rm_vision_bringup/config
 	url = https://github.com/QDU-VRobot/config.git
 	branch = main
+	ignore = all
