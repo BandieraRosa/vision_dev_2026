@@ -8,15 +8,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(libxr REQUIRED)
 
+ament_auto_find_build_dependencies()
 ament_auto_add_library(${PROJECT_NAME} SHARED DIRECTORY src)
+ament_target_dependencies(${PROJECT_NAME} libxr)
+
+target_include_directories(
+  ${PROJECT_NAME} PUBLIC $<INSTALL_INTERFACE:include>
+                         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
-
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
 rclcpp_components_register_node(${PROJECT_NAME} PLUGIN HandEyeCalibrateNode
                                 EXECUTABLE ${PROJECT_NAME}_node)
 
-ament_auto_package()
+ament_auto_package(INSTALL_TO_SHARE launch config)

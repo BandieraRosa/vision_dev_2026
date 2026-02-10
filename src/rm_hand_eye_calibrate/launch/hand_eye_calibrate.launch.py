@@ -1,20 +1,58 @@
 import os
 import sys
+
+import yaml
 from ament_index_python.packages import get_package_share_directory
 
 sys.path.append(
-    os.path.join(get_package_share_directory("rm_vision_bringup"), "launch")
+    os.path.join(get_package_share_directory("rm_hand_eye_calibrate"), "launch")
 )
 
 
 def generate_launch_description():
-    from common import node_params, launch_params, robot_state_publisher
-
     from launch_ros.actions import Node, ComposableNodeContainer
     from launch_ros.descriptions import ComposableNode
-    from launch_ros.actions import ComposableNodeContainer, Node
     from launch.actions import TimerAction, Shutdown
     from launch import LaunchDescription
+    from launch.substitutions import Command
+
+    node_params = os.path.join(
+        get_package_share_directory("rm_hand_eye_calibrate"),
+        "config",
+        "node_params.yaml",
+    )
+    launch_params = yaml.safe_load(
+        open(
+            os.path.join(
+                get_package_share_directory("rm_hand_eye_calibrate"),
+                "config",
+                "launch_params.yaml",
+            )
+        )
+    )
+
+    robot_description = Command(
+        [
+            "xacro ",
+            os.path.join(
+                get_package_share_directory("rm_gimbal_description"),
+                "urdf",
+                "rm_gimbal.urdf.xacro",
+            ),
+            " xyz:=",
+            launch_params["odom2camera"]["xyz"],
+            " rpy:=",
+            launch_params["odom2camera"]["rpy"],
+        ]
+    )
+
+    robot_state_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        parameters=[
+            {"robot_description": robot_description, "publish_frequency": 1000.0}
+        ],
+    )
 
     hik_camera_node = ComposableNode(
         package="hik_camera",
@@ -33,25 +71,6 @@ def generate_launch_description():
         output="both",
         emulate_tty=True,
         on_exit=Shutdown(),
-    )
-
-    serial_driver_node = Node(
-        package="rm_serial_driver",
-        executable="rm_serial_driver_node",
-        name="serial_driver",
-        output="both",
-        emulate_tty=True,
-        parameters=[node_params],
-        on_exit=Shutdown(),
-        ros_arguments=[
-            "--ros-args",
-            "--log-level",
-            "serial_driver:=" + launch_params["serial_log_level"],
-        ],
-    )
-    delay_serial_node = TimerAction(
-        period=1.5,
-        actions=[serial_driver_node],
     )
 
     hand_eye_node = Node(
@@ -73,7 +92,6 @@ def generate_launch_description():
         [
             robot_state_publisher,
             hik_camera_container,
-            delay_serial_node,
             delay_hand_eye_node,
         ]
     )
