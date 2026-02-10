@@ -9,15 +9,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/libxr)
+find_package(libxr REQUIRED)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED DIRECTORY src)
 
-target_include_directories(
-  ${PROJECT_NAME} PUBLIC $<INSTALL_INTERFACE:include>
-                         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-
-target_link_libraries(${PROJECT_NAME} xr)
+target_link_libraries(${PROJECT_NAME} libxr::xr)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
