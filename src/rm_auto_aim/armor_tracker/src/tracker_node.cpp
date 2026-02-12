@@ -44,6 +44,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
+  table_filename_normal_ = table_filename;
+  table_filename_lob_ =
+      this->declare_parameter("tracker.table.filename_lob", "");
   SolveTrajectory::CalculateMode calculate_mode{};
   if (use_table)
   {
@@ -248,6 +251,24 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   armor_marker_.color.r = 1.0;
   marker_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
+
+  camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/camera_switch_done", rclcpp::QoS(1).reliable(),
+      [this](const std_msgs::msg::Bool::SharedPtr msg)
+      {
+        lob_shot_flag_ = msg->data;
+        RCLCPP_INFO(this->get_logger(), "Camera switch done, lob_shot_flag: %d",
+                    lob_shot_flag_);
+        const auto& target_filename =
+            lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
+        if (!gaf_solver->ReloadTable(target_filename))
+        {
+          RCLCPP_WARN(this->get_logger(),
+                      "Failed to reload trajectory table: %s, "
+                      "solver will use fallback mode.",
+                      target_filename.c_str());
+        }
+      });
 }
 
 // void ArmorTrackerNode::velocityCallback(const

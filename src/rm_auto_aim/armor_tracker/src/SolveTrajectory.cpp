@@ -416,5 +416,29 @@ void SolveTrajectory::AutoSolveTrajectory(
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   RCLCPP_DEBUG(logger_, "Trajectory solve time: %ld us", duration.count());
 }
+
+bool SolveTrajectory::ReloadTable(const std::string& new_filename)
+{
+  if (new_filename.empty())
+  {
+    RCLCPP_WARN(logger_, "ReloadTable called with empty filename, skipping");
+    return false;
+  }
+
+  RCLCPP_INFO(logger_, "Reloading trajectory table: %s", new_filename.c_str());
+
+  if (!table_->ReloadTable(new_filename))
+  {
+    RCLCPP_ERROR(logger_, "Failed to reload table: %s, falling back to NORMAL mode",
+                 new_filename.c_str());
+    calculate_mode_ = CalculateMode::NORMAL;
+    return false;
+  }
+
+  calculate_mode_ = CalculateMode::TABLE_LOOKUP;
+  RCLCPP_INFO(logger_, "Trajectory table reloaded successfully");
+  return true;
+}
+
 }  // namespace rm_auto_aim
 // 没有LOST，预瞄考虑装甲板的位置变化，使用这一时刻与下一时刻的yaw变换计算
