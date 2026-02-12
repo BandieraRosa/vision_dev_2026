@@ -14,6 +14,7 @@
 // STL
 #include <algorithm>
 #include <memory>
+#include <std_msgs/msg/bool.hpp>
 #include <string>
 #include <vector>
 
@@ -85,8 +86,19 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         cam_center_ = cv::Point2f(static_cast<float>(camera_info->k[2]),
                                   static_cast<float>(camera_info->k[5]));
         cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-        pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
-        cam_info_sub_.reset();
+        if (!pnp_solver_)
+        {
+          pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
+        }
+      });
+
+  camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/camera_switch_done", rclcpp::QoS(1).reliable(),
+      [this](const std_msgs::msg::Bool::SharedPtr)
+      {
+        RCLCPP_INFO(this->get_logger(),
+                    "Camera switch detected, resetting PnP solver...");
+        pnp_solver_.reset();
       });
 
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
