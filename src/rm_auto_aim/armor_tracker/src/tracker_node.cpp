@@ -1,5 +1,7 @@
 #include "armor_tracker/tracker_node.hpp"
 
+#include <cmath>
+
 namespace rm_auto_aim
 {
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
@@ -142,6 +144,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
   r_xyz_factor = declare_parameter("ekf.r_xyz_factor", 0.05);
   r_yaw = declare_parameter("ekf.r_yaw", 0.02);
+  // todo: dynamic R
+  [[maybe_unused]] double center_yaw = std::atan2(
+      tracker_->tracked_armor.pose.position.y, tracker_->tracked_armor.pose.position.x);
+  // ;double delta_yaw = ;
   auto u_r = [this](const Eigen::VectorXd& z)
   {
     Eigen::DiagonalMatrix<double, 4> r;
@@ -153,7 +159,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   Eigen::DiagonalMatrix<double, 9> p0;
   p0.setIdentity();
 
-  // outpost的EKF参数与普通装甲不同，专门设置一套参数
+  // outpost的EKF参数
   auto switch_q = [this](bool flag)
   {
     s2qxyz_ = flag ? s2qxyz_outpost_ : s2qxyz_armor_;
