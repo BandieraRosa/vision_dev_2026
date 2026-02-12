@@ -16,6 +16,9 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.camera_name =
       this->declare_parameter<std::string>("camera_name", "narrow_stereo");
   params_.rotate = this->declare_parameter<uint8_t>("rotate", 0);
+  device_index_normal_ = params_.device_index =
+      this->declare_parameter<uint8_t>("device_index", 0);
+  device_index_lob_ = this->declare_parameter<uint8_t>("device_index_lob", 1);
 
   RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
@@ -37,20 +40,37 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   image_msg_.width = img_info_.nWidthMax;
   camera_info_manager_ =
       std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
-  auto camera_info_url = this->declare_parameter(
+  camera_info_url_normal_ = this->declare_parameter(
       "camera_info_url", "package://hik_camera/config/camera_info.yaml");
-  if (camera_info_manager_->validateURL(camera_info_url))
+  camera_info_url_lob_ = this->declare_parameter(
+      "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
+  if (camera_info_manager_->validateURL(camera_info_url_normal_))
   {
-    camera_info_manager_->loadCameraInfo(camera_info_url);
+    camera_info_manager_->loadCameraInfo(camera_info_url_normal_);
     camera_info_msg_ = camera_info_manager_->getCameraInfo();
   }
   else
   {
     RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s",
-                camera_info_url.c_str());
+                camera_info_url_normal_.c_str());
   }
 
   RCLCPP_INFO(this->get_logger(), "Guard thread created.");
+
+  camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+      "/camera_switch_done", rclcpp::QoS(1).reliable());
+
+  lob_shot_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/lob_shot_switch", rclcpp::QoS(1).reliable(),
+      [this](const std_msgs::msg::Bool::SharedPtr msg)
+      {
+        if (!msg->data)
+        {
+          return;
+        }
+        SwitchCamera(!is_lob_camera_);
+      });
+
   // 创建取流线程
   capture_thread_ = std::thread(
       [this]()
@@ -67,11 +87,9 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
 
           cv::Mat image;
           rclcpp::Time stamp;
-
           bool ok = Read(image, stamp);
           if (!ok || image.empty())
           {
-            // read_frame 内部已经负责在严重错误时切换状态并通知守护线程
             continue;
           }
 
@@ -92,6 +110,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           image_msg_.width = image.cols;
           camera_info_msg_.height = image.rows;
           camera_info_msg_.width = image.cols;
+          camera_info_msg_.header.stamp = stamp;
+          camera_info_msg_.header.frame_id = params_.frame_id;
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
@@ -137,8 +157,11 @@ HikCameraNode::~HikCameraNode()
 
 bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 {
-  if (hik_state_.load() == HikStateEnum::STOPPED)
+  in_read_.store(true, std::memory_order_seq_cst);
+
+  if (hik_state_.load(std::memory_order_seq_cst) == HikStateEnum::STOPPED)
   {
+    in_read_.store(false, std::memory_order_seq_cst);
     return false;
   }
 
@@ -153,6 +176,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   {
     RCLCPP_ERROR(this->get_logger(),
                  "MV_CC_GetImageBuffer failed: 0x%X, switching to Stopped.", ret);
+    in_read_.store(false, std::memory_order_seq_cst);
     hik_state_.store(HikStateEnum::STOPPED);
     guard_.is_quit.notify_all();
     return false;
@@ -162,15 +186,13 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start);
   if (duration_ns < std::chrono::nanoseconds(2'000'000))
   {
-    // RCLCPP_WARN(this->get_logger(), "Read frame too fast, dropped.");
     MV_CC_FreeImageBuffer(handle_, &raw);
+    in_read_.store(false, std::memory_order_seq_cst);
     return false;
   }
 
-  // 时间戳：这里用 ROS2 的 now()，语义上与原来的“采集时间”保持一致
   timestamp = this->now();
 
-  // 将原始 buffer 封装为 cv::Mat（8bit 单通道 Bayer）
   cv::Mat raw_img(cv::Size(raw.stFrameInfo.nWidth, raw.stFrameInfo.nHeight), CV_8U,
                   raw.pBufAddr);
 
@@ -187,6 +209,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   if (it == TYPE_MAP.end())
   {
     MV_CC_FreeImageBuffer(handle_, &raw);
+    in_read_.store(false, std::memory_order_seq_cst);
     hik_state_.store(HikStateEnum::STOPPED);
     guard_.is_quit.notify_all();
     return false;
@@ -197,6 +220,8 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   img = dst_image;
 
   ret = MV_CC_FreeImageBuffer(handle_, &raw);
+  in_read_.store(false, std::memory_order_seq_cst);
+
   if (ret != MV_OK)
   {
     RCLCPP_ERROR(this->get_logger(),
@@ -230,7 +255,14 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  ret = MV_CC_CreateHandle(&handle_, device_list.pDeviceInfo[0]);
+  if (params_.device_index >= device_list.nDeviceNum)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Device index %d out of range (found %d cameras)",
+                 params_.device_index, device_list.nDeviceNum);
+    return;
+  }
+
+  ret = MV_CC_CreateHandle(&handle_, device_list.pDeviceInfo[params_.device_index]);
   if (ret != MV_OK)
   {
     RCLCPP_ERROR(this->get_logger(), "MV_CC_CreateHandle failed: 0x%X", ret);
@@ -393,7 +425,8 @@ void HikCameraNode::ProtectRunning()
         lock,
         [this]
         {
-          return (this->hik_state_.load() == HikStateEnum::STOPPED) ||
+          return (this->hik_state_.load() == HikStateEnum::STOPPED &&
+                  !this->is_switching_.load()) ||
                  (!this->running_.load());
         });
 
@@ -410,6 +443,57 @@ void HikCameraNode::ProtectRunning()
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   RCLCPP_INFO(this->get_logger(), "Protect thread exit.");
+}
+
+void HikCameraNode::SwitchCamera(bool to_lob)
+{
+  is_switching_.store(true, std::memory_order_seq_cst);
+  RCLCPP_INFO(this->get_logger(), "Switching to %s camera...", to_lob ? "lob" : "normal");
+
+  hik_state_.store(HikStateEnum::STOPPED, std::memory_order_seq_cst);
+
+  // 自旋等待in_read_清零
+  while (in_read_.load(std::memory_order_seq_cst))
+  {
+    std::this_thread::yield();
+  }
+
+  CaptureStop();
+
+  params_.device_index = to_lob ? device_index_lob_ : device_index_normal_;
+
+  const auto& url = to_lob ? camera_info_url_lob_ : camera_info_url_normal_;
+  if (camera_info_manager_->validateURL(url))
+  {
+    camera_info_manager_->loadCameraInfo(url);
+    camera_info_msg_ = camera_info_manager_->getCameraInfo();
+    RCLCPP_INFO(this->get_logger(), "Loaded camera info: %s", url.c_str());
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(), "Invalid camera info URL for %s: %s",
+                to_lob ? "lob" : "normal", url.c_str());
+  }
+
+  CaptureInit();
+
+  if (hik_state_.load() == HikStateEnum::RUNNING)
+  {
+    is_lob_camera_ = to_lob;
+    std_msgs::msg::Bool done_msg;
+    done_msg.data = to_lob;
+    camera_switch_done_pub_->publish(done_msg);
+    RCLCPP_INFO(this->get_logger(), "Camera switched to %s successfully.",
+                to_lob ? "lob" : "normal");
+  }
+  else
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "CaptureInit failed after switching to %s camera, state not updated.",
+                 to_lob ? "lob" : "normal");
+  }
+
+  is_switching_.store(false, std::memory_order_seq_cst);
 }
 
 void HikCameraNode::SetFloatValue(const std::string& name, double value)
