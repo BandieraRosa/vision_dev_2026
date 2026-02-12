@@ -12,6 +12,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // Maximum allowable armor distance in the XOY plane
   max_armor_distance_ = this->declare_parameter("max_armor_distance", 10.0);
 
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  is_hero_ = (robot_type == "hero");
+
   // Tracker
   double max_match_distance = this->declare_parameter("tracker.max_match_distance", 0.15);
   double max_match_yaw_diff = this->declare_parameter("tracker.max_match_yaw_diff", 1.0);
@@ -45,8 +48,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
   table_filename_normal_ = table_filename;
-  table_filename_lob_ =
-      this->declare_parameter("tracker.table.filename_lob", "");
+  if (is_hero_)
+  {
+    table_filename_lob_ = this->declare_parameter("tracker.table.filename_lob", "");
+  }
   SolveTrajectory::CalculateMode calculate_mode{};
   if (use_table)
   {
@@ -252,23 +257,26 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   marker_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
 
-  camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-      "/camera_switch_done", rclcpp::QoS(1).reliable(),
-      [this](const std_msgs::msg::Bool::SharedPtr msg)
-      {
-        lob_shot_flag_ = msg->data;
-        RCLCPP_INFO(this->get_logger(), "Camera switch done, lob_shot_flag: %d",
-                    lob_shot_flag_);
-        const auto& target_filename =
-            lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
-        if (!gaf_solver->ReloadTable(target_filename))
+  if (is_hero_)
+  {
+    camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "/camera_switch_done", rclcpp::QoS(1).reliable(),
+        [this](const std_msgs::msg::Bool::SharedPtr msg)
         {
-          RCLCPP_WARN(this->get_logger(),
-                      "Failed to reload trajectory table: %s, "
-                      "solver will use fallback mode.",
-                      target_filename.c_str());
-        }
-      });
+          lob_shot_flag_ = msg->data;
+          RCLCPP_INFO(this->get_logger(), "Camera switch done, lob_shot_flag: %d",
+                      lob_shot_flag_);
+          const auto& target_filename =
+              lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
+          if (!gaf_solver->ReloadTable(target_filename))
+          {
+            RCLCPP_WARN(this->get_logger(),
+                        "Failed to reload trajectory table: %s, "
+                        "solver will use fallback mode.",
+                        target_filename.c_str());
+          }
+        });
+  }
 }
 
 // void ArmorTrackerNode::velocityCallback(const

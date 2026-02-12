@@ -92,14 +92,25 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         }
       });
 
-  camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-      "/camera_switch_done", rclcpp::QoS(1).reliable(),
-      [this](const std_msgs::msg::Bool::SharedPtr)
-      {
-        RCLCPP_INFO(this->get_logger(),
-                    "Camera switch detected, resetting PnP solver...");
-        pnp_solver_.reset();
-      });
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  if (robot_type == "hero")
+  {
+    camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "/camera_switch_done", rclcpp::QoS(1).reliable(),
+        [this](const std_msgs::msg::Bool::SharedPtr)
+        {
+          RCLCPP_INFO(this->get_logger(),
+                      "Camera switch detected, resetting PnP solver...");
+          pnp_solver_.reset();
+        });
+  }
+  else
+  {
+    if (pnp_solver_)
+    {
+      cam_info_sub_.reset();  // 已经获取到相机内参，停止订阅
+    }
+  }
 
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
       "/image_raw", rclcpp::SensorDataQoS(),

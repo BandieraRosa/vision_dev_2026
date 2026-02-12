@@ -79,6 +79,7 @@ class HikCameraNode : public rclcpp::Node
   uint8_t device_index_normal_{0};
   uint8_t device_index_lob_{1};
   bool is_lob_camera_{false};
+  bool is_hero_{false};
   std::atomic<bool> in_read_{false};       // Read() 进入 SDK 前置 true，返回后置 false
   std::atomic<bool> is_switching_{false};  // SwitchCamera 期间为 true，防止守护线程误重启
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lob_shot_sub_;

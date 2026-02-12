@@ -51,3 +51,17 @@ tracker_node = Node(
         "armor_tracker:=" + launch_params["tracker_log_level"],
     ],
 )
+
+
+def get_tracker_node(robot_type="default"):
+    return Node(
+        package="armor_tracker",
+        executable="armor_tracker_node",
+        output="both",
+        emulate_tty=True,
+        parameters=[node_params, {"robot_type": robot_type}],
+        ros_arguments=[
+            "--log-level",
+            "armor_tracker:=" + launch_params["tracker_log_level"],
+        ],
+    )

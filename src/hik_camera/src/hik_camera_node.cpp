@@ -18,7 +18,11 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.rotate = this->declare_parameter<uint8_t>("rotate", 0);
   device_index_normal_ = params_.device_index =
       this->declare_parameter<uint8_t>("device_index", 0);
-  device_index_lob_ = this->declare_parameter<uint8_t>("device_index_lob", 1);
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  is_hero_ = (robot_type == "hero");
+  if (is_hero_) {
+    device_index_lob_ = this->declare_parameter<uint8_t>("device_index_lob", 1);
+  }
 
   RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
@@ -42,8 +46,10 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
       std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
   camera_info_url_normal_ = this->declare_parameter(
       "camera_info_url", "package://hik_camera/config/camera_info.yaml");
-  camera_info_url_lob_ = this->declare_parameter(
-      "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
+  if (is_hero_) {
+    camera_info_url_lob_ = this->declare_parameter(
+        "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
+  }
   if (camera_info_manager_->validateURL(camera_info_url_normal_))
   {
     camera_info_manager_->loadCameraInfo(camera_info_url_normal_);
@@ -57,19 +63,21 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
 
   RCLCPP_INFO(this->get_logger(), "Guard thread created.");
 
-  camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
-      "/camera_switch_done", rclcpp::QoS(1).reliable());
+  if (is_hero_) {
+    camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+        "/camera_switch_done", rclcpp::QoS(1).reliable());
 
-  lob_shot_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-      "/lob_shot_switch", rclcpp::QoS(1).reliable(),
-      [this](const std_msgs::msg::Bool::SharedPtr msg)
-      {
-        if (!msg->data)
+    lob_shot_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "/lob_shot_switch", rclcpp::QoS(1).reliable(),
+        [this](const std_msgs::msg::Bool::SharedPtr msg)
         {
-          return;
-        }
-        SwitchCamera(!is_lob_camera_);
-      });
+          if (!msg->data)
+          {
+            return;
+          }
+          SwitchCamera(!is_lob_camera_);
+        });
+  }
 
   // 创建取流线程
   capture_thread_ = std::thread(

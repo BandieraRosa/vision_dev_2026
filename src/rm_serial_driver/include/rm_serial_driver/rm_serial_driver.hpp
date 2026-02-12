@@ -55,9 +55,8 @@ class RMSerialDriver : public rclcpp::Node
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
       joint_state_pub_;  // 云台关节状态发布者
   rclcpp::Publisher<auto_aim_interfaces::msg::Velocity>::SharedPtr
-      velocity_pub_;  // 弹速发布者
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      lob_shot_pub_;  // 吊射标志发布者
+      velocity_pub_;                                                // 弹速发布者
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lob_shot_pub_;  // 吊射标志发布者
 
   /* ROS2订阅者 */
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
@@ -82,6 +81,7 @@ class RMSerialDriver : public rclcpp::Node
   int ahrs_print_freq_ = 50;
 
   uint8_t last_lob_val_{0};
+  bool is_hero_{false};
 };
 
 }  // namespace rm_serial_driver

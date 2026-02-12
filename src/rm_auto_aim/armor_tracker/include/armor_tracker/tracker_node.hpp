@@ -80,6 +80,7 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Lob shot
   bool lob_shot_flag_{false};
+  bool is_hero_{false};
   std::string table_filename_normal_;
   std::string table_filename_lob_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_switch_sub_;
