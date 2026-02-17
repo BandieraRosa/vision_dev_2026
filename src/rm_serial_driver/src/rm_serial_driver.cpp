@@ -99,7 +99,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp =
-        self->now() + rclcpp::Duration::from_seconds(self->timestamp_offset_);
+        self->now() - rclcpp::Duration::from_seconds(self->timestamp_offset_);
     joint_state.name.push_back("pitch_joint");
     joint_state.name.push_back("yaw_joint");
     joint_state.position.push_back(gimbal.Pitch());
