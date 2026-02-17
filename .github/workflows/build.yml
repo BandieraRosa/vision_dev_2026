@@ -35,6 +35,10 @@ jobs:
             cmake \
             ninja-build
 
+      - name: Setup LibXR
+        run: |
+          run: sudo apt-get install -y libwpa-client-dev libnm-dev libudev-dev
+
       - name: Init rosdep
         run: |
           sudo rosdep init || true
