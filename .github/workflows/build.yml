@@ -52,7 +52,7 @@ jobs:
       - name: colcon build (export compile_commands)
         run: |
           source /opt/ros/humble/setup.bash
-          colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          colcon build --merge-install --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           test -f build/compile_commands.json
           echo "Found build/compile_commands.json"
 
