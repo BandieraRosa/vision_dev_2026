@@ -365,6 +365,7 @@ void ArmorTrackerNode::ArmorsCallback(
       // Fill target message
       const auto& state = tracker_->target_state;
       target_msg.id = tracker_->tracked_id;
+      target_msg.type = tracker_->tracked_armor_type;
       target_msg.armors_num = static_cast<int>(tracker_->tracked_armors_num);
       target_msg.position.x = state(0);
       target_msg.velocity.x = state(1);
@@ -378,28 +379,20 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
 
-      // 获取当前相机的 yaw 与 tracking 目标在相机坐标系中的 x 坐标
+      // 获取当前云台在世界系下的 yaw
       auto transform_stamped =
-          tf2_buffer_->lookupTransform("gimbal_odom", "camera_link", tf2::TimePointZero);
+          tf2_buffer_->lookupTransform("gimbal_odom", "yaw_link", tf2::TimePointZero);
 
       // 从变换中提取四元数并转换为欧拉角
       tf2::Quaternion q(
           transform_stamped.transform.rotation.x, transform_stamped.transform.rotation.y,
           transform_stamped.transform.rotation.z, transform_stamped.transform.rotation.w);
 
-      double camera_roll{}, camera_pitch{}, camera_yaw{};
-      tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw);
-      target_msg.camera_yaw = camera_yaw;
+      double gimbal_roll{}, gimbal_pitch{}, gimbal_yaw{};
+      tf2::Matrix3x3(q).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
+      target_msg.gimbal_yaw = gimbal_yaw;
 
-      geometry_msgs::msg::PoseStamped armor_in_target;
-      armor_in_target.header.stamp = time;
-      armor_in_target.header.frame_id = target_frame_;
-      armor_in_target.pose = tracker_->tracked_armor.pose;
-
-      auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
-      target_msg.armor_x = armor_in_cam.pose.position.x;
-
-      float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
+      double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
@@ -414,18 +407,10 @@ void ArmorTrackerNode::ArmorsCallback(
         target_msg.aiming_point.z = aim_z;
       }
 
-      if (pitch == NAN || yaw == NAN)
-      {
-        RCLCPP_DEBUG(this->get_logger(), "pitch or yaw is NAN!");
-      }
-
       send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
       send_msg.idx = idx;
-
-      // std::cout << "aim_x: " << aim_x << " aim_y: " << aim_y << " aim_z: " << aim_z <<
-      // " pitch: " << pitch << " yaw: " << yaw << std::endl;
     }
   }
 

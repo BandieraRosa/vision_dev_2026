@@ -41,7 +41,8 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Init EKF!");
 
   tracked_id = tracked_armor.number;
-  tracker_state = State::DETECTING;
+  tracked_armor_type = tracked_armor.type;
+  tracker_state = DETECTING;
 
   UpdateArmorsNum(tracked_armor);
 }

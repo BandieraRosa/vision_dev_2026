@@ -38,9 +38,9 @@ class TrajectoryTable
 
   struct Cell
   {
-    float pitch;
-    float t;
-    float v;
+    double pitch;
+    double t;
+    double v;
   };
 
   explicit TrajectoryTable(const TableConfig& config)
@@ -58,7 +58,7 @@ class TrajectoryTable
   ~TrajectoryTable() = default;
 
   // 查表获取弹道参数
-  Cell Check(float x, float y) const
+  Cell Check(double x, double y) const
   {
     if (!init_)
     {
@@ -66,8 +66,8 @@ class TrajectoryTable
     }
 
     // 边界检查
-    float adjusted_x = x;
-    float adjusted_y = y;
+    double adjusted_x = x;
+    double adjusted_y = y;
 
     if (adjusted_x < MIN_X || adjusted_x > MAX_X || adjusted_y < MIN_Y ||
         adjusted_y > MAX_Y)
@@ -153,10 +153,13 @@ class TrajectoryTable
 //=============================================================================
 // 弹道解算主类
 //=============================================================================
+constexpr double SMALL_HALF_LENGTH = 135 / 2.0 / 1000.0;
+constexpr double LARGE_HALF_LENGTH = 225 / 2.0 / 1000.0;
+
 class SolveTrajectory
 {
  public:
-  static constexpr float GRAVITY = 9.78f;
+  static constexpr double GRAVITY = 9.78f;
 
   enum CalculateMode : uint8_t
   {
@@ -164,24 +167,13 @@ class SolveTrajectory
     TABLE_LOOKUP = 1
   };
 
-  enum TargetArmorId : uint8_t
+  enum class FireLogicMode
   {
-    ARMOR_OUTPOST = 0,
-    ARMOR_HERO = 1,
-    ARMOR_ENGINEER = 2,
-    ARMOR_INFANTRY3 = 3,
-    ARMOR_INFANTRY4 = 4,
-    ARMOR_INFANTRY5 = 5,
-    ARMOR_GUARD = 6,
-    ARMOR_BASE = 7
-  };
-
-  enum FireLogicMode : uint8_t
-  {
-    OUTPOST = 0,
-    SPIN = 1,
-    COMMON = 2,
-    BUFF = 3
+    OUTPOST,
+    SPIN,
+    SPIN_TEMP,
+    COMMON,
+    BUFF
   };
 
   enum SpecialArmor : int8_t
@@ -190,30 +182,18 @@ class SolveTrajectory
     CENTER = -1
   };
 
-  enum TargetArmorNum : uint8_t
-  {
-    ARMOR_NUM_OUTPOST = 3,
-    ARMOR_NUM_NORMAL = 4
-  };
-
-  enum BulletType : uint8_t
-  {
-    BULLET_17 = 0,
-    BULLET_42 = 1
-  };
-
   // 用于存储目标装甲板的信息
   struct TargetPostion
   {
-    float x;    // 装甲板在世界坐标系下的x
-    float y;    // 装甲板在世界坐标系下的y
-    float z;    // 装甲板在世界坐标系下的z
-    float yaw;  // 装甲板坐标系相对于世界坐标系的yaw角
+    double x;    // 装甲板在世界坐标系下的x
+    double y;    // 装甲板在世界坐标系下的y
+    double z;    // 装甲板在世界坐标系下的z
+    double yaw;  // 装甲板坐标系相对于世界坐标系的yaw角
   };
 
   // 构造函数
-  SolveTrajectory(const float& k, const float& bias_time, const float& s_bias,
-                  const float& z_bias, const float& pitch_bias,
+  SolveTrajectory(const double& k, const double& bias_time, const double& s_bias,
+                  const double& z_bias, const double& pitch_bias,
                   CalculateMode calculate_mode,
                   const TrajectoryTable::TableConfig& table_config);
 
@@ -223,32 +203,31 @@ class SolveTrajectory
   void ReBuild();
 
   // 单方向空气阻力模型
-  float MonoDirectionalAirResistanceModel(float s, float v, float angle);
-
-  // pitch弹道补偿 (集成查表逻辑)
-  float PitchTrajectoryCompensation(float s, float z, float v);
+  double MonoDirectionalAirResistanceModel(double s, double v, double angle);
 
   void PredictAllArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                               float time_delay);
+                               double time_delay);
   void PredictOneArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                               float time_delay, int idx);
+                               double time_delay, int idx);
 
-  float SolvePitch(float x, float y, float z);
-  float SolveYaw(float x, float y);
-  bool CanFire(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  double SolvePitch(double x, double y, double z);
+  double SolveYaw(double x, double y);
+  bool CanFire(double yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+               bool flag);
   void GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-  void LocalSelectArmor();
+  void LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void PreSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
-  void AutoSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
+  void AutoSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                       bool is_pre_select);
   void UpdateFireLogicMode();
-  void UpdateSolveState(float& pitch, float& yaw, bool& is_fire, float& aim_x,
-                        float& aim_y, float& aim_z, int& idx,
+  void UpdateSolveState(double& pitch, double& yaw, bool& is_fire, double& aim_x,
+                        double& aim_y, double& aim_z, int& idx,
                         const auto_aim_interfaces::msg::Target::SharedPtr& msg);
 
   // 根据最优决策得出被击打装甲板 自动解算弹道
-  void AutoSolveTrajectory(float& pitch, float& yaw, bool& is_fire, float& aim_x,
-                           float& aim_y, float& aim_z, int& idx,
+  void AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire, double& aim_x,
+                           double& aim_y, double& aim_z, int& idx,
                            const auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   bool ReloadTable(const std::string& new_filename);
@@ -261,7 +240,7 @@ class SolveTrajectory
   double current_v_;  // 当前弹速
   double fly_time_;   // 飞行时间
 
-  float tar_yaw_;  // 目标yaw
+  double tar_yaw_;  // 目标yaw
 
   struct TargetPostion pre_position_[4];
 
@@ -271,30 +250,31 @@ class SolveTrajectory
   FireLogicMode fire_logic_mode_{FireLogicMode::COMMON};
 
   // 目标参数
-  float k_;  // 弹道系数
-  float pitch_bias_;
-  float bias_time_;  // 偏置时间
-  float s_bias_;     // 枪口前推的距离
-  float z_bias_;     // yaw轴电机到枪口水平面的垂直距离
+  double k_;  // 弹道系数
+  double pitch_bias_;
+  double bias_time_;  // 偏置时间
+  double s_bias_;     // 枪口前推的距离
+  double z_bias_;     // yaw轴电机到枪口水平面的垂直距离
 
-  float pre_x_center_{0.0f};
-  float pre_y_center_{0.0f};
-  float pre_z_center_{0.0f};
-  float pre_yaw_{0.0f};
+  double pre_x_center_{0.0f};
+  double pre_y_center_{0.0f};
+  double pre_z_center_{0.0f};
+  double pre_yaw_{0.0f};
 
-  float last_pitch_;
-  float last_yaw_;
-  int last_selected_idx_{SpecialArmor::LOST};
+  double last_pitch_;
+  double last_yaw_;
   int selected_idx_{SpecialArmor::LOST};
-  float last_x_v_{0.0f};
-  float last_y_v_{0.0f};
-  float last_v_yaw_{0.0f};
+  double last_x_v_{0.0f};
+  double last_y_v_{0.0f};
+  double last_v_yaw_{0.0f};
   bool is_turn_ = false;
-  bool pre_turn_ = false;
+  bool should_last_shot_ = false;
 
   std::chrono::high_resolution_clock::time_point start_turn_;
   std::chrono::high_resolution_clock::time_point end_turn_;
-  std::chrono::high_resolution_clock::time_point last_end_turn_;
+  std::chrono::high_resolution_clock::time_point last_start_turn_;
+  double turn_s_{0.0f};
+  double step_s_{0.0f};
 };
 
 }  // namespace rm_auto_aim
