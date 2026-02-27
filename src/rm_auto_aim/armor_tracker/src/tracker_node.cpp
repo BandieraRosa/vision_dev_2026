@@ -63,8 +63,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
                                                min_y, resolution, table_filename};
-  gaf_solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
-                                                 calculate_mode, table_config);
+  gaf_solver_ = std::make_unique<SolveTrajectory>(
+      k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode, table_config);
 
   // EKF
   // xa = x_armor, xc = x_robot_center
@@ -150,8 +150,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return q;
   };
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
-  r_xyz_factor = declare_parameter("ekf.r_xyz_factor", 0.05);
-  r_yaw = declare_parameter("ekf.r_yaw", 0.02);
+  r_xyz_factor_ = declare_parameter("ekf.r_xyz_factor", 0.05);
+  r_yaw_ = declare_parameter("ekf.r_yaw", 0.02);
   // todo: dynamic R
   [[maybe_unused]] double center_yaw = std::atan2(
       tracker_->tracked_armor.pose.position.y, tracker_->tracked_armor.pose.position.x);
@@ -268,7 +268,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
                       lob_shot_flag_);
           const auto& target_filename =
               lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
-          if (!gaf_solver->ReloadTable(target_filename))
+          if (!gaf_solver_->ReloadTable(target_filename))
           {
             RCLCPP_WARN(this->get_logger(),
                         "Failed to reload trajectory table: %s, "
@@ -404,7 +404,8 @@ void ArmorTrackerNode::ArmorsCallback(
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
-      gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
+      gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,
+                                       msg);
 
       if (abs(aim_x) > 0.01)
       {
