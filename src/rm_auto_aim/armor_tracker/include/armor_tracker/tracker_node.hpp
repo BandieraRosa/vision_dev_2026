@@ -7,6 +7,7 @@
 #include <tf2_ros/message_filter.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -76,6 +77,13 @@ class ArmorTrackerNode : public rclcpp::Node
   visualization_msgs::msg::Marker aiming_point_marker_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+
+  // Lob shot
+  bool lob_shot_flag_{false};
+  bool is_hero_{false};
+  std::string table_filename_normal_;
+  std::string table_filename_lob_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_switch_sub_;
 };
 
 }  // namespace rm_auto_aim

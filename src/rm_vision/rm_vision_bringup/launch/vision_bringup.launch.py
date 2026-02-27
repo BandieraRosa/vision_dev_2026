@@ -26,14 +26,21 @@ def _build_after_checkout(context, *args, **kwargs):
     """
     在 checkout 完成后执行
     """
-    from common import node_params, launch_params, robot_state_publisher, tracker_node
+    from common import (
+        node_params,
+        launch_params,
+        robot_state_publisher,
+        get_tracker_node,
+    )
+
+    robot_type = LaunchConfiguration("robot").perform(context)
 
     def get_camera_node(package, plugin):
         return ComposableNode(
             package=package,
             plugin=plugin,
             name="camera_node",
-            parameters=[node_params],
+            parameters=[node_params, {"robot_type": robot_type}],
             extra_arguments=[{"use_intra_process_comms": True}],
         )
 
@@ -49,7 +56,7 @@ def _build_after_checkout(context, *args, **kwargs):
                     package="armor_detector",
                     plugin="rm_auto_aim::ArmorDetectorNode",
                     name="armor_detector",
-                    parameters=[node_params],
+                    parameters=[node_params, {"robot_type": robot_type}],
                     extra_arguments=[{"use_intra_process_comms": True}],
                 ),
             ],
@@ -81,7 +88,7 @@ def _build_after_checkout(context, *args, **kwargs):
         name="serial_driver",
         output="both",
         emulate_tty=True,
-        parameters=[node_params],
+        parameters=[node_params, {"robot_type": robot_type}],
         on_exit=Shutdown(),
         ros_arguments=[
             "--ros-args",
@@ -93,7 +100,7 @@ def _build_after_checkout(context, *args, **kwargs):
     from launch.actions import TimerAction
 
     delay_serial_node = TimerAction(period=1.5, actions=[serial_driver_node])
-    delay_tracker_node = TimerAction(period=2.0, actions=[tracker_node])
+    delay_tracker_node = TimerAction(period=2.0, actions=[get_tracker_node(robot_type)])
 
     return [
         robot_state_publisher,

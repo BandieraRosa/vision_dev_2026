@@ -122,6 +122,13 @@ class TrajectoryTable
 
   bool IsInit() const { return init_; }
 
+  bool ReloadTable(const std::string& new_filename)
+  {
+    filename_ = new_filename;
+    init_ = false;
+    return Init();
+  }
+
   // Getter
   double GetMinX() const { return MIN_X; }
   double GetMaxX() const { return MAX_X; }
@@ -243,6 +250,8 @@ class SolveTrajectory
   void AutoSolveTrajectory(float& pitch, float& yaw, bool& is_fire, float& aim_x,
                            float& aim_y, float& aim_z, int& idx,
                            const auto_aim_interfaces::msg::Target::SharedPtr msg);
+
+  bool ReloadTable(const std::string& new_filename);
 
  private:
   // Logger
