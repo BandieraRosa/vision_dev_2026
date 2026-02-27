@@ -1,5 +1,7 @@
 #include "armor_tracker/tracker_node.hpp"
 
+#include <cmath>
+
 namespace rm_auto_aim
 {
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
@@ -9,6 +11,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   // Maximum allowable armor distance in the XOY plane
   max_armor_distance_ = this->declare_parameter("max_armor_distance", 10.0);
+
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  is_hero_ = (robot_type == "hero");
 
   // Tracker
   double max_match_distance = this->declare_parameter("tracker.max_match_distance", 0.15);
@@ -42,6 +47,11 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
+  table_filename_normal_ = table_filename;
+  if (is_hero_)
+  {
+    table_filename_lob_ = this->declare_parameter("tracker.table.filename_lob", "");
+  }
   SolveTrajectory::CalculateMode calculate_mode{};
   if (use_table)
   {
@@ -142,6 +152,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
   r_xyz_factor = declare_parameter("ekf.r_xyz_factor", 0.05);
   r_yaw = declare_parameter("ekf.r_yaw", 0.02);
+  // todo: dynamic R
+  [[maybe_unused]] double center_yaw = std::atan2(
+      tracker_->tracked_armor.pose.position.y, tracker_->tracked_armor.pose.position.x);
+  // ;double delta_yaw = ;
   auto u_r = [this](const Eigen::VectorXd& z)
   {
     Eigen::DiagonalMatrix<double, 4> r;
@@ -153,7 +167,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   Eigen::DiagonalMatrix<double, 9> p0;
   p0.setIdentity();
 
-  // outpost的EKF参数与普通装甲不同，专门设置一套参数
+  // outpost的EKF参数
   auto switch_q = [this](bool flag)
   {
     s2qxyz_ = flag ? s2qxyz_outpost_ : s2qxyz_armor_;
@@ -242,6 +256,27 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   armor_marker_.color.r = 1.0;
   marker_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
+
+  if (is_hero_)
+  {
+    camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "/camera_switch_done", rclcpp::QoS(1).reliable(),
+        [this](const std_msgs::msg::Bool::SharedPtr msg)
+        {
+          lob_shot_flag_ = msg->data;
+          RCLCPP_INFO(this->get_logger(), "Camera switch done, lob_shot_flag: %d",
+                      lob_shot_flag_);
+          const auto& target_filename =
+              lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
+          if (!gaf_solver->ReloadTable(target_filename))
+          {
+            RCLCPP_WARN(this->get_logger(),
+                        "Failed to reload trajectory table: %s, "
+                        "solver will use fallback mode.",
+                        target_filename.c_str());
+          }
+        });
+  }
 }
 
 // void ArmorTrackerNode::velocityCallback(const

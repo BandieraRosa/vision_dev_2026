@@ -12,6 +12,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   auto vid = this->declare_parameter<std::string>("vid", "16d0");
   auto pid = this->declare_parameter<std::string>("pid", "1492");
   timestamp_offset_ = this->declare_parameter<double>("timestamp_offset", 0);
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  is_hero_ = (robot_type == "hero");
   std::cout << "Serial timestamp_offset: " << timestamp_offset_ << '\n';
 
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
@@ -29,6 +31,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // 从下位机接收的话题
   ahrs_quaternion_topic_ =
       LibXR::Topic::FindOrCreate<LibXR::Quaternion<float>>("ahrs_quaternion");
+
+  lob_shot_topic_ = LibXR::Topic::FindOrCreate<uint8_t>("lob_shot");
 
   LibXR::Topic::Domain referee_domain = LibXR::Topic::Domain("referee");
   bullet_speed_topic_ =
@@ -48,6 +52,13 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // 弹速
   velocity_pub_ =
       this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity", 10);
+
+  // 吊射标志
+  if (is_hero_)
+  {
+    lob_shot_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+        "/lob_shot_switch", rclcpp::QoS(1).reliable());
+  }
 
   // 打弹（t键打弹，g键停止）
   fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -88,7 +99,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     // ROS2发布云台关节状态
     sensor_msgs::msg::JointState joint_state;
     joint_state.header.stamp =
-        self->now() + rclcpp::Duration::from_seconds(self->timestamp_offset_);
+        self->now() - rclcpp::Duration::from_seconds(self->timestamp_offset_);
     joint_state.name.push_back("pitch_joint");
     joint_state.name.push_back("yaw_joint");
     joint_state.position.push_back(gimbal.Pitch());
@@ -113,6 +124,28 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   };
   auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
   bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
+
+  // 吊射标志回调
+  if (is_hero_)
+  {
+    void (*lob_shot_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
+        [](bool, RMSerialDriver* self, LibXR::RawData& data)
+    {
+      auto val = *reinterpret_cast<uint8_t*>(data.addr_);
+      uint8_t prev = self->last_lob_val_;
+      self->last_lob_val_ = val;
+      if (prev == 0 && val != 0)
+      {
+        std_msgs::msg::Bool msg;
+        msg.data = true;
+        self->lob_shot_pub_->publish(msg);
+        RCLCPP_INFO(self->get_logger(),
+                    "Lob shot edge detected (0->1), published switch.");
+      }
+    };
+    auto lob_shot_cb = LibXR::Topic::Callback::Create(lob_shot_cb_fun, this);
+    lob_shot_topic_.RegisterCallback(lob_shot_cb);
+  }
 }
 
 RMSerialDriver::~RMSerialDriver() {}

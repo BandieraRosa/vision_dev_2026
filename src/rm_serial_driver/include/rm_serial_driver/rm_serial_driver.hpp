@@ -5,6 +5,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/node.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 // LibXR
 #include "SharedTopic.hpp"
@@ -27,7 +28,7 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   static ApplicationManager appmgr;
 
   static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
-                                  {{"ahrs_quaternion"}});
+                                  {{"ahrs_quaternion"}, {"lob_shot"}});
 
   static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
                                                {{"target_euler"}});
@@ -54,7 +55,8 @@ class RMSerialDriver : public rclcpp::Node
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
       joint_state_pub_;  // 云台关节状态发布者
   rclcpp::Publisher<auto_aim_interfaces::msg::Velocity>::SharedPtr
-      velocity_pub_;  // 弹速发布者
+      velocity_pub_;                                                // 弹速发布者
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lob_shot_pub_;  // 吊射标志发布者
 
   /* ROS2订阅者 */
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
@@ -65,6 +67,7 @@ class RMSerialDriver : public rclcpp::Node
   LibXR::Topic bullet_speed_topic_;
   LibXR::Topic target_euler_topic_;
   LibXR::Topic fire_notify_topic_;
+  LibXR::Topic lob_shot_topic_;
 
   /* LibXR初始化相关成员变量 */
   std::unique_ptr<LibXR::RamFS> ramfs_;
@@ -76,6 +79,9 @@ class RMSerialDriver : public rclcpp::Node
   /* 云台姿态打印频率相关变量 */
   int ahrs_receive_cnt_ = 0;
   int ahrs_print_freq_ = 50;
+
+  uint8_t last_lob_val_{0};
+  bool is_hero_{false};
 };
 
 }  // namespace rm_serial_driver
