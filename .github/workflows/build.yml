@@ -1,0 +1,57 @@
+name: SonarQube
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-analyze:
+    runs-on: ubuntu-22.04
+
+    container:
+      image: ghcr.io/qdu-vrobot/docker_images/ros2-humble-vision:latest
+      options: --user root
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Init rosdep
+        shell: bash
+        run: |
+          apt update
+          rosdep init || true
+          rosdep update
+
+      - name: Install workspace dependencies (rosdep)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          rosdep install --from-paths src --ignore-src -r -y
+
+      - name: colcon build (export compile_commands)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --merge-install --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          test -f build/compile_commands.json
+          echo "Found build/compile_commands.json"
+
+      # - name: Cache SonarQube
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: ~/.sonar/cache
+      #     key: ${{ runner.os }}-sonar
+      #     restore-keys: |
+      #       ${{ runner.os }}-sonar
+
+      # - name: SonarQube Scan
+      #   uses: SonarSource/sonarqube-scan-action@v6
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #   with:
+      #     args: >
+      #       --define "sonar.cfamily.compile-commands=build/compile_commands.json"
+      #       --define "sonar.exclusions=src/libxr/libxr/**, build/**, install/**, log/**"

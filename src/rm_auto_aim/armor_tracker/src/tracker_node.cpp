@@ -63,7 +63,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
                                                min_y, resolution, table_filename};
-  gaf_solver = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
+  gaf_solver_ = std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
                                                  calculate_mode, table_config);
 
   // EKF
@@ -159,8 +159,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   auto u_r = [this](const Eigen::VectorXd& z)
   {
     Eigen::DiagonalMatrix<double, 4> r;
-    double x = r_xyz_factor;
-    r.diagonal() << abs(x * z[0]), abs(x * z[1]), abs(x * z[2]), r_yaw;
+    double x = r_xyz_factor_;
+    r.diagonal() << abs(x * z[0]), abs(x * z[1]), abs(x * z[2]), r_yaw_;
     return r;
   };
   // P - error estimate covariance matrix
@@ -197,7 +197,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   // Register a callback with tf2_ros::MessageFilter to be called when transforms are
   // available
-  armors_filter_->registerCallback(&ArmorTrackerNode::armorsCallback, this);
+  armors_filter_->registerCallback(&ArmorTrackerNode::ArmorsCallback, this);
 
   // velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
   // "/current_velocity",
@@ -208,7 +208,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { gaf_solver->Init(velocity_msg); });
+      { gaf_solver_->Init(velocity_msg); });
 
   // Measurement publisher (for debug usage)
   info_pub_ =
@@ -285,7 +285,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 //   gaf_solver->init(velocity_msg);
 // }
 
-void ArmorTrackerNode::armorsCallback(
+void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
   // Tranform armor position from image frame to world coordinate
@@ -332,10 +332,10 @@ void ArmorTrackerNode::armorsCallback(
   armor_pose_pub_->publish(armor_in_gimbal);
 
   // Update tracker
-  if (tracker_->tracker_state == Tracker::LOST)
+  if (tracker_->tracker_state == Tracker::State::LOST)
   {
-    tracker_->init(armors_msg);
-    gaf_solver->ReBuild();
+    tracker_->Init(armors_msg);
+    gaf_solver_->ReBuild();
     target_msg.tracking = false;
   }
   else
@@ -343,7 +343,7 @@ void ArmorTrackerNode::armorsCallback(
     // 求时间差
     dt_ = (time - last_time_).seconds();
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
-    tracker_->update(armors_msg);
+    tracker_->Update(armors_msg);
 
     // Publish Info
     info_msg.position_diff = tracker_->info_position_diff;
@@ -354,12 +354,12 @@ void ArmorTrackerNode::armorsCallback(
     info_msg.yaw = tracker_->measurement(3);
     info_pub_->publish(info_msg);
 
-    if (tracker_->tracker_state == Tracker::DETECTING)
+    if (tracker_->tracker_state == Tracker::State::DETECTING)
     {
       target_msg.tracking = false;
     }
-    else if (tracker_->tracker_state == Tracker::TRACKING ||
-             tracker_->tracker_state == Tracker::TEMP_LOST)
+    else if (tracker_->tracker_state == Tracker::State::TRACKING ||
+             tracker_->tracker_state == Tracker::State::TEMP_LOST)
     {
       target_msg.tracking = true;
       // Fill target message
@@ -404,7 +404,7 @@ void ArmorTrackerNode::armorsCallback(
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
       bool is_fire = false;
-      gaf_solver->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
+      gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
 
       if (abs(aim_x) > 0.01)
       {
@@ -438,10 +438,10 @@ void ArmorTrackerNode::armorsCallback(
   outpost_idx_msg.data = Tracker::outpost_idx;
   outpost_idx_pub_->publish(outpost_idx_msg);
 
-  publishMarkers(target_msg);
+  PublishMarkers(target_msg);
 }
 
-void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target& target_msg)
+void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg)
 {
   position_marker_.header = target_msg.header;
   linear_v_marker_.header = target_msg.header;

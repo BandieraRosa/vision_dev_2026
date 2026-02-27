@@ -30,16 +30,22 @@ class Tracker  // 整车观测
   using Armors = auto_aim_interfaces::msg::Armors;
   using Armor = auto_aim_interfaces::msg::Armor;
 
-  void init(const Armors::SharedPtr& armors_msg);
+  void Init(const Armors::SharedPtr& armors_msg);
 
-  void update(const Armors::SharedPtr& armors_msg);
+  void MatchSameIdArmor(const Armors::SharedPtr& armors_msg,
+                        Eigen::VectorXd& ekf_prediction, Armor& same_id_armor,
+                        int& same_id_armors_count, double& min_position_diff,
+                        double& yaw_diff);
+  void ClampTargetRadius();
+  void UpdateTrackerState(bool& matched);
+  void Update(const Armors::SharedPtr& armors_msg);
 
   ExtendedKalmanFilter ekf;
 
   int tracking_thres;
   int lost_thres;
 
-  enum State
+  enum class State : uint8_t
   {             // 四个状态
     LOST,       // 丢失
     DETECTING,  // 观测中
@@ -74,17 +80,19 @@ class Tracker  // 整车观测
   double dz, another_r;
 
  private:
-  void initEKF(const Armor& a);
+  void InitEkf(const Armor& a);
 
-  void updateArmorsNum(const Armor& a);
+  void UpdateArmorsNum(const Armor& a);
 
-  void handleArmorJump(const Armor& a);
+  void ResetState(double& yaw, const geometry_msgs::msg::Point& position);
+  void UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw);
+  void HandleArmorJump(const Armor& current_armor);
 
-  double orientationToYaw(const geometry_msgs::msg::Quaternion& q);
+  double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
 
-  Eigen::Vector3d getArmorPositionFromState(const Eigen::VectorXd& x);
+  Eigen::Vector3d GetArmorPositionFromState(const Eigen::VectorXd& x);
 
-  void SwitchEkfParams();
+  void SwitchEKFParams();
 
   double max_match_distance_;
   double max_match_yaw_diff_;

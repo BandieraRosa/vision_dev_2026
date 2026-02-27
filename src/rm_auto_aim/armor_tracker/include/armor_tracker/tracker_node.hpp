@@ -28,11 +28,11 @@ class ArmorTrackerNode : public rclcpp::Node
   explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
  private:
-  void velocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
+  void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
-  void armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
+  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
-  void publishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
+  void PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
@@ -42,13 +42,13 @@ class ArmorTrackerNode : public rclcpp::Node
   double dt_;
 
   // Armor tracker
-  double s2qxyz_{}, s2qyaw_{}, s2qr_{};
+  double s2qxyz_, s2qyaw_, s2qr_;
   double s2qxyz_armor_, s2qyaw_armor_, s2qr_armor_;
   double s2qxyz_outpost_, s2qyaw_outpost_, s2qr_outpost_;
-  double r_xyz_factor, r_yaw;
+  double r_xyz_factor_, r_yaw_;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
-  std::unique_ptr<SolveTrajectory> gaf_solver;
+  std::unique_ptr<SolveTrajectory> gaf_solver_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;
