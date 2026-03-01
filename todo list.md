@@ -13,4 +13,4 @@ Tracker/Outpost：
 
 Serial：
 - [x] 云台测试转移至`/test`
-- [ ] 增加串口通信延迟测试（`time_offset`）
+- [X] 增加串口通信延迟测试（`time_offset`）
