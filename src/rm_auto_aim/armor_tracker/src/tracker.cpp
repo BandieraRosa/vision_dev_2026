@@ -42,7 +42,7 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
 
   tracked_id = tracked_armor.number;
   tracked_armor_type = tracked_armor.type;
-  tracker_state = DETECTING;
+  tracker_state = State::DETECTING;
 
   UpdateArmorsNum(tracked_armor);
 }
