@@ -35,8 +35,8 @@ cv::Mat Detector::PreprocessImage(const cv::Mat& rgb_img)  // 图像预处理
 {
   cv::Mat gray_img;
   cv::cvtColor(rgb_img, gray_img, cv::COLOR_RGB2GRAY);
- // cv::Mat bgray_img;
-  //cv::bilateralFilter(gray_img, bgray_img, 9, 50, 50);
+  // cv::Mat bgray_img;
+  // cv::bilateralFilter(gray_img, bgray_img, 9, 50, 50);
 
   cv::Mat binary_img;
   cv::threshold(gray_img, binary_img, binary_thres, 255, cv::THRESH_BINARY);

@@ -5,8 +5,8 @@
 
 namespace rm_auto_aim
 {
-const int RED = 0;
-const int BLUE = 1;
+constexpr int RED = 0;
+constexpr int BLUE = 1;
 
 enum class ArmorType : uint8_t
 {
@@ -14,8 +14,7 @@ enum class ArmorType : uint8_t
   LARGE,
   INVALID
 };
-const std::string ARMOR_TYPE_STR[3] = {"small", "large", "invalid"};
-
+constexpr std::array<std::string_view, 3> ARMOR_TYPE_STR = {"small", "large", "invalid"};
 struct Light : public cv::RotatedRect
 {
   Light() = default;
