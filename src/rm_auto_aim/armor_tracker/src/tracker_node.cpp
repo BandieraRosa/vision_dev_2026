@@ -1,5 +1,6 @@
 #include "armor_tracker/tracker_node.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
 
 namespace rm_auto_aim
@@ -47,10 +48,15 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
-  table_filename_normal_ = table_filename;
+  std::string package_prefix =
+      ament_index_cpp::get_package_share_directory("armor_tracker") + "/tools/";
+  table_filename_normal_ = package_prefix + table_filename;
+  RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
+               table_filename_normal_.c_str());
   if (is_hero_)
   {
-    table_filename_lob_ = this->declare_parameter("tracker.table.filename_lob", "");
+    table_filename_lob_ =
+        package_prefix + this->declare_parameter("tracker.table.filename_lob", "");
   }
   SolveTrajectory::CalculateMode calculate_mode{};
   if (use_table)
@@ -62,7 +68,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     calculate_mode = SolveTrajectory::CalculateMode::NORMAL;
   }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
-                                               min_y, resolution, table_filename};
+                                               min_y, resolution, table_filename_normal_};
   gaf_solver_ = std::make_unique<SolveTrajectory>(
       k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode, table_config);
 
