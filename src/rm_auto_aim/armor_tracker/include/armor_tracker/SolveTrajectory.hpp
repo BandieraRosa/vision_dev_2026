@@ -129,12 +129,6 @@ class TrajectoryTable
     return Init();
   }
 
-  // Getter
-  double GetMinX() const { return MIN_X; }
-  double GetMaxX() const { return MAX_X; }
-  double GetMinY() const { return MIN_Y; }
-  double GetMaxY() const { return MAX_Y; }
-
  private:
   const double MAX_X;
   const double MIN_X;
@@ -153,13 +147,14 @@ class TrajectoryTable
 //=============================================================================
 // 弹道解算主类
 //=============================================================================
-constexpr double SMALL_HALF_LENGTH = 135 / 2.0 / 1000.0;
-constexpr double LARGE_HALF_LENGTH = 225 / 2.0 / 1000.0;
+using time_point = std::chrono::high_resolution_clock::time_point;
 
 class SolveTrajectory
 {
  public:
   static constexpr double GRAVITY = 9.78f;
+  static constexpr double SMALL_HALF_LENGTH = 135 / 2.0 / 1000.0;
+  static constexpr double LARGE_HALF_LENGTH = 225 / 2.0 / 1000.0;
 
   enum CalculateMode : uint8_t
   {
@@ -204,22 +199,28 @@ class SolveTrajectory
 
   // 单方向空气阻力模型
   double MonoDirectionalAirResistanceModel(double s, double v, double angle);
-
+  TargetPostion PredictCenter(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                              double time_delay);
+  TargetPostion PredictArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                             double time_delay, int idx,
+                             SolveTrajectory::TargetPostion& pre_center);
   void PredictAllArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                                double time_delay);
-  void PredictOneArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                               double time_delay, int idx);
+  TargetPostion PredictOneArmorPosition(
+      const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
+      bool flag);
 
   double SolvePitch(double x, double y, double z);
   double SolveYaw(double x, double y);
   bool CanFire(double yaw, const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                bool flag);
+
   void GlobalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void LocalSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
   void PreSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg);
-
   void AutoSelectArmor(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                        bool is_pre_select);
+
   void UpdateFireLogicMode();
   void UpdateSolveState(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                         double& aim_y, double& aim_z, int& idx,
@@ -239,10 +240,14 @@ class SolveTrajectory
   // 自身参数
   double current_v_;  // 当前弹速
   double fly_time_;   // 飞行时间
+  time_point start_turn_;
+  time_point end_turn_;
+  time_point last_start_turn_;
+  double turn_s_{0.0f};
+  double step_s_{0.0f};
 
-  double tar_yaw_;  // 目标yaw
-
-  struct TargetPostion pre_position_[4];
+  TargetPostion pre_center_;
+  TargetPostion pre_position_[4];
 
   // 弹道查找表
   std::unique_ptr<TrajectoryTable> table_;
@@ -256,25 +261,15 @@ class SolveTrajectory
   double s_bias_;     // 枪口前推的距离
   double z_bias_;     // yaw轴电机到枪口水平面的垂直距离
 
-  double pre_x_center_{0.0f};
-  double pre_y_center_{0.0f};
-  double pre_z_center_{0.0f};
-  double pre_yaw_{0.0f};
-
   double last_pitch_;
   double last_yaw_;
   int selected_idx_{SpecialArmor::LOST};
   double last_x_v_{0.0f};
   double last_y_v_{0.0f};
   double last_v_yaw_{0.0f};
+
   bool is_turn_ = false;
   bool should_last_shot_ = false;
-
-  std::chrono::high_resolution_clock::time_point start_turn_;
-  std::chrono::high_resolution_clock::time_point end_turn_;
-  std::chrono::high_resolution_clock::time_point last_start_turn_;
-  double turn_s_{0.0f};
-  double step_s_{0.0f};
 };
 
 }  // namespace rm_auto_aim

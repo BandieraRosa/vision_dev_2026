@@ -2,6 +2,7 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+#include "armor_tracker/SolveTrajectory.hpp"
 
 namespace rm_auto_aim
 {
@@ -443,7 +444,7 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
   visualization_msgs::msg::MarkerArray marker_array;
   if (target_msg.tracking)
   {
-    double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
+  // double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
     double xc = target_msg.position.x, yc = target_msg.position.y,
            za = target_msg.position.z;
     double vx = target_msg.velocity.x, vy = target_msg.velocity.y,
@@ -473,79 +474,35 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
 
     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
     armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23;
-    bool is_current_pair = true;
+    //bool is_current_pair = true;
     size_t a_n = target_msg.armors_num;
     geometry_msgs::msg::Point p_a;
-    double r = 0;
+   // double r = 0;
     for (size_t i = 0; i < a_n; i++)
     {
-      double tmp_yaw =
-          yaw + static_cast<double>(i) * (2 * M_PI / static_cast<double>(a_n));
-      // Only 4 armors has 2 radius and height
-      if (a_n == 4)
-      {
-        r = is_current_pair ? r1 : r2;
-        p_a.z = za + (is_current_pair ? 0 : dz);
-        is_current_pair = !is_current_pair;
-      }
-      else if (a_n == 3)
-      {
-        // r = Tracker::outpost_r;
-        // p_a.z = za;
-        if (tracker_->outpost_idx == 0)
-        {
-          if (i == 0)
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-          else
-          {
-            p_a.z = za;
-          }
-        }
-        if (tracker_->outpost_idx == 1)
-        {
-          if (i == 0)
-          {
-            p_a.z = za;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-          else
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-        }
-        if (tracker_->outpost_idx == 2)
-        {
-          if (i == 0)
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za;
-          }
-          else
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-        }
-        r = Tracker::outpost_r;
-      }
-      p_a.x = xc - r * cos(tmp_yaw);
-      p_a.y = yc - r * sin(tmp_yaw);
+      // double tmp_yaw =
+      //     yaw + static_cast<double>(i) * (2 * M_PI / static_cast<double>(a_n));
+      // // Only 4 armors has 2 radius and height
+      // if (a_n == 4)
+      // {
+      //   r = is_current_pair ? r1 : r2;
+      //   p_a.z = za + (is_current_pair ? 0 : dz);
+      //   is_current_pair = !is_current_pair;
+      // }
+      // p_a.x = xc - r * cos(tmp_yaw);
+      // p_a.y = yc - r * sin(tmp_yaw);
+
+      SolveTrajectory::TargetPostion armor_position =
+          gaf_solver_->SolveTrajectory::PredictOneArmorPosition(
+              std::make_shared<auto_aim_interfaces::msg::Target>(target_msg),0 , 1, false);
+      p_a.x = armor_position.x;
+      p_a.y = armor_position.y;
+      p_a.z = armor_position.z;
 
       armor_marker_.id = static_cast<int>(i);
       armor_marker_.pose.position = p_a;
       tf2::Quaternion q;
-      q.setRPY(0, target_msg.id == "outpost" ? -0.26 : 0.26, tmp_yaw);
+      q.setRPY(0, target_msg.id == "outpost" ? -0.26 : 0.26, armor_position.yaw);
       armor_marker_.pose.orientation = tf2::toMsg(q);
       marker_array.markers.emplace_back(armor_marker_);
     }

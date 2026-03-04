@@ -55,94 +55,85 @@ void SolveTrajectory::ReBuild()
   last_v_yaw_ = 0.0f;
 }
 
+SolveTrajectory::TargetPostion SolveTrajectory::PredictCenter(
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay)
+{
+  TargetPostion center;
+  if (msg->armors_num == 4)
+  {
+    center.x = msg->position.x + msg->velocity.x * time_delay;
+    center.y = msg->position.y + msg->velocity.y * time_delay;
+    center.z = msg->position.z;
+    center.yaw = msg->yaw + msg->v_yaw * time_delay;
+  }
+  else
+  {
+    center.x = msg->position.x;
+    center.y = msg->position.y;
+    center.z = msg->position.z;
+    center.yaw = msg->yaw + msg->v_yaw * time_delay;
+  }
+  return center;
+}
+
+SolveTrajectory::TargetPostion SolveTrajectory::PredictArmor(
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
+    SolveTrajectory::TargetPostion& pre_center)
+{
+  TargetPostion pre_pos;
+
+  if (msg->armors_num == 4)
+  {
+    double sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
+
+    double radius = idx % 2 ? msg->radius_2 : msg->radius_1;
+
+    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / msg->armors_num;
+
+    pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
+    pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
+    pre_pos.z = pre_center.z;
+    pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+  }
+  else  // 3个装甲板,是前哨站
+  {
+    double radius = msg->radius_1;
+    double tmp_yaw = pre_center.yaw - idx * 2.0f * M_PI / msg->armors_num;
+
+    pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
+    pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
+
+    int id = (idx + Tracker::outpost_idx) % msg->armors_num;
+    pre_pos.z = pre_center.z + Tracker::outpost_dz * (id - 1);
+
+    pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+  }
+
+  return pre_pos;
+}
+
 // 从图片时间到打到的时间：自瞄处理的时间+电控延迟(从视觉发信号到电机动和发弹延迟)+云台转动时间+飞行时间
 // msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
 void SolveTrajectory::PredictAllArmorPosition(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay)
 {
-  if (msg->armors_num == 4)
+  TargetPostion pre_center = PredictCenter(msg, time_delay);
+  for (int i = 0; i < msg->armors_num; i++)
   {
-    pre_x_center_ = msg->position.x + msg->velocity.x * time_delay;
-    pre_y_center_ = msg->position.y + msg->velocity.y * time_delay;
-    pre_z_center_ = msg->position.z;
-    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
-
-    double sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
-
-    for (int i = 0; i < msg->armors_num; i++)
-    {
-      double radius = i % 2 ? msg->radius_2 : msg->radius_1;
-
-      double tmp_yaw = pre_yaw_ - sign * i * 2.0f * M_PI / msg->armors_num;
-
-      pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
-      pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-      pre_position_[i].z = msg->position.z;
-      pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
-    }
-  }
-  else  // 3个装甲板,是前哨站
-  {
-    pre_x_center_ = msg->position.x;
-    pre_y_center_ = msg->position.y;
-    pre_z_center_ = msg->position.z;
-    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
-
-    double radius = msg->radius_1;
-    for (int i = 0; i < msg->armors_num; i++)
-    {
-      double tmp_yaw = pre_yaw_ - i * 2.0f * M_PI / msg->armors_num;
-
-      pre_position_[i].x = pre_x_center_ - radius * std::cos(tmp_yaw);
-      pre_position_[i].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-
-      int id = (i + Tracker::outpost_idx) % msg->armors_num;
-      pre_position_[i].z = pre_z_center_ + Tracker::outpost_dz * (id - 1);
-
-      pre_position_[i].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
-    }
+    pre_position_[i] = PredictArmor(msg, time_delay, i, pre_center);
   }
 }
 
-void SolveTrajectory::PredictOneArmorPosition(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx)
+SolveTrajectory::TargetPostion SolveTrajectory::PredictOneArmorPosition(
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
+    bool flag)
 {
-  if (msg->armors_num == 4)
+  TargetPostion pre_center = PredictCenter(msg, time_delay);
+  if (flag)
   {
-    pre_x_center_ = msg->position.x + msg->velocity.x * time_delay;
-    pre_y_center_ = msg->position.y + msg->velocity.y * time_delay;
-    pre_z_center_ = msg->position.z;
-    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
-
-    double sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
-
-    double radius = idx % 2 ? msg->radius_2 : msg->radius_1;
-
-    double tmp_yaw = pre_yaw_ - sign * idx * 2.0f * M_PI / msg->armors_num;
-
-    pre_position_[idx].x = pre_x_center_ - radius * std::cos(tmp_yaw);
-    pre_position_[idx].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-    pre_position_[idx].z = msg->position.z;
-    pre_position_[idx].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+    pre_center_ = pre_center;
   }
-  else  // 3个装甲板,是前哨站
-  {
-    pre_x_center_ = msg->position.x;
-    pre_y_center_ = msg->position.y;
-    pre_z_center_ = msg->position.z;
-    pre_yaw_ = msg->yaw + msg->v_yaw * time_delay;
-
-    double radius = msg->radius_1;
-    double tmp_yaw = pre_yaw_ - idx * 2.0f * M_PI / msg->armors_num;
-
-    pre_position_[idx].x = pre_x_center_ - radius * std::cos(tmp_yaw);
-    pre_position_[idx].y = pre_y_center_ - radius * std::sin(tmp_yaw);
-
-    int id = (idx + Tracker::outpost_idx) % msg->armors_num;
-    pre_position_[idx].z = pre_z_center_ + Tracker::outpost_dz * (id - 1);
-
-    pre_position_[idx].yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
-  }
+  return PredictArmor(msg, time_delay, idx, pre_center);
 }
 
 // 计算简化单向空气阻力模型下的弹道高度，用于正常模式
@@ -289,8 +280,9 @@ void SolveTrajectory::GlobalSelectArmor(
     float toyaw =
         fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - msg->gimbal_yaw);
     float turn_time = 0.05f * toyaw;
-    PredictOneArmorPosition(msg, turn_time + bias_time_ + fly_time_, i);
-    float aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
+    SolveTrajectory::TargetPostion pre_position =
+        PredictOneArmorPosition(msg, turn_time + bias_time_ + fly_time_, i, true);
+    float aim_yaw = SolveYaw(pre_position.x, pre_position.y);
     if (aim_yaw < min_aim_yaw)
     {
       min_aim_yaw = aim_yaw;
@@ -304,19 +296,21 @@ void SolveTrajectory::GlobalSelectArmor(
 void SolveTrajectory::LocalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
-  double center_yaw_0 = SolveYaw(pre_x_center_, pre_y_center_);
+  SolveTrajectory::TargetPostion pre_position_0 =
+      PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0, true);
+  double center_yaw_0 = SolveYaw(pre_position_0.x, pre_position_0.y);
   double s_0 =
-      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
+      pre_position_0.x * pre_position_0.x + pre_position_0.y * pre_position_0.y;
 
-  PredictOneArmorPosition(msg, turn_s_ + bias_time_ + fly_time_, 1);
-  double center_yaw_1 = SolveYaw(pre_x_center_, pre_y_center_);
+  SolveTrajectory::TargetPostion pre_position_1 =
+      PredictOneArmorPosition(msg, turn_s_ + bias_time_ + fly_time_, 1, true);
+  double center_yaw_1 = SolveYaw(pre_position_1.x, pre_position_1.y);
   double s_1 =
-      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
+      pre_position_1.x * pre_position_1.x + pre_position_1.y * pre_position_1.y;
 
   selected_idx_ =
-      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
+      fabs(SolveYaw(pre_position_1.x, pre_position_1.y) - center_yaw_1) <=
+                  fabs(SolveYaw(pre_position_0.x, pre_position_0.y) - center_yaw_0) &&
               s_1 <= s_0
           ? 1
           : 0;
@@ -325,19 +319,22 @@ void SolveTrajectory::LocalSelectArmor(
 void SolveTrajectory::PreSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  PredictOneArmorPosition(msg, bias_time_ * 2 + fly_time_, 0);
-  double center_yaw_0 = SolveYaw(pre_x_center_, pre_y_center_);
+  double time_delay = bias_time_ + fly_time_;
+  SolveTrajectory::TargetPostion pre_position_0 =
+      PredictOneArmorPosition(msg, time_delay, 0, true);
+  double center_yaw_0 = SolveYaw(pre_position_0.x, pre_position_0.y);
   double s_0 =
-      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
+      pre_position_0.x * pre_position_0.x + pre_position_0.y * pre_position_0.y;
 
-  PredictOneArmorPosition(msg, turn_s_ + bias_time_ * 2 + fly_time_, 1);
-  double center_yaw_1 = SolveYaw(pre_x_center_, pre_y_center_);
+  SolveTrajectory::TargetPostion pre_position_1 =
+      PredictOneArmorPosition(msg, time_delay + turn_s_, 1, true);
+  double center_yaw_1 = SolveYaw(pre_position_1.x, pre_position_1.y);
   double s_1 =
-      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
+      pre_position_1.x * pre_position_1.x + pre_position_1.y * pre_position_1.y;
 
   bool pre_turn =
-      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
+      fabs(SolveYaw(pre_position_1.x, pre_position_1.y) - center_yaw_1) <=
+                  fabs(SolveYaw(pre_position_0.x, pre_position_0.y) - center_yaw_0) &&
               s_1 <= s_0
           ? 1
           : 0;
@@ -477,11 +474,8 @@ void SolveTrajectory::UpdateSolveState(
     aim_x = pre_position_[selected_idx_].x;
     aim_y = pre_position_[selected_idx_].y;
     aim_z = pre_position_[selected_idx_].z;
-    // aim_x = pre_position_[0].x;
-    // aim_y = pre_position_[0].y;
-    // aim_z = pre_position_[0].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
-    yaw = SolveYaw(pre_x_center_, pre_y_center_);
+    yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     double aim_yaw = SolveYaw(aim_x, aim_y);
     is_fire = fabs(aim_yaw - yaw) < 0.02f && is_turn_;
