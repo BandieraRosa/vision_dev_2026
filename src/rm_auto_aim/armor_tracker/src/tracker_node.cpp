@@ -2,6 +2,7 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+
 #include "armor_tracker/SolveTrajectory.hpp"
 
 namespace rm_auto_aim
@@ -444,7 +445,7 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
   visualization_msgs::msg::MarkerArray marker_array;
   if (target_msg.tracking)
   {
-  // double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
+    // double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
     double xc = target_msg.position.x, yc = target_msg.position.y,
            za = target_msg.position.z;
     double vx = target_msg.velocity.x, vy = target_msg.velocity.y,
@@ -474,10 +475,12 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
 
     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
     armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23;
-    //bool is_current_pair = true;
+    // bool is_current_pair = true;
     size_t a_n = target_msg.armors_num;
     geometry_msgs::msg::Point p_a;
-   // double r = 0;
+    // double r = 0;
+    SolveTrajectory::TargetPostion center = gaf_solver_->SolveTrajectory::PredictCenter(
+        std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0);
     for (size_t i = 0; i < a_n; i++)
     {
       // double tmp_yaw =
@@ -493,8 +496,10 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
       // p_a.y = yc - r * sin(tmp_yaw);
 
       SolveTrajectory::TargetPostion armor_position =
-          gaf_solver_->SolveTrajectory::PredictOneArmorPosition(
-              std::make_shared<auto_aim_interfaces::msg::Target>(target_msg),0 , 1, false);
+          gaf_solver_->SolveTrajectory::PredictArmor(
+              std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0, i,
+              center);
+      
       p_a.x = armor_position.x;
       p_a.y = armor_position.y;
       p_a.z = armor_position.z;

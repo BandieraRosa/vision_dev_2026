@@ -206,9 +206,8 @@ class SolveTrajectory
                              SolveTrajectory::TargetPostion& pre_center);
   void PredictAllArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                                double time_delay);
-  TargetPostion PredictOneArmorPosition(
-      const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
-      bool flag);
+  void PredictOneArmorPosition(
+      const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx);
 
   double SolvePitch(double x, double y, double z);
   double SolveYaw(double x, double y);

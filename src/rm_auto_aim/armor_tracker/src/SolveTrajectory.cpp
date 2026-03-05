@@ -124,16 +124,11 @@ void SolveTrajectory::PredictAllArmorPosition(
   }
 }
 
-SolveTrajectory::TargetPostion SolveTrajectory::PredictOneArmorPosition(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
-    bool flag)
+void SolveTrajectory::PredictOneArmorPosition(
+    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx)
 {
-  TargetPostion pre_center = PredictCenter(msg, time_delay);
-  if (flag)
-  {
-    pre_center_ = pre_center;
-  }
-  return PredictArmor(msg, time_delay, idx, pre_center);
+  pre_center_ = PredictCenter(msg, time_delay);
+  pre_position_[idx] = PredictArmor(msg, time_delay, idx, pre_center_);
 }
 
 // 计算简化单向空气阻力模型下的弹道高度，用于正常模式
@@ -280,9 +275,8 @@ void SolveTrajectory::GlobalSelectArmor(
     float toyaw =
         fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - msg->gimbal_yaw);
     float turn_time = 0.05f * toyaw;
-    SolveTrajectory::TargetPostion pre_position =
-        PredictOneArmorPosition(msg, turn_time + bias_time_ + fly_time_, i, true);
-    float aim_yaw = SolveYaw(pre_position.x, pre_position.y);
+    PredictOneArmorPosition(msg, turn_time + bias_time_ + fly_time_, i);
+    float aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
     if (aim_yaw < min_aim_yaw)
     {
       min_aim_yaw = aim_yaw;
@@ -296,21 +290,19 @@ void SolveTrajectory::GlobalSelectArmor(
 void SolveTrajectory::LocalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
-  SolveTrajectory::TargetPostion pre_position_0 =
-      PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0, true);
-  double center_yaw_0 = SolveYaw(pre_position_0.x, pre_position_0.y);
+  PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
+  double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
   double s_0 =
-      pre_position_0.x * pre_position_0.x + pre_position_0.y * pre_position_0.y;
+      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
 
-  SolveTrajectory::TargetPostion pre_position_1 =
-      PredictOneArmorPosition(msg, turn_s_ + bias_time_ + fly_time_, 1, true);
-  double center_yaw_1 = SolveYaw(pre_position_1.x, pre_position_1.y);
+  PredictOneArmorPosition(msg, turn_s_ + bias_time_ + fly_time_, 1);
+  double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
   double s_1 =
-      pre_position_1.x * pre_position_1.x + pre_position_1.y * pre_position_1.y;
+      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
 
   selected_idx_ =
-      fabs(SolveYaw(pre_position_1.x, pre_position_1.y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_0.x, pre_position_0.y) - center_yaw_0) &&
+      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
+                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
               s_1 <= s_0
           ? 1
           : 0;
@@ -320,21 +312,17 @@ void SolveTrajectory::PreSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   double time_delay = bias_time_ + fly_time_;
-  SolveTrajectory::TargetPostion pre_position_0 =
-      PredictOneArmorPosition(msg, time_delay, 0, true);
-  double center_yaw_0 = SolveYaw(pre_position_0.x, pre_position_0.y);
-  double s_0 =
-      pre_position_0.x * pre_position_0.x + pre_position_0.y * pre_position_0.y;
+      PredictOneArmorPosition(msg, time_delay, 0);
+  double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
+  double s_0 = pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
 
-  SolveTrajectory::TargetPostion pre_position_1 =
-      PredictOneArmorPosition(msg, time_delay + turn_s_, 1, true);
-  double center_yaw_1 = SolveYaw(pre_position_1.x, pre_position_1.y);
-  double s_1 =
-      pre_position_1.x * pre_position_1.x + pre_position_1.y * pre_position_1.y;
+      PredictOneArmorPosition(msg, time_delay + turn_s_, 1);
+  double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
+  double s_1 = pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
 
   bool pre_turn =
-      fabs(SolveYaw(pre_position_1.x, pre_position_1.y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_0.x, pre_position_0.y) - center_yaw_0) &&
+      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
+                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
               s_1 <= s_0
           ? 1
           : 0;
