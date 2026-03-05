@@ -8,7 +8,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
     : rclcpp::Node("hik_camera_node", options)
 {
   params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);  // us
-  params_.gain = this->declare_parameter<double>("gain", 16.0);
+  params_.gain = this->declare_parameter<double>("gain", 15.0);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
   params_.frame_id =
@@ -20,7 +20,11 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
       this->declare_parameter<uint8_t>("device_index", 0);
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
   is_hero_ = (robot_type == "hero");
-  if (is_hero_) {
+  if (is_hero_)
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Running on robot type: %s, LOB camera support enabled.",
+                 robot_type.c_str());
     device_index_lob_ = this->declare_parameter<uint8_t>("device_index_lob", 1);
   }
 
@@ -46,7 +50,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
       std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
   camera_info_url_normal_ = this->declare_parameter(
       "camera_info_url", "package://hik_camera/config/camera_info.yaml");
-  if (is_hero_) {
+  if (is_hero_)
+  {
     camera_info_url_lob_ = this->declare_parameter(
         "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
   }
@@ -63,7 +68,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
 
   RCLCPP_INFO(this->get_logger(), "Guard thread created.");
 
-  if (is_hero_) {
+  if (is_hero_)
+  {
     camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
         "/camera_switch_done", rclcpp::QoS(1).reliable());
 
