@@ -222,7 +222,7 @@ double fast_atan(double x, double y)
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
 bool SolveTrajectory::CanFire(double tar_yaw,
                               const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                              bool is_fast_fire = false)
+                              bool is_fast_fire = true)
 {
   double distance =
       std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
