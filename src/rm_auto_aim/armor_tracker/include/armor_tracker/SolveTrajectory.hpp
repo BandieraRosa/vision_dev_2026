@@ -90,26 +90,48 @@ class TrajectoryTable
   {
     table_.resize(X_DIM * Y_DIM);
 
-    std::ifstream file_in(filename_, std::ios::in | std::ios::binary);
-
-    if (!file_in)
+    std::ifstream file_in(filename_, std::ios::binary);
+    if (!file_in.is_open())
     {
-      std::cerr << "[TrajectoryTable] 错误: 无法打开文件 " << filename_
-                << "，使用默认弹道解算" << '\n';
+      std::cerr << "[TrajectoryTable] 无法打开文件: " << filename_ << '\n';
       init_ = false;
       return false;
     }
 
-    const std::size_t BYTES_TO_READ = X_DIM * Y_DIM * sizeof(Cell);
+    file_in.seekg(0, std::ios::end);
+    const std::streamsize file_size = file_in.tellg();
+    file_in.seekg(0, std::ios::beg);
 
-    file_in.read(reinterpret_cast<char*>(table_.data()),
-                 static_cast<std::streamsize>(BYTES_TO_READ));
+    const std::streamsize expected_size =
+        static_cast<std::streamsize>(X_DIM * Y_DIM * sizeof(Cell));
 
-    if (!file_in || file_in.gcount() != static_cast<std::streamsize>(BYTES_TO_READ))
+    std::cerr << "[TrajectoryTable] file: " << filename_ << '\n';
+    std::cerr << "[TrajectoryTable] X_DIM=" << X_DIM
+              << " Y_DIM=" << Y_DIM
+              << " sizeof(Cell)=" << sizeof(Cell) << '\n';
+    std::cerr << "[TrajectoryTable] expected=" << expected_size
+              << " actual=" << file_size << '\n';
+
+    if (file_size != expected_size)
     {
-      std::cerr << "[TrajectoryTable] 错误: "
-                   "读取数据失败或文件大小不匹配，使用默认弹道解算"
-                << '\n';
+      std::cerr << "[TrajectoryTable] 文件大小不匹配，拒绝加载\n";
+      init_ = false;
+      return false;
+    }
+
+    file_in.read(reinterpret_cast<char*>(table_.data()), expected_size);
+
+    if (file_in.bad())
+    {
+      std::cerr << "[TrajectoryTable] 底层IO错误\n";
+      init_ = false;
+      return false;
+    }
+
+    if (file_in.gcount() != expected_size)
+    {
+      std::cerr << "[TrajectoryTable] 读取字节数不匹配，期望: "
+                << expected_size << " 实际: " << file_in.gcount() << '\n';
       init_ = false;
       return false;
     }

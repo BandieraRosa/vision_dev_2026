@@ -271,9 +271,9 @@ static void build_table(double v0, bool bullet_type, const std::string& output_p
 
   struct Cell
   {
-    float pitch;
-    float t;
-    float v;
+    double pitch;
+    double t;
+    double v;
   };
 
   for (const auto& row : table)
