@@ -25,7 +25,7 @@ def generate_launch_description():
             Node(
                 package="hik_camera",
                 executable="hik_camera_node",
-                name="hik_camera",
+                name="camera_node",
                 output="screen",
                 emulate_tty=True,
                 parameters=[

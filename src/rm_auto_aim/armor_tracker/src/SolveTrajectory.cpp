@@ -245,20 +245,20 @@ bool SolveTrajectory::CanFire(double tar_yaw,
     {
       if (yaw_diff_exceeds)
       {
-        RCLCPP_WARN(logger_, "云台和跟踪都未就位");
+        // RCLCPP_WARN(logger_, "云台和跟踪都未就位");
         return false;
       }
-      RCLCPP_WARN(logger_, "云台就位而跟踪未就位");
+      // RCLCPP_WARN(logger_, "云台就位而跟踪未就位");
       return is_fast_fire;
     }
     else
     {
       if (yaw_diff_exceeds)
       {
-        RCLCPP_WARN(logger_, "跟踪就位而云台未就位");
+        // RCLCPP_WARN(logger_, "跟踪就位而云台未就位");
         return is_fast_fire;
       }
-      RCLCPP_DEBUG(logger_, "云台和跟踪都就位");
+      // RCLCPP_DEBUG(logger_, "云台和跟踪都就位");
       return true;
     }
   }
@@ -290,6 +290,13 @@ void SolveTrajectory::GlobalSelectArmor(
 void SolveTrajectory::LocalSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
+  if (std::fabs(msg->v_yaw) < 0.5f)
+  {
+    selected_idx_ = 0;
+    PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
+    return;
+  }
+  
   PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
   double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
   double s_0 =
@@ -299,7 +306,6 @@ void SolveTrajectory::LocalSelectArmor(
   double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
   double s_1 =
       pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
-
   selected_idx_ =
       fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
                   fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
@@ -506,13 +512,14 @@ void SolveTrajectory::AutoSolveTrajectory(
     return;
   }
 
-  // fire_logic_mode_ = FireLogicMode::SPIN;
+  fire_logic_mode_ = FireLogicMode::COMMON;
   AutoSelectArmor(msg);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
-  if (fabs(msg->v_yaw) > 0.5f)
-  {
-    UpdateFireLogicMode();
-  }
+  // if (fabs(msg->v_yaw) > 0.5f)
+  // {
+  //   UpdateFireLogicMode();
+  // }
+
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   RCLCPP_DEBUG(logger_, "Trajectory solve time: %ld us", duration.count());

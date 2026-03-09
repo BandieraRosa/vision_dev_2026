@@ -235,6 +235,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   outpost_idx_pub_ = this->create_publisher<std_msgs::msg::Int32>(
       "/tracker/outpost_idx", rclcpp::SensorDataQoS());
 
+  gimbal_yaw_error_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+      "/tracker/gimbal_yaw_error", rclcpp::SensorDataQoS());
+
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
   position_marker_.ns = "position";
@@ -333,13 +336,15 @@ void ArmorTrackerNode::ArmorsCallback(
   target_msg.header.stamp = time;
   target_msg.header.frame_id = target_frame_;
 
-  geometry_msgs::msg::PoseStamped armor_in_gimbal;
-  armor_in_gimbal.header.stamp = time;
-  armor_in_gimbal.header.frame_id = target_frame_;
-  armor_in_gimbal.pose = tracker_->tracked_armor.pose;
-  armor_pose_pub_->publish(armor_in_gimbal);
+  // geometry_msgs::msg::PoseStamped armor_in_gimbal;
+  // armor_in_gimbal.header.stamp = time;
+  // armor_in_gimbal.header.frame_id = target_frame_;
+  // armor_in_gimbal.pose = tracker_->tracked_armor.pose;
+  // armor_pose_pub_->publish(armor_in_gimbal);
 
   // Update tracker
+  double gimbal_yaw_error{0.0};
+  double bc_yaw{0.0};
   if (tracker_->tracker_state == Tracker::State::LOST)
   {
     tracker_->Init(armors_msg);
@@ -352,15 +357,6 @@ void ArmorTrackerNode::ArmorsCallback(
     dt_ = (time - last_time_).seconds();
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
     tracker_->Update(armors_msg);
-
-    // Publish Info
-    info_msg.position_diff = tracker_->info_position_diff;
-    info_msg.yaw_diff = tracker_->info_yaw_diff;
-    info_msg.position.x = tracker_->measurement(0);
-    info_msg.position.y = tracker_->measurement(1);
-    info_msg.position.z = tracker_->measurement(2);
-    info_msg.yaw = tracker_->measurement(3);
-    info_pub_->publish(info_msg);
 
     if (tracker_->tracker_state == Tracker::State::DETECTING)
     {
@@ -408,12 +404,20 @@ void ArmorTrackerNode::ArmorsCallback(
       gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,
                                        msg);
 
-      if (abs(aim_x) > 0.01)
+      bc_yaw = yaw;
+      if (std::fabs(msg->v_yaw) < 6.2f)
       {
-        target_msg.aiming_point.x = aim_x;
-        target_msg.aiming_point.y = aim_y;
-        target_msg.aiming_point.z = aim_z;
+        yaw += msg->v_yaw / 3 * 0.002f;
       }
+      else
+      {
+        yaw += msg->v_yaw / std::fabs(msg->v_yaw) * 0.02f;
+      }
+      gimbal_yaw_error = std::fabs(static_cast<double>(gimbal_yaw - yaw));
+
+      target_msg.aiming_point.x = aim_x;
+      target_msg.aiming_point.y = aim_y;
+      target_msg.aiming_point.z = aim_z;
 
       send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
@@ -428,9 +432,17 @@ void ArmorTrackerNode::ArmorsCallback(
 
   target_pub_->publish(target_msg);
 
-  std_msgs::msg::Int32 outpost_idx_msg;
-  outpost_idx_msg.data = Tracker::outpost_idx;
-  outpost_idx_pub_->publish(outpost_idx_msg);
+  // Publish Info
+  info_msg.position_diff = tracker_->info_position_diff;
+  info_msg.yaw_diff = tracker_->info_yaw_diff;
+  info_msg.bc_yaw = bc_yaw;
+  info_msg.gimbal_yaw_error = gimbal_yaw_error;
+  info_msg.position.x = tracker_->measurement(0);
+  info_msg.position.y = tracker_->measurement(1);
+  info_msg.position.z = tracker_->measurement(2);
+  info_msg.yaw = tracker_->measurement(3);
+  info_msg.outpost_idx = Tracker::outpost_idx;
+  info_pub_->publish(info_msg);
 
   PublishMarkers(target_msg);
 }
@@ -499,7 +511,7 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
           gaf_solver_->SolveTrajectory::PredictArmor(
               std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0, i,
               center);
-      
+
       p_a.x = armor_position.x;
       p_a.y = armor_position.y;
       p_a.z = armor_position.z;
