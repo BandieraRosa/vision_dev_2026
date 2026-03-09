@@ -4,6 +4,18 @@
 
 #!/bin/bash
 
+echo "正在清理旧进程..."
+for proc in robot_state_publisher rm_serial_driver_node armor_tracker_node component_container; do
+    if pgrep -f "$proc" > /dev/null; then
+        echo "杀死 $proc"
+        pkill -f "$proc"
+        sleep 0.5
+        pkill -9 -f "$proc" 2>/dev/null
+    fi
+done
+echo "进程清理完成"
+echo ""
+
 delay_time=3
 while true
 do
