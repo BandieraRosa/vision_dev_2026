@@ -12,7 +12,7 @@ do
     then
         echo "tracker未运行，等待 ${delay_time}秒 后启动..."
         sleep $delay_time
-         gnome-terminal --title="tracker" -- bash -c "cd /home/find/code/vision_/vision_dev/ && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py; exec bash"
+         gnome-terminal --title="tracker" -- bash -c "cd /home/nvidia/vision_dev/ && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py"
         if [ $? -eq 0 ]
         then
             echo "tracker started successfully!"
