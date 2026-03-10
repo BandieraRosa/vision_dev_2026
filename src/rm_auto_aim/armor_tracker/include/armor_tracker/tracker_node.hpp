@@ -63,9 +63,7 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Tracker info publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
-  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr outpost_idx_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pose_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr gimbal_yaw_error_pub_;
 
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;

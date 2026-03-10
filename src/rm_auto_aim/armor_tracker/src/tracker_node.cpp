@@ -207,11 +207,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // available
   armors_filter_->registerCallback(&ArmorTrackerNode::ArmorsCallback, this);
 
-  // velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
-  // "/current_velocity",
-  // rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
-  // std::bind(&ArmorTrackerNode::velocityCallback, this, std::placeholders::_1));
-
   velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
@@ -231,12 +226,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS());
-
-  outpost_idx_pub_ = this->create_publisher<std_msgs::msg::Int32>(
-      "/tracker/outpost_idx", rclcpp::SensorDataQoS());
-
-  gimbal_yaw_error_pub_ = this->create_publisher<std_msgs::msg::Float32>(
-      "/tracker/gimbal_yaw_error", rclcpp::SensorDataQoS());
 
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -289,12 +278,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
         });
   }
 }
-
-// void ArmorTrackerNode::velocityCallback(const
-// auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-// {
-//   gaf_solver->init(velocity_msg);
-// }
 
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
@@ -405,15 +388,24 @@ void ArmorTrackerNode::ArmorsCallback(
                                        msg);
 
       bc_yaw = yaw;
-      if (std::fabs(msg->v_yaw) < 6.2f)
+
+      gimbal_yaw_error = gimbal_yaw - yaw;
+      if (std::fabs(gimbal_yaw_error) < 0.02f)
       {
-        yaw += msg->v_yaw / 3 * 0.002f;
+        yaw -= gimbal_yaw_error;
       }
-      else
-      {
-        yaw += msg->v_yaw / std::fabs(msg->v_yaw) * 0.02f;
+      else {
+        yaw -= gimbal_yaw_error / std::fabs(gimbal_yaw_error) * 0.02f;
       }
-      gimbal_yaw_error = std::fabs(static_cast<double>(gimbal_yaw - yaw));
+
+      // if (std::fabs(msg->v_yaw) < 6.2f)
+      // {
+      //   yaw -= msg->v_yaw / 3 * 0.002f;
+      // }
+      // else
+      // {
+      //   yaw -= msg->v_yaw / std::fabs(msg->v_yaw) * 0.02f;
+      // }
 
       target_msg.aiming_point.x = aim_x;
       target_msg.aiming_point.y = aim_y;

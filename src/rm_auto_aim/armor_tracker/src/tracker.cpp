@@ -105,20 +105,17 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
       // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
       // 且偏航角发生了跳变，将此情况视为目标正在旋转并且装甲发生了 **跳变**
-      HandleArmorJump(same_id_armor);  // 跳变处理
+      HandleArmorJump(tracked_armor);  // 跳变处理
     }
-    else
+    else // 没找到匹配的装甲板
     {
-      // 没找到匹配的装甲板
       if (same_id_armors_count == 2)
       {
         RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Same ID armor found!");
-        //[DEBUG] [timestamp] [armor_tracker]: Same ID armor found!
       }
       else
       {
         RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "No matched armor found!");
-        // [DEBUG] [timestamp] [armor_tracker]: No matched armor found!
       }
     }
   }
@@ -148,7 +145,7 @@ void Tracker::MatchSameIdArmor(const Armors::SharedPtr& armors_msg,
       double position_diff = (predicted_position - position_vec).norm();
 
       if (position_diff < min_position_diff)
-      {  // 位置小于最小匹配距离，表明这就是预测的那一块装甲板
+      {  // 选择距离最近的装甲板作为匹配装甲板
         min_position_diff = position_diff;
         yaw_diff = abs(OrientationToYaw(armor.pose.orientation) - ekf_prediction(6));
         tracked_armor = armor;
