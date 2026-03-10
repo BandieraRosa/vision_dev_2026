@@ -27,6 +27,10 @@ robot_description = Command(
         launch_params["odom2camera"]["xyz"],
         " rpy:=",
         launch_params["odom2camera"]["rpy"],
+        " lob_xyz:=",
+        launch_params["odom2camera"]["lob_xyz"],
+        " lob_rpy:=",
+        launch_params["odom2camera"]["lob_rpy"],
     ]
 )
 
