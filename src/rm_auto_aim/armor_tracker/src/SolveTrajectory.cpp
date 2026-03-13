@@ -1,6 +1,7 @@
 #include "armor_tracker/SolveTrajectory.hpp"
 
 #include <cmath>
+#include <memory>
 
 namespace rm_auto_aim
 {
@@ -8,8 +9,10 @@ namespace rm_auto_aim
 SolveTrajectory::SolveTrajectory(const double& k, const double& bias_time,
                                  const double& s_bias, const double& z_bias,
                                  const double& pitch_bias, CalculateMode calculate_mode,
-                                 const TrajectoryTable::TableConfig& table_config)
-    : table_(std::make_unique<TrajectoryTable>(table_config)),
+                                 const TrajectoryTable::TableConfig& table_config,
+                                 const TrajectoryTable::TableConfig& table_config_lob_)
+    : table_(std::make_shared<TrajectoryTable>(table_config)),
+      table_lob_(std::make_shared<TrajectoryTable>(table_config_lob_)),
       calculate_mode_(calculate_mode),
       k_(k),
       pitch_bias_(pitch_bias),
@@ -20,14 +23,21 @@ SolveTrajectory::SolveTrajectory(const double& k, const double& bias_time,
   if (calculate_mode_ == CalculateMode::TABLE_LOOKUP)
   {
     table_->Init();
-    if (table_->IsInit())
+    table_lob_->Init();
+    current_table_ = table_;
+    if (current_table_->IsInit() && table_lob_->IsInit())
     {
       RCLCPP_INFO(logger_, "Trajectory table initialized successfully");
     }
-    else
+    else if (!table_->IsInit())
     {
       calculate_mode_ = CalculateMode::NORMAL;
       RCLCPP_WARN(logger_, "Using normal calculation mode");
+    }
+    else
+    {
+      RCLCPP_WARN(logger_,
+                  "LOB table failed to initialize, LOB mode will be unavailable");
     }
   }
 }
@@ -165,10 +175,10 @@ double SolveTrajectory::SolvePitch(double x, double y, double z)
 
   double pitch = 0.0f;
 
-  if (calculate_mode_ == CalculateMode::TABLE_LOOKUP && table_->IsInit())
+  if (calculate_mode_ == CalculateMode::TABLE_LOOKUP && current_table_->IsInit())
   {
     // 查表法
-    auto res = table_->Check(target_s, target_z);
+    auto res = current_table_->Check(target_s, target_z);
     if (!std::isnan(res.pitch))
     {
       fly_time_ = res.t;
@@ -296,7 +306,7 @@ void SolveTrajectory::LocalSelectArmor(
     PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
     return;
   }
-  
+
   PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
   double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
   double s_0 =
@@ -318,13 +328,15 @@ void SolveTrajectory::PreSelectArmor(
     const auto_aim_interfaces::msg::Target::SharedPtr& msg)
 {
   double time_delay = bias_time_ + fly_time_;
-      PredictOneArmorPosition(msg, time_delay, 0);
+  PredictOneArmorPosition(msg, time_delay, 0);
   double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
-  double s_0 = pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
+  double s_0 =
+      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
 
-      PredictOneArmorPosition(msg, time_delay + turn_s_, 1);
+  PredictOneArmorPosition(msg, time_delay + turn_s_, 1);
   double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
-  double s_1 = pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
+  double s_1 =
+      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
 
   bool pre_turn =
       fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
@@ -523,29 +535,6 @@ void SolveTrajectory::AutoSolveTrajectory(
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   RCLCPP_DEBUG(logger_, "Trajectory solve time: %ld us", duration.count());
-}
-
-bool SolveTrajectory::ReloadTable(const std::string& new_filename)
-{
-  if (new_filename.empty())
-  {
-    RCLCPP_WARN(logger_, "ReloadTable called with empty filename, skipping");
-    return false;
-  }
-
-  RCLCPP_INFO(logger_, "Reloading trajectory table: %s", new_filename.c_str());
-
-  if (!table_->ReloadTable(new_filename))
-  {
-    RCLCPP_ERROR(logger_, "Failed to reload table: %s, falling back to NORMAL mode",
-                 new_filename.c_str());
-    calculate_mode_ = CalculateMode::NORMAL;
-    return false;
-  }
-
-  calculate_mode_ = CalculateMode::TABLE_LOOKUP;
-  RCLCPP_INFO(logger_, "Trajectory table reloaded successfully");
-  return true;
 }
 
 }  // namespace rm_auto_aim

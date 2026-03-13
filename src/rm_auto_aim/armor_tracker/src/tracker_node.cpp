@@ -48,31 +48,45 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double max_y = this->declare_parameter("tracker.table.max_y", 2.0);
   double min_y = this->declare_parameter("tracker.table.min_y", -1.0);
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
-  std::string table_filename =
-      this->declare_parameter("tracker.table.filename", "table.bin");
+
+  double max_x_lob = this->declare_parameter("tracker.table.max_x_lob", 22.0);
+  double min_x_lob = this->declare_parameter("tracker.table.min_x_lob", 0.0);
+  double max_y_lob = this->declare_parameter("tracker.table.max_y_lob", 3.0);
+  double min_y_lob = this->declare_parameter("tracker.table.min_y_lob", -1.0);
+  double resolution_lob = this->declare_parameter("tracker.table.resolution_lob", 0.01);
+
   std::string package_prefix =
-      ament_index_cpp::get_package_share_directory("armor_tracker") + "/tools/";
-  table_filename_normal_ = package_prefix + table_filename;
+      ament_index_cpp::get_package_share_directory("rm_vision_bringup") + "/config/";
+  table_filename_normal_ =
+      package_prefix + this->declare_parameter("tracker.table.filename", "table.bin");
+  ;
   RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
                table_filename_normal_.c_str());
   if (is_hero_)
   {
     table_filename_lob_ =
         package_prefix + this->declare_parameter("tracker.table.filename_lob", "");
+    RCLCPP_ERROR(this->get_logger(), "table_filename_lob_: %s",
+                 table_filename_lob_.c_str());
   }
-  SolveTrajectory::CalculateMode calculate_mode{};
-  if (use_table)
+
+  SolveTrajectory::CalculateMode calculate_mode =
+      use_table ? SolveTrajectory::CalculateMode::TABLE_LOOKUP
+                : SolveTrajectory::CalculateMode::NORMAL;
+
+  table_config_ = {max_x, min_x, max_y, min_y, resolution, table_filename_normal_};
+  if (is_hero_)
   {
-    calculate_mode = SolveTrajectory::CalculateMode::TABLE_LOOKUP;
+    table_config_lob_ = {max_x_lob, min_x_lob,      max_y_lob,
+                         min_y_lob, resolution_lob, table_filename_lob_};
   }
   else
   {
-    calculate_mode = SolveTrajectory::CalculateMode::NORMAL;
+    table_config_lob_ = table_config_;
   }
-  TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
-                                               min_y, resolution, table_filename_normal_};
-  gaf_solver_ = std::make_unique<SolveTrajectory>(
-      k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode, table_config);
+  gaf_solver_ =
+      std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
+                                        calculate_mode, table_config_, table_config_lob_);
 
   // EKF
   // xa = x_armor, xc = x_robot_center
@@ -256,32 +270,22 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   armor_marker_.color.r = 1.0;
   marker_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
-
-  if (is_hero_)
-  {
-    camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-        "/camera_switch_done", rclcpp::QoS(1).reliable(),
-        [this](const std_msgs::msg::Bool::SharedPtr msg)
-        {
-          lob_shot_flag_ = msg->data;
-          RCLCPP_INFO(this->get_logger(), "Camera switch done, lob_shot_flag: %d",
-                      lob_shot_flag_);
-          const auto& target_filename =
-              lob_shot_flag_ ? table_filename_lob_ : table_filename_normal_;
-          if (!gaf_solver_->ReloadTable(target_filename))
-          {
-            RCLCPP_WARN(this->get_logger(),
-                        "Failed to reload trajectory table: %s, "
-                        "solver will use fallback mode.",
-                        target_filename.c_str());
-          }
-        });
-  }
 }
 
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  if (is_hero_)
+  {
+    if (armors_msg->header.frame_id != last_frame_id_)
+    {
+      last_frame_id_ = armors_msg->header.frame_id;
+      gaf_solver_->SwitchTable();
+      RCLCPP_INFO(this->get_logger(), "Switched trajectory table due to new frame id: %s",
+                  last_frame_id_.c_str());
+    }
+  }
+
   // Tranform armor position from image frame to world coordinate
   for (auto& armor : armors_msg->armors)
   {
@@ -394,7 +398,8 @@ void ArmorTrackerNode::ArmorsCallback(
       {
         yaw -= gimbal_yaw_error;
       }
-      else {
+      else
+      {
         yaw -= gimbal_yaw_error / std::fabs(gimbal_yaw_error) * 0.02f;
       }
 

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <memory>
 
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"
@@ -21,7 +22,8 @@ class TrajectoryTable
     double max_x, min_x, max_y, min_y, resolution;
     size_t x_dim, y_dim;
     std::string filename;
-
+    TableConfig() = default;
+    TableConfig(const TableConfig&) = default;
     TableConfig(double max_x, double min_x, double max_y, double min_y, double resolution,
                 std::string filename)
         : max_x(max_x),
@@ -106,11 +108,10 @@ class TrajectoryTable
         static_cast<std::streamsize>(X_DIM * Y_DIM * sizeof(Cell));
 
     std::cerr << "[TrajectoryTable] file: " << filename_ << '\n';
-    std::cerr << "[TrajectoryTable] X_DIM=" << X_DIM
-              << " Y_DIM=" << Y_DIM
+    std::cerr << "[TrajectoryTable] X_DIM=" << X_DIM << " Y_DIM=" << Y_DIM
               << " sizeof(Cell)=" << sizeof(Cell) << '\n';
-    std::cerr << "[TrajectoryTable] expected=" << expected_size
-              << " actual=" << file_size << '\n';
+    std::cerr << "[TrajectoryTable] expected=" << expected_size << " actual=" << file_size
+              << '\n';
 
     if (file_size != expected_size)
     {
@@ -130,8 +131,8 @@ class TrajectoryTable
 
     if (file_in.gcount() != expected_size)
     {
-      std::cerr << "[TrajectoryTable] 读取字节数不匹配，期望: "
-                << expected_size << " 实际: " << file_in.gcount() << '\n';
+      std::cerr << "[TrajectoryTable] 读取字节数不匹配，期望: " << expected_size
+                << " 实际: " << file_in.gcount() << '\n';
       init_ = false;
       return false;
     }
@@ -144,22 +145,15 @@ class TrajectoryTable
 
   bool IsInit() const { return init_; }
 
-  bool ReloadTable(const std::string& new_filename)
-  {
-    filename_ = new_filename;
-    init_ = false;
-    return Init();
-  }
-
  private:
-  const double MAX_X;
-  const double MIN_X;
-  const double MAX_Y;
-  const double MIN_Y;
-  const double RESOLUTION;
+  double MAX_X;
+  double MIN_X;
+  double MAX_Y;
+  double MIN_Y;
+  double RESOLUTION;
 
-  const size_t X_DIM;
-  const size_t Y_DIM;
+  size_t X_DIM;
+  size_t Y_DIM;
 
   bool init_ = false;
   std::string filename_;
@@ -212,7 +206,8 @@ class SolveTrajectory
   SolveTrajectory(const double& k, const double& bias_time, const double& s_bias,
                   const double& z_bias, const double& pitch_bias,
                   CalculateMode calculate_mode,
-                  const TrajectoryTable::TableConfig& table_config);
+                  const TrajectoryTable::TableConfig& table_config,
+                  const TrajectoryTable::TableConfig& table_config_lob_);
 
   // 初始化弹速
   void Init(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
@@ -228,8 +223,8 @@ class SolveTrajectory
                              SolveTrajectory::TargetPostion& pre_center);
   void PredictAllArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
                                double time_delay);
-  void PredictOneArmorPosition(
-      const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx);
+  void PredictOneArmorPosition(const auto_aim_interfaces::msg::Target::SharedPtr& msg,
+                               double time_delay, int idx);
 
   double SolvePitch(double x, double y, double z);
   double SolveYaw(double x, double y);
@@ -252,7 +247,27 @@ class SolveTrajectory
                            double& aim_y, double& aim_z, int& idx,
                            const auto_aim_interfaces::msg::Target::SharedPtr msg);
 
-  bool ReloadTable(const std::string& new_filename);
+  bool SwitchTable()
+  {
+    if (!table_lob_)
+    {
+      RCLCPP_WARN(logger_, "LOB table not initialized, cannot switch");
+      return false;
+    }
+    current_table_ = (current_table_ == table_) ? table_lob_ : table_;
+    if (current_table_->IsInit())
+    {
+      RCLCPP_INFO(logger_, "Switched trajectory table to: %s",
+                  current_table_->IsInit() ? "LOB" : "Normal");
+      return true;
+    }
+    else
+    {
+      RCLCPP_WARN(logger_,
+                  "Failed to switch trajectory table, current table is not initialized.");
+      return false;
+    }
+  }
 
  private:
   // Logger
@@ -271,8 +286,10 @@ class SolveTrajectory
   TargetPostion pre_position_[4];
 
   // 弹道查找表
-  std::unique_ptr<TrajectoryTable> table_;
-  CalculateMode calculate_mode_ = CalculateMode::NORMAL;  ///< 弹道计算模式
+  std::shared_ptr<TrajectoryTable> table_;
+  std::shared_ptr<TrajectoryTable> table_lob_;
+  std::shared_ptr<TrajectoryTable> current_table_;
+  CalculateMode calculate_mode_ = CalculateMode::TABLE_LOOKUP;  ///< 弹道计算模式
   FireLogicMode fire_logic_mode_{FireLogicMode::COMMON};
 
   // 目标参数

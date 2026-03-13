@@ -5,11 +5,11 @@
     camera_info_url: package://hik_camera/config/camera_info.yaml
     camera_info_url_lob: "package://hik_camera/config/camera_info_lob.yaml" # 吊射相机内参文件
     device_index: 0 # 默认相机设备索引
-    device_index_lob: 1
+    device_index_lob: 0
     frame_id: camera_optical_frame
     frame_id_lob: camera_optical_frame_lob
-    exposure_time: 1000.0
-    gain: 6.0
+    exposure_time: 4000.0
+    gain: 16.0
     autocap: true
     frame_rate: 80.0
     rotate: 0 # 0: 不旋转, 1: 顺时针 90°, 2: 180°, 3: 逆时针 90°

@@ -97,8 +97,14 @@ void ArmorDetectorNode::CameraInfoCallback(
   cam_center_ =
       cv::Point2f(static_cast<float>(cam_info->k[2]), static_cast<float>(cam_info->k[5]));
   cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*cam_info);
-  pnp_solver_->SetCameraInfo(cam_info_->k, cam_info_->d);
-
+  if (!pnp_solver_)
+  {
+    pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d);
+  }
+  else
+  {
+    pnp_solver_->SetCameraInfo(cam_info_->k, cam_info_->d);
+  }
   RCLCPP_INFO(this->get_logger(), "PnP solver updated (frame_id: %s)",
               cam_info->header.frame_id.c_str());
 }
