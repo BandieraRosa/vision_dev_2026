@@ -90,4 +90,14 @@ float PnPSolver::CalculateDistanceToCenter(
   return static_cast<float>(cv::norm(image_point - cv::Point2f(cx, cy)));
 }
 
+void PnPSolver::SetCameraInfo(const std::array<double, 9>& camera_matrix,
+                              const std::vector<double>& distortion_coefficients)
+{
+  std::memcpy(camera_matrix_.data, camera_matrix.data(), 9 * sizeof(double));
+  size_t num_dist_coeffs =
+      std::min(distortion_coefficients.size(), static_cast<size_t>(5));
+  std::memcpy(dist_coeffs_.data, distortion_coefficients.data(),
+              num_dist_coeffs * sizeof(double));
+}
+
 }  // namespace rm_auto_aim

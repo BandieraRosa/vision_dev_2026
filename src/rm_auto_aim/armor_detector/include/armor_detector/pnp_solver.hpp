@@ -24,6 +24,9 @@ class PnPSolver
   // Calculate the distance between armor center and image center
   float CalculateDistanceToCenter(const cv::Point2f& image_point);
 
+  void SetCameraInfo(const std::array<double, 9>& camera_matrix,
+                     const std::vector<double>& distortion_coefficients);
+
  private:
   cv::Mat camera_matrix_;
   cv::Mat dist_coeffs_;
