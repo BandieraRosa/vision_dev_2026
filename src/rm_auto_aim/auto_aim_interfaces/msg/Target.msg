@@ -12,3 +12,4 @@ float64 radius_2
 float64 dz
 geometry_msgs/Point aiming_point
 float64 gimbal_yaw
+float64 gimbal_pitch
