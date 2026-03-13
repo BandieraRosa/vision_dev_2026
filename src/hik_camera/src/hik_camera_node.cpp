@@ -1,4 +1,5 @@
 #include "hik_camera_node/hik_camera_node.hpp"
+#include <rclcpp/qos.hpp>
 
 using namespace std::chrono_literals;
 
@@ -27,9 +28,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   image_pub_ =
       image_transport::create_publisher(this, "image_raw", rmw_qos_profile_sensor_data);
 
-  auto cam_info_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
   cam_info_pub_ =
-      this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", cam_info_qos);
+      this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS());
 
   RCLCPP_INFO(this->get_logger(), "Camera publisher created.");
   // 初始化相机

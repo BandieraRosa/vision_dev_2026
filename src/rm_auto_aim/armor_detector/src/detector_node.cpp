@@ -78,9 +78,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
       });
 
   // 创建相机内参订阅者 → 接收一次/camera_info → 提取图像中心、保存内参、更新 PnP 求解器
-  auto cam_info_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-      "/camera_info", cam_info_qos,
+      "/camera_info", rclcpp::SensorDataQoS(),
       std::bind(&ArmorDetectorNode::CameraInfoCallback, this, std::placeholders::_1));
 
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
