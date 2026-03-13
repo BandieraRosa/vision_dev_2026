@@ -77,40 +77,53 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         debug_ ? CreateDebugPublishers() : DestroyDebugPublishers();
       });
 
-  // 创建相机内参订阅者 → 接收一次/camera_info → 提取图像中心、保存内参、更新 PnP 求解器
+  // 创建相机内参订阅者 → 接收一次/camera_info消息 → 提取图像中心、保存内参、初始化 PnP
+  // 求解器 → 停止订阅
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       "/camera_info", rclcpp::SensorDataQoS(),
-      std::bind(&ArmorDetectorNode::CameraInfoCallback, this, std::placeholders::_1));
+      [this, robot_type](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info)
+      {
+        if (current_frame_id_ != "" && camera_info->header.frame_id == current_frame_id_)
+        {
+          return;
+        }
+        cam_center_ = cv::Point2f(static_cast<float>(camera_info->k[2]),
+                                  static_cast<float>(camera_info->k[5]));
+        cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+        if (!pnp_solver_)
+        {
+          pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d);
+          if (robot_type != "hero")
+          {
+            cam_info_sub_.reset();  // 只需要接收第一条相机内参消息，之后就可以停掉订阅了
+          }
+        }
+        else
+        {
+          pnp_solver_->SetCameraInfo(cam_info_->k, cam_info_->d);
+        }
+        current_frame_id_ = camera_info->header.frame_id;
+        RCLCPP_INFO(this->get_logger(), "PnP solver updated (frame_id: %s)",
+                    camera_info->header.frame_id.c_str());
+      });
 
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
       "/image_raw", rclcpp::SensorDataQoS(),
       std::bind(&ArmorDetectorNode::ImageCallback, this, std::placeholders::_1));
 }
 
-// ---------------------------------------------------------------------------
-// 内参回调：仅在相机初始化/切换时触发（全生命周期 2~3 次）
-// ---------------------------------------------------------------------------
-void ArmorDetectorNode::CameraInfoCallback(
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cam_info)
-{
-  cam_center_ =
-      cv::Point2f(static_cast<float>(cam_info->k[2]), static_cast<float>(cam_info->k[5]));
-  cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*cam_info);
-  if (!pnp_solver_)
-  {
-    pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d);
-  }
-  else
-  {
-    pnp_solver_->SetCameraInfo(cam_info_->k, cam_info_->d);
-  }
-  RCLCPP_INFO(this->get_logger(), "PnP solver updated (frame_id: %s)",
-              cam_info->header.frame_id.c_str());
-}
-
 void ArmorDetectorNode::ImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
+  if (!pnp_solver_)
+  {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
+                         "Waiting for /camera_info, skip current image.");
+    return;
+  }
+
   auto armors = DetectArmors(img_msg);
 
   if (pnp_solver_ != nullptr)

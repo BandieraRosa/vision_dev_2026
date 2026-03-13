@@ -54,9 +54,6 @@ class HikCameraNode : public rclcpp::Node
   void ProtectRunning();
   void SwitchCamera(bool to_lob);
 
-  // 内参实际变化时调用
-  void PublishCameraInfo();
-
   void SetFloatValue(const std::string& name, double value);
   void SetEnumValue(const std::string& name, unsigned int value);
 
@@ -78,8 +75,8 @@ class HikCameraNode : public rclcpp::Node
   std::thread capture_thread_;
   Protect guard_;
 
-  image_transport::Publisher image_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_pub_;
+  // ROS2 publisher
+  image_transport::CameraPublisher camera_pub_;
 
   // Lob shot camera switch
   bool is_lob_camera_{false};
@@ -94,5 +91,6 @@ class HikCameraNode : public rclcpp::Node
   std::atomic<bool> in_read_{false};       // Read() 进入 SDK 前置 true，返回后置 false
   std::atomic<bool> is_switching_{false};  // SwitchCamera 期间为 true，防止守护线程误重启
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lob_shot_sub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr camera_switch_done_pub_;
 };
 }  // namespace HikCamera

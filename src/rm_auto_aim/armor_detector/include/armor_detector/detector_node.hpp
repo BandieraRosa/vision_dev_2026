@@ -3,6 +3,7 @@
 
 // ROS
 #include <image_transport/publisher.hpp>
+#include <image_transport/subscriber_filter.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -27,8 +28,7 @@ class ArmorDetectorNode : public rclcpp::Node
   ArmorDetectorNode(const rclcpp::NodeOptions& options);
 
  private:
-  void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
-  void CameraInfoCallback(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cam_info);
+  void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG);
 
   std::unique_ptr<Detector> InitDetector();
   std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
@@ -56,6 +56,7 @@ class ArmorDetectorNode : public rclcpp::Node
   cv::Point2f cam_center_;
   std::shared_ptr<sensor_msgs::msg::CameraInfo> cam_info_;
   std::unique_ptr<PnPSolver> pnp_solver_;
+  std::string current_frame_id_;
 
   // Camera switch
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_switch_sub_;

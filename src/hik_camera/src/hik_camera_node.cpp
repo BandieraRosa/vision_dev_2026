@@ -1,5 +1,4 @@
 #include "hik_camera_node/hik_camera_node.hpp"
-#include <rclcpp/qos.hpp>
 
 using namespace std::chrono_literals;
 
@@ -25,12 +24,8 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
   // 创建 publisher
-  image_pub_ =
-      image_transport::create_publisher(this, "image_raw", rmw_qos_profile_sensor_data);
-
-  cam_info_pub_ =
-      this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS());
-
+  camera_pub_ = image_transport::create_camera_publisher(this, "image_raw",
+                                                         rmw_qos_profile_sensor_data);
   RCLCPP_INFO(this->get_logger(), "Camera publisher created.");
   // 初始化相机
   CaptureInit();
@@ -60,8 +55,6 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
                 current_camera_info_url_.c_str());
   }
 
-  PublishCameraInfo();
-
   RCLCPP_INFO(this->get_logger(), "Guard thread created.");
 
   if (is_hero_)
@@ -76,6 +69,9 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
     params_.device_index_lob = this->declare_parameter<uint8_t>("device_index_lob", 1);
     params_.camera_info_url_lob = this->declare_parameter(
         "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
+
+    camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+        "/camera_switch_done", rclcpp::QoS(1).reliable());
 
     lob_shot_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         "/lob_shot_switch", rclcpp::QoS(1).reliable(),
@@ -126,6 +122,10 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           }
           image_msg_.height = image.rows;
           image_msg_.width = image.cols;
+          camera_info_msg_.height = image.rows;
+          camera_info_msg_.width = image.cols;
+          camera_info_msg_.header.stamp = stamp;
+          camera_info_msg_.header.frame_id = current_frame_id_;
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
@@ -135,7 +135,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           image_msg_.step = static_cast<uint32_t>(image.cols * image.channels());
           image_msg_.data.assign(image.datastart, image.dataend);
 
-          image_pub_.publish(image_msg_);
+          camera_pub_.publish(image_msg_, camera_info_msg_);
         }
 
         RCLCPP_INFO(this->get_logger(), "Hik SDK capture thread exit.");
@@ -167,15 +167,6 @@ HikCameraNode::~HikCameraNode()
   }
 
   RCLCPP_INFO(this->get_logger(), "HikCameraNode destroyed.");
-}
-
-void HikCameraNode::PublishCameraInfo()
-{
-  camera_info_msg_.header.stamp = this->now();
-  camera_info_msg_.header.frame_id = current_frame_id_;
-  cam_info_pub_->publish(camera_info_msg_);
-  RCLCPP_INFO(this->get_logger(), "Published camera_info (frame_id: %s)",
-              current_frame_id_.c_str());
 }
 
 bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
@@ -463,11 +454,6 @@ void HikCameraNode::ProtectRunning()
     // 简单延时防止频繁重启
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     this->CaptureInit();
-    // 守护线程重启后也需要重新发布内参
-    if (hik_state_.load() == HikStateEnum::RUNNING)
-    {
-      PublishCameraInfo();
-    }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   RCLCPP_INFO(this->get_logger(), "Protect thread exit.");
@@ -509,13 +495,14 @@ void HikCameraNode::SwitchCamera(bool to_lob)
                 to_lob ? "lob" : "normal", current_camera_info_url_.c_str());
   }
 
-  PublishCameraInfo();
-
   CaptureInit();
 
   if (hik_state_.load() == HikStateEnum::RUNNING)
   {
     is_lob_camera_ = to_lob;
+    std_msgs::msg::Bool done_msg;
+    done_msg.data = to_lob;
+    camera_switch_done_pub_->publish(done_msg);
     RCLCPP_INFO(this->get_logger(), "Camera switched to %s successfully.",
                 to_lob ? "lob" : "normal");
   }
