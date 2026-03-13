@@ -10,9 +10,13 @@
 
 namespace rm_auto_aim
 {
-Detector::Detector(const int& bin_thres, const int& color, const LightParams& l,
-                   const ArmorParams& a)
-    : binary_thres(bin_thres), detect_color(color), l(l), a(a)
+Detector::Detector(const int& binary_lower_thres, const int& binary_upper_thres,
+                   const int& color, const LightParams& l, const ArmorParams& a)
+    : binary_lower_thres_(binary_lower_thres),
+      binary_upper_thres_(binary_upper_thres),
+      detect_color(color),
+      l(l),
+      a(a)
 {
 }
 
@@ -39,8 +43,8 @@ cv::Mat Detector::PreprocessImage(const cv::Mat& rgb_img)  // 图像预处理
   // cv::bilateralFilter(gray_img, bgray_img, 9, 50, 50);
 
   cv::Mat binary_img;
-  // cv::threshold(gray_img, binary_img, binary_thres, 255, cv::THRESH_BINARY);
-  cv::inRange(gray_img, cv::Scalar(binary_thres), cv::Scalar(255), binary_img);
+  cv::inRange(gray_img, cv::Scalar(binary_lower_thres_), cv::Scalar(binary_upper_thres_),
+              binary_img);
 
   return binary_img;
 }
