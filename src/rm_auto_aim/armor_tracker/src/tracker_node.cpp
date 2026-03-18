@@ -399,27 +399,8 @@ void ArmorTrackerNode::ArmorsCallback(
       bc_yaw = yaw;
 
       gimbal_yaw_error = gimbal_yaw - yaw;
-      // if (std::fabs(gimbal_yaw_error) < 0.02f)
-      // {
-      //   yaw -= gimbal_yaw_error;
-      // }
-      // else {
-      //   yaw -= gimbal_yaw_error / std::fabs(gimbal_yaw_error) * 0.02f;
-      // }
 
-      if (std::fabs(msg->v_yaw) < 6.2f)
-      {
-        yaw -= msg->v_yaw / 3 * 0.002f;
-      }
-      else
-      {
-        yaw -= msg->v_yaw / std::fabs(msg->v_yaw) * 0.02f;
-      }
-
-      if (std::fabs(pitch) < 0.05f)
-      {
-        pitch -= 0.027f;
-      }
+      // 以下为针对云台响应的特殊处理，留空。
 
       target_msg.aiming_point.x = aim_x;
       target_msg.aiming_point.y = aim_y;
