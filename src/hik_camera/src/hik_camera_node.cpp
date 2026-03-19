@@ -184,7 +184,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   unsigned int n_msec = 100;
 
   auto start = std::chrono::steady_clock::now();
-  ret = MV_CC_GetImageBuffer(handle_, &raw, n_msec);
+  ret = MV_CC_GetImageBuffer(handle_, &raw, n_msec); // INFINITE
 
   if (ret != MV_OK)
   {

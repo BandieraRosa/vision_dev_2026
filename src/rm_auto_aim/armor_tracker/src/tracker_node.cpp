@@ -327,7 +327,9 @@ void ArmorTrackerNode::ArmorsCallback(
 
   // Update tracker
   double gimbal_yaw_error{0.0};
+  double gimbal_pitch_error{0.0};
   double bc_yaw{0.0};
+  double bc_pitch{0.0};
   if (tracker_->tracker_state == Tracker::State::LOST)
   {
     tracker_->Init(armors_msg);
@@ -373,21 +375,20 @@ void ArmorTrackerNode::ArmorsCallback(
           tf2_buffer_->lookupTransform("gimbal_odom", "pitch_link", tf2::TimePointZero);
 
       // 从变换中提取四元数并转换为欧拉角
-      tf2::Quaternion q_yaw(
-          transform_stamped_yaw.transform.rotation.x, transform_stamped_yaw.transform.rotation.y,
-          transform_stamped_yaw.transform.rotation.z, transform_stamped_yaw.transform.rotation.w);
-      tf2::Quaternion q_pitch(
-          transform_stamped_pitch.transform.rotation.x, transform_stamped_pitch.transform.rotation.y,
-          transform_stamped_pitch.transform.rotation.z, transform_stamped_pitch.transform.rotation.w);
+      tf2::Quaternion q_yaw(transform_stamped_yaw.transform.rotation.x,
+                            transform_stamped_yaw.transform.rotation.y,
+                            transform_stamped_yaw.transform.rotation.z,
+                            transform_stamped_yaw.transform.rotation.w);
+      tf2::Quaternion q_pitch(transform_stamped_pitch.transform.rotation.x,
+                              transform_stamped_pitch.transform.rotation.y,
+                              transform_stamped_pitch.transform.rotation.z,
+                              transform_stamped_pitch.transform.rotation.w);
 
       double gimbal_roll{}, gimbal_pitch{}, gimbal_yaw{};
       tf2::Matrix3x3(q_yaw).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
       target_msg.gimbal_yaw = gimbal_yaw;
       tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_pitch);
       target_msg.gimbal_pitch = -gimbal_pitch;
-
-
-
       double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
@@ -397,10 +398,13 @@ void ArmorTrackerNode::ArmorsCallback(
                                        msg);
 
       bc_yaw = yaw;
+      bc_pitch = pitch;
 
-      gimbal_yaw_error = gimbal_yaw - yaw;
+      gimbal_yaw_error = yaw - gimbal_yaw;
+      gimbal_pitch_error = pitch - gimbal_pitch;
 
-      // 以下为针对云台响应的特殊处理，留空。
+      yaw += 0.0 * gimbal_yaw_error;
+      pitch += 0.0 * gimbal_pitch_error;
 
       target_msg.aiming_point.x = aim_x;
       target_msg.aiming_point.y = aim_y;
@@ -423,7 +427,9 @@ void ArmorTrackerNode::ArmorsCallback(
   info_msg.position_diff = tracker_->info_position_diff;
   info_msg.yaw_diff = tracker_->info_yaw_diff;
   info_msg.bc_yaw = bc_yaw;
+  info_msg.bc_pitch = bc_pitch;
   info_msg.gimbal_yaw_error = gimbal_yaw_error;
+  info_msg.gimbal_pitch_error = gimbal_pitch_error;
   info_msg.position.x = tracker_->measurement(0);
   info_msg.position.y = tracker_->measurement(1);
   info_msg.position.z = tracker_->measurement(2);
