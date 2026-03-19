@@ -472,9 +472,10 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = fabs(aim_yaw - yaw) < 0.02f && !is_turn_;
-    // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
-    //              fabs(aim_yaw - yaw));
+    // is_fire = fabs(aim_yaw - yaw) < 0.02f && !is_turn_;
+    //  RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
+    //               fabs(aim_yaw - yaw));
+    is_fire = CanFire(aim_yaw, msg);
     if (is_fire)
     {
       yaw = aim_yaw;
