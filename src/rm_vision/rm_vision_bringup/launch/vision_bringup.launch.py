@@ -115,30 +115,32 @@ def generate_launch_description():
     robot = LaunchConfiguration("robot")
 
     config_repo_rel = "src/rm_vision/rm_vision_bringup/config"
-
-    checkout_robot = ExecuteProcess(
-        cmd=[
-            "bash",
-            "-lc",
-            "set -e; "
-            'cd "$WS_ROOT"/' + config_repo_rel + "; "
-            "git rev-parse --is-inside-work-tree >/dev/null 2>&1; "
-            'git checkout "$BRANCH"; '
-            "git status --porcelain",
-        ],
-        additional_env={
-            "WS_ROOT": ws_root,
-            "BRANCH": robot,
-        },
-        output="screen",
-    )
+    if robot == "":
+        print("No robot specified, using current branch by default.")
+    else:
+        checkout_robot = ExecuteProcess(
+            cmd=[
+                "bash",
+                "-lc",
+                "set -e; "
+                'cd "$WS_ROOT"/' + config_repo_rel + "; "
+                "git rev-parse --is-inside-work-tree >/dev/null 2>&1; "
+                'git checkout "$BRANCH"; '
+                "git status --porcelain",
+            ],
+            additional_env={
+                "WS_ROOT": ws_root,
+                "BRANCH": robot,
+            },
+            output="screen",
+        )
 
     build_nodes = OpaqueFunction(function=_build_after_checkout)
 
     return LaunchDescription(
         [
             DeclareLaunchArgument("ws_root", default_value=os.getcwd()),
-            DeclareLaunchArgument("robot", default_value="main"),
+            DeclareLaunchArgument("robot", default_value=""),
             checkout_robot,
             RegisterEventHandler(
                 OnProcessExit(

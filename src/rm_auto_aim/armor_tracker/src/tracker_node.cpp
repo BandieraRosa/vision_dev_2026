@@ -1,6 +1,9 @@
 #include "armor_tracker/tracker_node.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+
+#include "armor_tracker/SolveTrajectory.hpp"
 
 namespace rm_auto_aim
 {
@@ -47,10 +50,15 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
   std::string table_filename =
       this->declare_parameter("tracker.table.filename", "table.bin");
-  table_filename_normal_ = table_filename;
+  std::string package_prefix =
+      ament_index_cpp::get_package_share_directory("armor_tracker") + "/tools/";
+  table_filename_normal_ = package_prefix + table_filename;
+  RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
+               table_filename_normal_.c_str());
   if (is_hero_)
   {
-    table_filename_lob_ = this->declare_parameter("tracker.table.filename_lob", "");
+    table_filename_lob_ =
+        package_prefix + this->declare_parameter("tracker.table.filename_lob", "");
   }
   SolveTrajectory::CalculateMode calculate_mode{};
   if (use_table)
@@ -62,7 +70,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     calculate_mode = SolveTrajectory::CalculateMode::NORMAL;
   }
   TrajectoryTable::TableConfig table_config = {max_x, min_x,      max_y,
-                                               min_y, resolution, table_filename};
+                                               min_y, resolution, table_filename_normal_};
   gaf_solver_ = std::make_unique<SolveTrajectory>(
       k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode, table_config);
 
@@ -199,11 +207,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // available
   armors_filter_->registerCallback(&ArmorTrackerNode::ArmorsCallback, this);
 
-  // velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
-  // "/current_velocity",
-  // rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
-  // std::bind(&ArmorTrackerNode::velocityCallback, this, std::placeholders::_1));
-
   velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
@@ -223,9 +226,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS());
-
-  outpost_idx_pub_ = this->create_publisher<std_msgs::msg::Int32>(
-      "/tracker/outpost_idx", rclcpp::SensorDataQoS());
 
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -279,12 +279,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   }
 }
 
-// void ArmorTrackerNode::velocityCallback(const
-// auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-// {
-//   gaf_solver->init(velocity_msg);
-// }
-
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
@@ -311,7 +305,7 @@ void ArmorTrackerNode::ArmorsCallback(
           armors_msg->armors.begin(), armors_msg->armors.end(),
           [this](const auto_aim_interfaces::msg::Armor& armor)
           {
-            return abs(armor.pose.position.z) > 1.2 ||
+            return armor.pose.position.z > 2.0 ||
                    Eigen::Vector2d(armor.pose.position.x, armor.pose.position.y).norm() >
                        max_armor_distance_;
           }),
@@ -325,13 +319,17 @@ void ArmorTrackerNode::ArmorsCallback(
   target_msg.header.stamp = time;
   target_msg.header.frame_id = target_frame_;
 
-  geometry_msgs::msg::PoseStamped armor_in_gimbal;
-  armor_in_gimbal.header.stamp = time;
-  armor_in_gimbal.header.frame_id = target_frame_;
-  armor_in_gimbal.pose = tracker_->tracked_armor.pose;
-  armor_pose_pub_->publish(armor_in_gimbal);
+  // geometry_msgs::msg::PoseStamped armor_in_gimbal;
+  // armor_in_gimbal.header.stamp = time;
+  // armor_in_gimbal.header.frame_id = target_frame_;
+  // armor_in_gimbal.pose = tracker_->tracked_armor.pose;
+  // armor_pose_pub_->publish(armor_in_gimbal);
 
   // Update tracker
+  double gimbal_yaw_error{0.0};
+  double gimbal_pitch_error{0.0};
+  double bc_yaw{0.0};
+  double bc_pitch{0.0};
   if (tracker_->tracker_state == Tracker::State::LOST)
   {
     tracker_->Init(armors_msg);
@@ -345,15 +343,6 @@ void ArmorTrackerNode::ArmorsCallback(
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
     tracker_->Update(armors_msg);
 
-    // Publish Info
-    info_msg.position_diff = tracker_->info_position_diff;
-    info_msg.yaw_diff = tracker_->info_yaw_diff;
-    info_msg.position.x = tracker_->measurement(0);
-    info_msg.position.y = tracker_->measurement(1);
-    info_msg.position.z = tracker_->measurement(2);
-    info_msg.yaw = tracker_->measurement(3);
-    info_pub_->publish(info_msg);
-
     if (tracker_->tracker_state == Tracker::State::DETECTING)
     {
       target_msg.tracking = false;
@@ -365,6 +354,7 @@ void ArmorTrackerNode::ArmorsCallback(
       // Fill target message
       const auto& state = tracker_->target_state;
       target_msg.id = tracker_->tracked_id;
+      target_msg.type = tracker_->tracked_armor_type;
       target_msg.armors_num = static_cast<int>(tracker_->tracked_armors_num);
       target_msg.position.x = state(0);
       target_msg.velocity.x = state(1);
@@ -378,28 +368,28 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
 
-      // 获取当前相机的 yaw 与 tracking 目标在相机坐标系中的 x 坐标
-      auto transform_stamped =
-          tf2_buffer_->lookupTransform("gimbal_odom", "camera_link", tf2::TimePointZero);
+      // 获取当前云台在世界系下的 yaw
+      auto transform_stamped_yaw =
+          tf2_buffer_->lookupTransform("gimbal_odom", "yaw_link", tf2::TimePointZero);
+      auto transform_stamped_pitch =
+          tf2_buffer_->lookupTransform("gimbal_odom", "pitch_link", tf2::TimePointZero);
 
       // 从变换中提取四元数并转换为欧拉角
-      tf2::Quaternion q(
-          transform_stamped.transform.rotation.x, transform_stamped.transform.rotation.y,
-          transform_stamped.transform.rotation.z, transform_stamped.transform.rotation.w);
+      tf2::Quaternion q_yaw(transform_stamped_yaw.transform.rotation.x,
+                            transform_stamped_yaw.transform.rotation.y,
+                            transform_stamped_yaw.transform.rotation.z,
+                            transform_stamped_yaw.transform.rotation.w);
+      tf2::Quaternion q_pitch(transform_stamped_pitch.transform.rotation.x,
+                              transform_stamped_pitch.transform.rotation.y,
+                              transform_stamped_pitch.transform.rotation.z,
+                              transform_stamped_pitch.transform.rotation.w);
 
-      double camera_roll{}, camera_pitch{}, camera_yaw{};
-      tf2::Matrix3x3(q).getRPY(camera_roll, camera_pitch, camera_yaw);
-      target_msg.camera_yaw = camera_yaw;
-
-      geometry_msgs::msg::PoseStamped armor_in_target;
-      armor_in_target.header.stamp = time;
-      armor_in_target.header.frame_id = target_frame_;
-      armor_in_target.pose = tracker_->tracked_armor.pose;
-
-      auto armor_in_cam = tf2_buffer_->transform(armor_in_target, "camera_optical_frame");
-      target_msg.armor_x = armor_in_cam.pose.position.x;
-
-      float pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
+      double gimbal_roll{}, gimbal_pitch{}, gimbal_yaw{};
+      tf2::Matrix3x3(q_yaw).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
+      target_msg.gimbal_yaw = gimbal_yaw;
+      tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_pitch);
+      target_msg.gimbal_pitch = -gimbal_pitch;
+      double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
 
@@ -407,25 +397,23 @@ void ArmorTrackerNode::ArmorsCallback(
       gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,
                                        msg);
 
-      if (abs(aim_x) > 0.01)
-      {
-        target_msg.aiming_point.x = aim_x;
-        target_msg.aiming_point.y = aim_y;
-        target_msg.aiming_point.z = aim_z;
-      }
+      bc_yaw = yaw;
+      bc_pitch = pitch;
 
-      if (pitch == NAN || yaw == NAN)
-      {
-        RCLCPP_DEBUG(this->get_logger(), "pitch or yaw is NAN!");
-      }
+      gimbal_yaw_error = yaw - gimbal_yaw;
+      gimbal_pitch_error = pitch - gimbal_pitch;
+
+      yaw += 0.0 * gimbal_yaw_error;
+      pitch += 0.0 * gimbal_pitch_error;
+
+      target_msg.aiming_point.x = aim_x;
+      target_msg.aiming_point.y = aim_y;
+      target_msg.aiming_point.z = aim_z;
 
       send_msg.is_fire = is_fire;
       send_msg.pitch = pitch;
       send_msg.yaw = yaw;
       send_msg.idx = idx;
-
-      // std::cout << "aim_x: " << aim_x << " aim_y: " << aim_y << " aim_z: " << aim_z <<
-      // " pitch: " << pitch << " yaw: " << yaw << std::endl;
     }
   }
 
@@ -435,9 +423,19 @@ void ArmorTrackerNode::ArmorsCallback(
 
   target_pub_->publish(target_msg);
 
-  std_msgs::msg::Int32 outpost_idx_msg;
-  outpost_idx_msg.data = Tracker::outpost_idx;
-  outpost_idx_pub_->publish(outpost_idx_msg);
+  // Publish Info
+  info_msg.position_diff = tracker_->info_position_diff;
+  info_msg.yaw_diff = tracker_->info_yaw_diff;
+  info_msg.bc_yaw = bc_yaw;
+  info_msg.bc_pitch = bc_pitch;
+  info_msg.gimbal_yaw_error = gimbal_yaw_error;
+  info_msg.gimbal_pitch_error = gimbal_pitch_error;
+  info_msg.position.x = tracker_->measurement(0);
+  info_msg.position.y = tracker_->measurement(1);
+  info_msg.position.z = tracker_->measurement(2);
+  info_msg.yaw = tracker_->measurement(3);
+  info_msg.outpost_idx = Tracker::outpost_idx;
+  info_pub_->publish(info_msg);
 
   PublishMarkers(target_msg);
 }
@@ -452,7 +450,7 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
   visualization_msgs::msg::MarkerArray marker_array;
   if (target_msg.tracking)
   {
-    double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
+    // double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
     double xc = target_msg.position.x, yc = target_msg.position.y,
            za = target_msg.position.z;
     double vx = target_msg.velocity.x, vy = target_msg.velocity.y,
@@ -482,79 +480,39 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
 
     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
     armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23;
-    bool is_current_pair = true;
+    // bool is_current_pair = true;
     size_t a_n = target_msg.armors_num;
     geometry_msgs::msg::Point p_a;
-    double r = 0;
+    // double r = 0;
+    SolveTrajectory::TargetPostion center = gaf_solver_->SolveTrajectory::PredictCenter(
+        std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0);
     for (size_t i = 0; i < a_n; i++)
     {
-      double tmp_yaw =
-          yaw + static_cast<double>(i) * (2 * M_PI / static_cast<double>(a_n));
-      // Only 4 armors has 2 radius and height
-      if (a_n == 4)
-      {
-        r = is_current_pair ? r1 : r2;
-        p_a.z = za + (is_current_pair ? 0 : dz);
-        is_current_pair = !is_current_pair;
-      }
-      else if (a_n == 3)
-      {
-        // r = Tracker::outpost_r;
-        // p_a.z = za;
-        if (tracker_->outpost_idx == 0)
-        {
-          if (i == 0)
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-          else
-          {
-            p_a.z = za;
-          }
-        }
-        if (tracker_->outpost_idx == 1)
-        {
-          if (i == 0)
-          {
-            p_a.z = za;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-          else
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-        }
-        if (tracker_->outpost_idx == 2)
-        {
-          if (i == 0)
-          {
-            p_a.z = za + Tracker::outpost_dz;
-          }
-          else if (i == 1)
-          {
-            p_a.z = za;
-          }
-          else
-          {
-            p_a.z = za - Tracker::outpost_dz;
-          }
-        }
-        r = Tracker::outpost_r;
-      }
-      p_a.x = xc - r * cos(tmp_yaw);
-      p_a.y = yc - r * sin(tmp_yaw);
+      // double tmp_yaw =
+      //     yaw + static_cast<double>(i) * (2 * M_PI / static_cast<double>(a_n));
+      // // Only 4 armors has 2 radius and height
+      // if (a_n == 4)
+      // {
+      //   r = is_current_pair ? r1 : r2;
+      //   p_a.z = za + (is_current_pair ? 0 : dz);
+      //   is_current_pair = !is_current_pair;
+      // }
+      // p_a.x = xc - r * cos(tmp_yaw);
+      // p_a.y = yc - r * sin(tmp_yaw);
+
+      SolveTrajectory::TargetPostion armor_position =
+          gaf_solver_->SolveTrajectory::PredictArmor(
+              std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0, i,
+              center);
+
+      p_a.x = armor_position.x;
+      p_a.y = armor_position.y;
+      p_a.z = armor_position.z;
 
       armor_marker_.id = static_cast<int>(i);
       armor_marker_.pose.position = p_a;
       tf2::Quaternion q;
-      q.setRPY(0, target_msg.id == "outpost" ? -0.26 : 0.26, tmp_yaw);
+      q.setRPY(0, target_msg.id == "outpost" ? -0.26 : 0.26, armor_position.yaw);
       armor_marker_.pose.orientation = tf2::toMsg(q);
       marker_array.markers.emplace_back(armor_marker_);
     }

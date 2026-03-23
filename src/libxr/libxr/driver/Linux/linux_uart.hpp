@@ -134,7 +134,15 @@ class LinuxUART : public UART
         this, [](LinuxUART *self) { self->TxLoop(); }, "tx_uart", 81920,
         Thread::Priority::REALTIME);
   }
-
+  ~LinuxUART()
+  {
+    if (fd_ >= 0)
+    {
+      close(fd_);
+    }
+    delete[] rx_buff_;
+    delete[] tx_buff_;
+  }
   std::string GetByPathForTTY(const std::string &tty_name)
   {
     const std::string BASE = "/dev/serial/by-path";
