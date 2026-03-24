@@ -309,7 +309,7 @@ void ArmorTrackerNode::ArmorsCallback(
           armors_msg->armors.begin(), armors_msg->armors.end(),
           [this](const auto_aim_interfaces::msg::Armor& armor)
           {
-            return armor.pose.position.z > 1.2 ||
+            return armor.pose.position.z > 2.0 ||
                    Eigen::Vector2d(armor.pose.position.x, armor.pose.position.y).norm() >
                        max_armor_distance_;
           }),
@@ -331,7 +331,9 @@ void ArmorTrackerNode::ArmorsCallback(
 
   // Update tracker
   double gimbal_yaw_error{0.0};
+  double gimbal_pitch_error{0.0};
   double bc_yaw{0.0};
+  double bc_pitch{0.0};
   if (tracker_->tracker_state == Tracker::State::LOST)
   {
     tracker_->Init(armors_msg);
@@ -389,9 +391,8 @@ void ArmorTrackerNode::ArmorsCallback(
       double gimbal_roll{}, gimbal_pitch{}, gimbal_yaw{};
       tf2::Matrix3x3(q_yaw).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
       target_msg.gimbal_yaw = gimbal_yaw;
-      tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_pitch);
+      tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
       target_msg.gimbal_pitch = -gimbal_pitch;
-
       double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
@@ -400,24 +401,14 @@ void ArmorTrackerNode::ArmorsCallback(
       gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,
                                        msg);
       bc_yaw = yaw;
-      gimbal_yaw_error = gimbal_yaw - yaw;
-      // if (std::fabs(gimbal_yaw_error) < 0.02f)
-      // {
-      //   yaw -= gimbal_yaw_error;
-      // }
-      // else {
-      //   yaw -= gimbal_yaw_error / std::fabs(gimbal_yaw_error) * 0.02f;
-      // }
+      bc_pitch = pitch;
 
-      if (std::fabs(msg->v_yaw) < 6.2f)
-      {
-        yaw -= msg->v_yaw / 3 * 0.002f;
-      }
-      else
-      {
-        yaw -= msg->v_yaw / std::fabs(msg->v_yaw) * 0.02f;
-      }
-pitch -= 0.003;
+      gimbal_yaw_error = yaw - gimbal_yaw;
+      gimbal_pitch_error = pitch - gimbal_pitch;
+
+      yaw += 0.0 * gimbal_yaw_error;
+      pitch += 0.0 * gimbal_pitch_error;
+
       target_msg.aiming_point.x = aim_x;
       target_msg.aiming_point.y = aim_y;
       target_msg.aiming_point.z = aim_z;
@@ -439,7 +430,9 @@ pitch -= 0.003;
   info_msg.position_diff = tracker_->info_position_diff;
   info_msg.yaw_diff = tracker_->info_yaw_diff;
   info_msg.bc_yaw = bc_yaw;
+  info_msg.bc_pitch = bc_pitch;
   info_msg.gimbal_yaw_error = gimbal_yaw_error;
+  info_msg.gimbal_pitch_error = gimbal_pitch_error;
   info_msg.position.x = tracker_->measurement(0);
   info_msg.position.y = tracker_->measurement(1);
   info_msg.position.z = tracker_->measurement(2);

@@ -12,39 +12,17 @@ PnPSolver::PnPSolver(const std::array<double, 9>& camera_matrix,
   std::memcpy(camera_matrix_.data, camera_matrix.data(), 9 * sizeof(double));
   size_t num_dist_coeffs = std::min(dist_coeffs.size(), static_cast<size_t>(5));
   std::memcpy(dist_coeffs_.data, dist_coeffs.data(), num_dist_coeffs * sizeof(double));
-
-  // Unit: m
-  constexpr double SMALL_HALF_Y = SMALL_ARMOR_WIDTH / 2.0 / 1000.0;
-  constexpr double SMALL_HALF_Z = SMALL_ARMOR_HEIGHT / 2.0 / 1000.0;
-  constexpr double LARGE_HALF_Y = LARGE_ARMOR_WIDTH / 2.0 / 1000.0;
-  constexpr double LARGE_HALF_Z = LARGE_ARMOR_HEIGHT / 2.0 / 1000.0;
-
-  // Start from bottom left in clockwise order
-  // Model coordinate: x forward, y left, z up
-  small_armor_points_.emplace_back(cv::Point3f(0, SMALL_HALF_Y, -SMALL_HALF_Z));
-  small_armor_points_.emplace_back(cv::Point3f(0, SMALL_HALF_Y, SMALL_HALF_Z));
-  small_armor_points_.emplace_back(cv::Point3f(0, -SMALL_HALF_Y, SMALL_HALF_Z));
-  small_armor_points_.emplace_back(cv::Point3f(0, -SMALL_HALF_Y, -SMALL_HALF_Z));
-
-  large_armor_points_.emplace_back(cv::Point3f(0, LARGE_HALF_Y, -LARGE_HALF_Z));
-  large_armor_points_.emplace_back(cv::Point3f(0, LARGE_HALF_Y, LARGE_HALF_Z));
-  large_armor_points_.emplace_back(cv::Point3f(0, -LARGE_HALF_Y, LARGE_HALF_Z));
-  large_armor_points_.emplace_back(cv::Point3f(0, -LARGE_HALF_Y, -LARGE_HALF_Z));
 }
 
 bool PnPSolver::SolvePnP(const Armor& armor, cv::Mat& rvec, cv::Mat& tvec)
 {
-  std::vector<cv::Point2f> image_armor_points;
-
-  // Fill in image points
-  image_armor_points.emplace_back(armor.left_light.bottom);
-  image_armor_points.emplace_back(armor.left_light.top);
-  image_armor_points.emplace_back(armor.right_light.top);
-  image_armor_points.emplace_back(armor.right_light.bottom);
+  std::array<cv::Point2f, 4> image_armor_points = {
+      armor.left_light.bottom, armor.left_light.top, armor.right_light.top,
+      armor.right_light.bottom};
 
   // Solve pnp
   auto object_points =
-      armor.type == ArmorType::SMALL ? small_armor_points_ : large_armor_points_;
+      armor.type == ArmorType::SMALL ? SMALL_ARMOR_POINTS : LARGE_ARMOR_POINTS;
 
   std::vector<cv::Mat> rvecs, tvecs;
   std::vector<double> re_projection_error;

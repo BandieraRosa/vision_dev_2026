@@ -77,14 +77,38 @@ class TrajectoryTable
       return {NAN, NAN, NAN};
     }
 
-    size_t xc = static_cast<size_t>(std::round((adjusted_x - MIN_X) / RESOLUTION));
-    size_t yc = static_cast<size_t>(std::round((adjusted_y - MIN_Y) / RESOLUTION));
-    xc = std::min(xc, X_DIM - 1);
-    yc = std::min(yc, Y_DIM - 1);
+    // 将坐标映射到网格坐标系
+    const double fx = (x - MIN_X) / RESOLUTION;
+    const double fy = (y - MIN_Y) / RESOLUTION;
 
-    Cell ge = table_[xc * Y_DIM + yc];
+    // 左下角索引
+    size_t x0 = static_cast<size_t>(std::floor(fx));
+    size_t y0 = static_cast<size_t>(std::floor(fy));
 
-    return {ge.pitch, ge.t, ge.v};
+    // 处理边界：如果刚好落在最大边界，避免 x1/y1 越界
+    size_t x1 = std::min(x0 + 1, X_DIM - 1);
+    size_t y1 = std::min(y0 + 1, Y_DIM - 1);
+
+    x0 = std::min(x0, X_DIM - 1);
+    y0 = std::min(y0, Y_DIM - 1);
+
+    // 小数部分，作为插值权重
+    const double dx = fx - static_cast<double>(x0);
+    const double dy = fy - static_cast<double>(y0);
+
+    const Cell& c00 = table_[x0 * Y_DIM + y0];
+    const Cell& c10 = table_[x1 * Y_DIM + y0];
+    const Cell& c01 = table_[x0 * Y_DIM + y1];
+    const Cell& c11 = table_[x1 * Y_DIM + y1];
+
+    auto bilerp = [dx, dy](double v00, double v10, double v01, double v11) -> double
+    {
+      return (1.0 - dx) * (1.0 - dy) * v00 + dx * (1.0 - dy) * v10 +
+             (1.0 - dx) * dy * v01 + dx * dy * v11;
+    };
+
+    return {bilerp(c00.pitch, c10.pitch, c01.pitch, c11.pitch),
+            bilerp(c00.t, c10.t, c01.t, c11.t), bilerp(c00.v, c10.v, c01.v, c11.v)};
   }
 
   // 初始化：从二进制文件加载表

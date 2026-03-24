@@ -1,6 +1,6 @@
 #!/bin/bash
 
-delay_time=6
+delay_time=3
 
 while true
 do

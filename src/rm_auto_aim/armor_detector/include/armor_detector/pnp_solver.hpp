@@ -38,9 +38,31 @@ class PnPSolver
   static constexpr float LARGE_ARMOR_HEIGHT = 55;
 
   // Four vertices of armor in 3d
-  std::vector<cv::Point3f> small_armor_points_;
-  std::vector<cv::Point3f> large_armor_points_;
+  // Unit: m
+  static constexpr double SMALL_HALF_Y = SMALL_ARMOR_WIDTH / 2.0 / 1000.0;
+  static constexpr double SMALL_HALF_Z = SMALL_ARMOR_HEIGHT / 2.0 / 1000.0;
+  static constexpr double LARGE_HALF_Y = LARGE_ARMOR_WIDTH / 2.0 / 1000.0;
+  static constexpr double LARGE_HALF_Z = LARGE_ARMOR_HEIGHT / 2.0 / 1000.0;
+
+  // Start from bottom left in clockwise order
+  // Model coordinate: x forward, y left, z up
+  static const std::array<cv::Point3f, 4> SMALL_ARMOR_POINTS;
+  static const std::array<cv::Point3f, 4> LARGE_ARMOR_POINTS;
 };
+
+inline const std::array<cv::Point3f, 4> PnPSolver::SMALL_ARMOR_POINTS = {{
+    {0, SMALL_HALF_Y, -SMALL_HALF_Z},
+    {0, SMALL_HALF_Y, SMALL_HALF_Z},
+    {0, -SMALL_HALF_Y, SMALL_HALF_Z},
+    {0, -SMALL_HALF_Y, -SMALL_HALF_Z},
+}};
+
+inline const std::array<cv::Point3f, 4> PnPSolver::LARGE_ARMOR_POINTS = {{
+    {0, LARGE_HALF_Y, -LARGE_HALF_Z},
+    {0, LARGE_HALF_Y, LARGE_HALF_Z},
+    {0, -LARGE_HALF_Y, LARGE_HALF_Z},
+    {0, -LARGE_HALF_Y, -LARGE_HALF_Z},
+}};
 
 }  // namespace rm_auto_aim
 

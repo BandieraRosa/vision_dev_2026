@@ -78,7 +78,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS(),
-      std::bind(&RMSerialDriver::SendCallBack, this, std::placeholders::_1));
+      [this](const auto_aim_interfaces::msg::Send::SharedPtr msg) { SendCallBack(msg); });
 
   XRobotMain(peripherals);
 

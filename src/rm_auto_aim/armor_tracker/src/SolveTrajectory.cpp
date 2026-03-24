@@ -232,7 +232,7 @@ double fast_atan(double x, double y)
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
 bool SolveTrajectory::CanFire(double tar_yaw,
                               const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                              bool is_fast_fire = true)
+                              bool is_fast_fire = false)
 {
   double distance =
       std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
@@ -484,9 +484,10 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = fabs(aim_yaw - yaw) < 0.02f && is_turn_;
-    // RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
-    //              fabs(aim_yaw - yaw));
+    // is_fire = fabs(aim_yaw - yaw) < 0.02f && !is_turn_;
+    //  RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
+    //               fabs(aim_yaw - yaw));
+    is_fire = CanFire(aim_yaw, msg);
     if (is_fire)
     {
       yaw = aim_yaw;

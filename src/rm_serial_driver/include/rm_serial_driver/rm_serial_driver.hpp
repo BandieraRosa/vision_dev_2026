@@ -30,10 +30,9 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
                                   {{"ahrs_quaternion"}, {"lob_shot"}});
 
-  static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
-                                               {{"target_euler"}});
-  static SharedTopicClient shared_topic_client_1(hw, appmgr, "uart_client", 81920, 256,
-                                                 {{"fire_notify", "tracker"}});
+  static SharedTopicClient shared_topic_client(
+      hw, appmgr, "uart_client", 81920, 256,
+      {{"target_euler"}, {"fire_notify", "tracker"}});
 }
 
 class RMSerialDriver : public rclcpp::Node
