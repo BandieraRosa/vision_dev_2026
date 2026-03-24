@@ -108,12 +108,30 @@ SolveTrajectory::TargetPostion SolveTrajectory::PredictArmor(
   else  // 3个装甲板,是前哨站
   {
     double radius = msg->radius_1;
-    double tmp_yaw = pre_center.yaw - idx * 2.0f * M_PI / msg->armors_num;
+    double sign = 0.0;
+    if (msg->v_yaw > 0.1)
+    {
+      sign = 1.0;
+    }
+    else if (msg->v_yaw < -0.1)
+    {
+      sign = -1.0;
+    }
+    double tmp_yaw = pre_center.yaw - sign * idx * 2.0 * M_PI / msg->armors_num;
 
     pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
     pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
 
-    int id = (idx + Tracker::outpost_idx) % msg->armors_num;
+    int id = Tracker::outpost_idx;
+    if (msg->v_yaw > 0.1)
+    {
+      id = (Tracker::outpost_idx + idx) % msg->armors_num;  // 低->中->高
+    }
+    else if (msg->v_yaw < -0.1)
+    {
+      id =
+          (Tracker::outpost_idx - idx + msg->armors_num) % msg->armors_num;  // 高->中->低
+    }
     pre_pos.z = pre_center.z + Tracker::outpost_dz * (id - 1);
 
     pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
@@ -484,9 +502,6 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     double aim_yaw = SolveYaw(aim_x, aim_y);
-    // is_fire = fabs(aim_yaw - yaw) < 0.02f && !is_turn_;
-    //  RCLCPP_ERROR(logger_, "aim_yaw: %f, yaw: %f, diff: %f", aim_yaw, yaw,
-    //               fabs(aim_yaw - yaw));
     is_fire = CanFire(aim_yaw, msg);
     if (is_fire)
     {

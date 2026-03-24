@@ -51,7 +51,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();  // 根据整车c的预测，得出装甲板的位置
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-  bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
+  bool matched = false;           // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
   if (!armors_msg->armors.empty())
@@ -60,8 +60,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     int same_id_armors_count = 0;
     predicted_position =
         GetArmorPositionFromState(ekf_prediction);  // 计算,根据卡尔曼得到预测装甲板位置
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值大幅
-    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
+    double min_position_diff = DBL_MAX;             // 最小位置差值,最大初始值大幅
+    double yaw_diff = DBL_MAX;                      // 定义yaw差值,预测装甲板和真实装甲板
 
     MatchSameIdArmor(armors_msg, ekf_prediction, same_id_armor, same_id_armors_count,
                      min_position_diff, yaw_diff);
@@ -107,7 +107,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
       // 且偏航角发生了跳变，将此情况视为目标正在旋转并且装甲发生了 **跳变**
       HandleArmorJump(tracked_armor);  // 跳变处理
     }
-    else // 没找到匹配的装甲板
+    else  // 没找到匹配的装甲板
     {
       if (same_id_armors_count == 2)
       {
@@ -259,7 +259,7 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   double yaw = OrientationToYaw(orientation);
 
   // 更新追踪目标的装甲板数量
-  // UpdateArmorsNum(current_armor);
+  UpdateArmorsNum(current_armor);
 
   // 更新跳变后的状态
   UpdateJumpedState(position, yaw);
@@ -328,20 +328,42 @@ void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, doubl
     // 可能不保证卡尔曼里是哪个装甲板的高度，但总是两个相邻的装甲板相减
     // 基于高——低装甲板高度差强行矫正索引
     // 低 中 高： 0 1 2
-    if (z_diff > outpost_cast_threshold)
+    if (target_state(7) > 0.1)
     {
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                  "Outpost armor index changed to 0!");
-      outpost_idx = 0;
-    }
-    else
-    {
-      outpost_idx = outpost_idx + 1;
-      if (outpost_idx > 2)
+      if (z_diff > outpost_cast_threshold)
       {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                    "Outpost armor index changed to 0!");
         outpost_idx = 0;
-        RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"),
-                     "Outpost armor index update error");
+      }
+      else
+      {
+        outpost_idx = outpost_idx + 1;
+        if (outpost_idx > 2)
+        {
+          outpost_idx = 0;
+          RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"),
+                       "Outpost armor index update error");
+        }
+      }
+    }
+    else if (target_state(7) < -0.1)
+    {
+      if (z_diff < -outpost_cast_threshold)
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                    "Outpost armor index changed to 2!");
+        outpost_idx = 2;
+      }
+      else
+      {
+        outpost_idx = outpost_idx - 1;
+        if (outpost_idx < 0)
+        {
+          outpost_idx = 2;
+          RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"),
+                       "Outpost armor index update error");
+        }
       }
     }
     // 前哨站应当是固定不动的，故希望借此降低速度噪声影响。
