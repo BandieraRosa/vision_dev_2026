@@ -30,9 +30,14 @@ class HikCameraNode : public rclcpp::Node
     bool autocap;
     double frame_rate;
     std::string frame_id;
+    std::string frame_id_lob;
     std::string camera_name;
+    std::string camera_name_lob;
+    std::string camera_info_url;
+    std::string camera_info_url_lob;
+    uint8_t device_index{0};
+    uint8_t device_index_lob{1};
     uint8_t rotate = 0;
-    uint8_t device_index = 0;
   };
 
   struct Protect
@@ -74,12 +79,15 @@ class HikCameraNode : public rclcpp::Node
   image_transport::CameraPublisher camera_pub_;
 
   // Lob shot camera switch
-  std::string camera_info_url_normal_;
-  std::string camera_info_url_lob_;
-  uint8_t device_index_normal_{0};
-  uint8_t device_index_lob_{1};
   bool is_lob_camera_{false};
   bool is_hero_{false};
+
+  // Current camera_info state
+  uint8_t current_device_index_;
+  std::string current_frame_id_;
+  std::string current_camera_name_;
+  std::string current_camera_info_url_;
+
   std::atomic<bool> in_read_{false};       // Read() 进入 SDK 前置 true，返回后置 false
   std::atomic<bool> is_switching_{false};  // SwitchCamera 期间为 true，防止守护线程误重启
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lob_shot_sub_;

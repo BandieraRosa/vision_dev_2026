@@ -11,22 +11,15 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.gain = this->declare_parameter<double>("gain", 15.0);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
-  params_.frame_id =
+  current_frame_id_ = params_.frame_id =
       this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
-  params_.camera_name =
-      this->declare_parameter<std::string>("camera_name", "narrow_stereo");
+  current_camera_name_ = params_.camera_name =
+      this->declare_parameter<std::string>("camera_name", "gimbal_camera");
   params_.rotate = this->declare_parameter<uint8_t>("rotate", 0);
-  device_index_normal_ = params_.device_index =
+  current_device_index_ = params_.device_index =
       this->declare_parameter<uint8_t>("device_index", 0);
-  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  const auto& robot_type = this->declare_parameter<std::string>("robot_type", "infantry");
   is_hero_ = (robot_type == "hero");
-  if (is_hero_)
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Running on robot type: %s, LOB camera support enabled.",
-                 robot_type.c_str());
-    device_index_lob_ = this->declare_parameter<uint8_t>("device_index_lob", 1);
-  }
 
   RCLCPP_INFO(this->get_logger(), "params has been initialized.");
 
@@ -48,28 +41,35 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   image_msg_.width = img_info_.nWidthMax;
   camera_info_manager_ =
       std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
-  camera_info_url_normal_ = this->declare_parameter(
+  current_camera_info_url_ = params_.camera_info_url = this->declare_parameter(
       "camera_info_url", "package://hik_camera/config/camera_info.yaml");
-  if (is_hero_)
+
+  if (camera_info_manager_->validateURL(current_camera_info_url_))
   {
-    camera_info_url_lob_ = this->declare_parameter(
-        "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
-  }
-  if (camera_info_manager_->validateURL(camera_info_url_normal_))
-  {
-    camera_info_manager_->loadCameraInfo(camera_info_url_normal_);
+    camera_info_manager_->loadCameraInfo(current_camera_info_url_);
     camera_info_msg_ = camera_info_manager_->getCameraInfo();
   }
   else
   {
     RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s",
-                camera_info_url_normal_.c_str());
+                current_camera_info_url_.c_str());
   }
 
   RCLCPP_INFO(this->get_logger(), "Guard thread created.");
 
   if (is_hero_)
   {
+    RCLCPP_WARN(this->get_logger(),
+                "Running on robot type: %s, LOB camera support enabled.",
+                robot_type.c_str());
+    params_.camera_name_lob =
+        this->declare_parameter<std::string>("camera_name_lob", "gimbal_camera_lob");
+    params_.frame_id_lob =
+        this->declare_parameter<std::string>("frame_id_lob", "camera_optical_frame_lob");
+    params_.device_index_lob = this->declare_parameter<uint8_t>("device_index_lob", 1);
+    params_.camera_info_url_lob = this->declare_parameter(
+        "camera_info_url_lob", "package://hik_camera/config/camera_info_lob.yaml");
+
     camera_switch_done_pub_ = this->create_publisher<std_msgs::msg::Bool>(
         "/camera_switch_done", rclcpp::QoS(1).reliable());
 
@@ -125,11 +125,11 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           camera_info_msg_.height = image.rows;
           camera_info_msg_.width = image.cols;
           camera_info_msg_.header.stamp = stamp;
-          camera_info_msg_.header.frame_id = params_.frame_id;
+          camera_info_msg_.header.frame_id = current_frame_id_;
 
           // 将 cv::Mat 转成 sensor_msgs::msg::Image
           image_msg_.header.stamp = stamp;
-          image_msg_.header.frame_id = params_.frame_id;
+          image_msg_.header.frame_id = current_frame_id_;
           image_msg_.encoding = "rgb8";
           image_msg_.is_bigendian = false;
           image_msg_.step = static_cast<uint32_t>(image.cols * image.channels());
@@ -269,14 +269,14 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  if (params_.device_index >= device_list.nDeviceNum)
+  if (current_device_index_ >= device_list.nDeviceNum)
   {
     RCLCPP_ERROR(this->get_logger(), "Device index %d out of range (found %d cameras)",
-                 params_.device_index, device_list.nDeviceNum);
+                 current_device_index_, device_list.nDeviceNum);
     return;
   }
 
-  ret = MV_CC_CreateHandle(&handle_, device_list.pDeviceInfo[params_.device_index]);
+  ret = MV_CC_CreateHandle(&handle_, device_list.pDeviceInfo[current_device_index_]);
   if (ret != MV_OK)
   {
     RCLCPP_ERROR(this->get_logger(), "MV_CC_CreateHandle failed: 0x%X", ret);
@@ -474,19 +474,25 @@ void HikCameraNode::SwitchCamera(bool to_lob)
 
   CaptureStop();
 
-  params_.device_index = to_lob ? device_index_lob_ : device_index_normal_;
+  current_device_index_ = to_lob ? params_.device_index_lob : params_.device_index;
 
-  const auto& url = to_lob ? camera_info_url_lob_ : camera_info_url_normal_;
-  if (camera_info_manager_->validateURL(url))
+  current_camera_info_url_ =
+      to_lob ? params_.camera_info_url_lob : params_.camera_info_url;
+  current_camera_name_ = to_lob ? params_.camera_name_lob : params_.camera_name;
+  current_frame_id_ = to_lob ? params_.frame_id_lob : params_.frame_id;
+
+  camera_info_manager_->setCameraName(current_camera_name_);
+  if (camera_info_manager_->validateURL(current_camera_info_url_))
   {
-    camera_info_manager_->loadCameraInfo(url);
+    camera_info_manager_->loadCameraInfo(current_camera_info_url_);
     camera_info_msg_ = camera_info_manager_->getCameraInfo();
-    RCLCPP_INFO(this->get_logger(), "Loaded camera info: %s", url.c_str());
+    RCLCPP_INFO(this->get_logger(), "Loaded camera info: %s",
+                current_camera_info_url_.c_str());
   }
   else
   {
     RCLCPP_WARN(this->get_logger(), "Invalid camera info URL for %s: %s",
-                to_lob ? "lob" : "normal", url.c_str());
+                to_lob ? "lob" : "normal", current_camera_info_url_.c_str());
   }
 
   CaptureInit();

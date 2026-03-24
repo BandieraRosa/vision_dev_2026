@@ -67,7 +67,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
     CreateDebugPublishers();
   }
 
-  // Debug param change moniter
+  // Debug param change monitor
   debug_param_sub_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
   debug_cb_handle_ = debug_param_sub_->add_parameter_callback(
       "debug",
@@ -79,38 +79,35 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 
   // 创建相机内参订阅者 → 接收一次/camera_info消息 → 提取图像中心、保存内参、初始化 PnP
   // 求解器 → 停止订阅
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       "/camera_info", rclcpp::SensorDataQoS(),
-      [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info)
+      [this, robot_type](const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info)
       {
+        if (current_frame_id_ != "" && camera_info->header.frame_id == current_frame_id_)
+        {
+          return;
+        }
         cam_center_ = cv::Point2f(static_cast<float>(camera_info->k[2]),
                                   static_cast<float>(camera_info->k[5]));
         cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
         if (!pnp_solver_)
         {
-          pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
+          pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d);
+          if (robot_type != "hero")
+          {
+            cam_info_sub_.reset();  // 只需要接收第一条相机内参消息，之后就可以停掉订阅了
+          }
         }
-      });
-
-  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
-  if (robot_type == "hero")
-  {
-    camera_switch_sub_ = this->create_subscription<std_msgs::msg::Bool>(
-        "/camera_switch_done", rclcpp::QoS(1).reliable(),
-        [this](const std_msgs::msg::Bool::SharedPtr)
+        else
         {
-          RCLCPP_INFO(this->get_logger(),
-                      "Camera switch detected, resetting PnP solver...");
-          pnp_solver_.reset();
-        });
-  }
-  else
-  {
-    if (pnp_solver_)
-    {
-      cam_info_sub_.reset();  // 已经获取到相机内参，停止订阅
-    }
-  }
+          pnp_solver_->SetCameraInfo(cam_info_->k, cam_info_->d);
+        }
+        current_frame_id_ = camera_info->header.frame_id;
+        RCLCPP_INFO(this->get_logger(), "PnP solver updated (frame_id: %s)",
+                    camera_info->header.frame_id.c_str());
+      });
 
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
       "/image_raw", rclcpp::SensorDataQoS(),
@@ -120,6 +117,13 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 void ArmorDetectorNode::ImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
+  if (!pnp_solver_)
+  {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
+                         "Waiting for /camera_info, skip current image.");
+    return;
+  }
+
   auto armors = DetectArmors(img_msg);
 
   if (pnp_solver_ != nullptr)
@@ -196,7 +200,10 @@ std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
   param_desc.integer_range[0].step = 1;
   param_desc.integer_range[0].from_value = 0;
   param_desc.integer_range[0].to_value = 255;
-  int binary_thres = static_cast<int>(declare_parameter("binary_thres", 160, param_desc));
+  int binary_lower_thres =
+      static_cast<int>(declare_parameter("binary_lower_thres", 160, param_desc));
+  int binary_upper_thres =
+      static_cast<int>(declare_parameter("binary_upper_thres", 255, param_desc));
 
   param_desc.description = "0-RED, 1-BLUE";
   param_desc.integer_range[0].from_value = 0;
@@ -220,8 +227,8 @@ std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
           declare_parameter("armor.max_large_center_distance", 5.5),
       .max_angle = declare_parameter("armor.max_angle", 35.0)};
 
-  auto detector =
-      std::make_unique<Detector>(binary_thres, detect_color, l_params, a_params);
+  auto detector = std::make_unique<Detector>(binary_lower_thres, binary_upper_thres,
+                                             detect_color, l_params, a_params);
 
   // Init classifier
   auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
@@ -243,7 +250,11 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
 
   // Update params
-  detector_->binary_thres = static_cast<int>(get_parameter("binary_thres").as_int());
+  // detector_->binary_thres = static_cast<int>(get_parameter("binary_thres").as_int());
+  detector_->binary_upper_thres_ =
+      static_cast<int>(get_parameter("binary_upper_thres").as_int());
+  detector_->binary_lower_thres_ =
+      static_cast<int>(get_parameter("binary_lower_thres").as_int());
   detector_->detect_color = static_cast<int>(get_parameter("detect_color").as_int());
   detector_->classifier->SetThreshold(get_parameter("classifier_threshold").as_double());
 

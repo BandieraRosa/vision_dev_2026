@@ -39,8 +39,8 @@ class Detector
     double max_angle;
   };
 
-  Detector(const int& bin_thres, const int& color, const LightParams& l,
-           const ArmorParams& a);
+  Detector(const int& binary_lower_thres, const int& binary_upper_thres, const int& color,
+           const LightParams& l, const ArmorParams& a);
 
   std::vector<Armor> Detect(const cv::Mat& input);
 
@@ -52,7 +52,9 @@ class Detector
   cv::Mat GetAllNumbersImage();
   void DrawResults(cv::Mat& img);
 
-  int binary_thres;
+  // int binary_thres;
+  int binary_lower_thres_;
+  int binary_upper_thres_;
   int detect_color;
   LightParams l;
   ArmorParams a;

@@ -79,11 +79,12 @@ class ArmorTrackerNode : public rclcpp::Node
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
   // Lob shot
-  bool lob_shot_flag_{false};
   bool is_hero_{false};
   std::string table_filename_normal_;
   std::string table_filename_lob_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_switch_sub_;
+  TrajectoryTable::TableConfig table_config_;
+  TrajectoryTable::TableConfig table_config_lob_;
+  std::string last_frame_id_ = "camera_optical_frame";
 };
 
 }  // namespace rm_auto_aim

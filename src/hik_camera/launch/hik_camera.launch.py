@@ -20,7 +20,6 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 name="camera_info_url", default_value=camera_info_url
             ),
-            DeclareLaunchArgument(name="use_sensor_data_qos", default_value="false"),
             DeclareLaunchArgument("robot", default_value=""),
             Node(
                 package="hik_camera",
@@ -32,9 +31,6 @@ def generate_launch_description():
                     LaunchConfiguration("params_file"),
                     {
                         "camera_info_url": LaunchConfiguration("camera_info_url"),
-                        "use_sensor_data_qos": LaunchConfiguration(
-                            "use_sensor_data_qos"
-                        ),
                         "robot_type": LaunchConfiguration("robot"),
                     },
                 ],

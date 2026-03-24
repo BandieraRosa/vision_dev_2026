@@ -104,7 +104,6 @@ class LinuxUART : public UART
     }
 
     device_path_ = GetByPathForTTY(device_path_);
-
     fd_ = open(device_path_.c_str(), O_RDWR | O_NOCTTY);
     if (fd_ < 0)
     {
@@ -143,6 +142,7 @@ class LinuxUART : public UART
     delete[] rx_buff_;
     delete[] tx_buff_;
   }
+
   std::string GetByPathForTTY(const std::string &tty_name)
   {
     const std::string BASE = "/dev/serial/by-path";
@@ -250,7 +250,6 @@ class LinuxUART : public UART
                      | IUCLC
 #endif
     );
-
     // 输出模式：关闭所有加工
     tio.c_oflag &= ~(OPOST
 #ifdef ONLCR
@@ -332,7 +331,6 @@ class LinuxUART : public UART
     SetLowLatency(fd_);
 
     tcflush(fd_, TCIOFLUSH);
-
     return ErrorCode::OK;
   }
 
