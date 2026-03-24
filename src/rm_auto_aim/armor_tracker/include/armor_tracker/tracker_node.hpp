@@ -29,6 +29,8 @@ class ArmorTrackerNode : public rclcpp::Node
   explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
  private:
+  void InitParameters();
+
   void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
   void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
@@ -85,6 +87,10 @@ class ArmorTrackerNode : public rclcpp::Node
   TrajectoryTable::TableConfig table_config_;
   TrajectoryTable::TableConfig table_config_lob_;
   std::string last_frame_id_ = "camera_optical_frame";
+
+  // control
+  double k_yaw_;
+  double k_pitch_;
 };
 
 }  // namespace rm_auto_aim

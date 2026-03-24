@@ -12,81 +12,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 {
   RCLCPP_INFO(this->get_logger(), "Starting TrackerNode!");
 
-  // Maximum allowable armor distance in the XOY plane
-  max_armor_distance_ = this->declare_parameter("max_armor_distance", 10.0);
-
-  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
-  is_hero_ = (robot_type == "hero");
-
-  // Tracker
-  double max_match_distance = this->declare_parameter("tracker.max_match_distance", 0.15);
-  double max_match_yaw_diff = this->declare_parameter("tracker.max_match_yaw_diff", 1.0);
-  tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
-  tracker_->tracking_thres =
-      static_cast<int>(this->declare_parameter("tracker.tracking_thres", 5));
-  Tracker::outpost_cast_threshold = static_cast<double>(
-      this->declare_parameter("tracker.outpost.outpost_cast_threshold", 0.18));
-  Tracker::outpost_dz =
-      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_dz", 0.1));
-  Tracker::outpost_r =
-      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
-
-  lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
-
-  float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
-  float bias_time =
-      static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
-  float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
-  float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
-  float pitch_bias =
-      static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
-
-  bool use_table = this->declare_parameter("tracker.calculate_mode", true);
-
-  double max_x = this->declare_parameter("tracker.table.max_x", 13.0);
-  double min_x = this->declare_parameter("tracker.table.min_x", 0.0);
-  double max_y = this->declare_parameter("tracker.table.max_y", 2.0);
-  double min_y = this->declare_parameter("tracker.table.min_y", -1.0);
-  double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
-
-  double max_x_lob = this->declare_parameter("tracker.table.max_x_lob", 22.0);
-  double min_x_lob = this->declare_parameter("tracker.table.min_x_lob", 0.0);
-  double max_y_lob = this->declare_parameter("tracker.table.max_y_lob", 3.0);
-  double min_y_lob = this->declare_parameter("tracker.table.min_y_lob", -1.0);
-  double resolution_lob = this->declare_parameter("tracker.table.resolution_lob", 0.01);
-
-  std::string package_prefix =
-      ament_index_cpp::get_package_share_directory("rm_vision_bringup") + "/config/";
-  table_filename_normal_ =
-      package_prefix + this->declare_parameter("tracker.table.filename", "table.bin");
-  ;
-  RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
-               table_filename_normal_.c_str());
-  if (is_hero_)
-  {
-    table_filename_lob_ =
-        package_prefix + this->declare_parameter("tracker.table.filename_lob", "");
-    RCLCPP_ERROR(this->get_logger(), "table_filename_lob_: %s",
-                 table_filename_lob_.c_str());
-  }
-
-  SolveTrajectory::CalculateMode calculate_mode =
-      use_table ? SolveTrajectory::CalculateMode::TABLE_LOOKUP
-                : SolveTrajectory::CalculateMode::NORMAL;
-
-  table_config_ = {max_x, min_x, max_y, min_y, resolution, table_filename_normal_};
-  if (is_hero_)
-  {
-    table_config_lob_ = {max_x_lob, min_x_lob,      max_y_lob,
-                         min_y_lob, resolution_lob, table_filename_lob_};
-  }
-  else
-  {
-    table_config_lob_ = table_config_;
-  }
-  gaf_solver_ =
-      std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
-                                        calculate_mode, table_config_, table_config_lob_);
+  InitParameters();
 
   // EKF
   // xa = x_armor, xc = x_robot_center
@@ -141,12 +67,12 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return h;
   };
   // update_Q - process noise covariance matrix 过程噪声协方差矩阵
-  s2qxyz_armor_ = declare_parameter("ekf.sigma2_q_xyz", 20.0);
-  s2qyaw_armor_ = declare_parameter("ekf.sigma2_q_yaw", 100.0);
-  s2qr_armor_ = declare_parameter("ekf.sigma2_q_r", 800.0);
-  s2qxyz_outpost_ = declare_parameter("ekf.sigma2_q_xyz_outpost", 0.005);
-  s2qyaw_outpost_ = declare_parameter("ekf.sigma2_q_yaw_outpost", 2.0);
-  s2qr_outpost_ = declare_parameter("ekf.sigma2_q_r_outpost", 0.0);
+  s2qxyz_armor_ = this->declare_parameter("ekf.sigma2_q_xyz", 20.0);
+  s2qyaw_armor_ = this->declare_parameter("ekf.sigma2_q_yaw", 100.0);
+  s2qr_armor_ = this->declare_parameter("ekf.sigma2_q_r", 800.0);
+  s2qxyz_outpost_ = this->declare_parameter("ekf.sigma2_q_xyz_outpost", 0.005);
+  s2qyaw_outpost_ = this->declare_parameter("ekf.sigma2_q_yaw_outpost", 2.0);
+  s2qr_outpost_ = this->declare_parameter("ekf.sigma2_q_r_outpost", 0.0);
   s2qxyz_ = s2qxyz_armor_;
   s2qyaw_ = s2qyaw_armor_;
   s2qr_ = s2qr_armor_;
@@ -172,8 +98,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return q;
   };
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
-  r_xyz_factor_ = declare_parameter("ekf.r_xyz_factor", 0.05);
-  r_yaw_ = declare_parameter("ekf.r_yaw", 0.02);
+  r_xyz_factor_ = this->declare_parameter("ekf.r_xyz_factor", 0.05);
+  r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.02);
   // todo: dynamic R
   [[maybe_unused]] double center_yaw = std::atan2(
       tracker_->tracked_armor.pose.position.y, tracker_->tracked_armor.pose.position.x);
@@ -272,6 +198,88 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
       this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
 }
 
+void ArmorTrackerNode::InitParameters()
+{
+  // Maximum allowable armor distance in the XOY plane
+  max_armor_distance_ = this->declare_parameter("max_armor_distance", 10.0);
+
+  auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
+  is_hero_ = (robot_type == "hero");
+
+  // Tracker
+  double max_match_distance = this->declare_parameter("tracker.max_match_distance", 0.15);
+  double max_match_yaw_diff = this->declare_parameter("tracker.max_match_yaw_diff", 1.0);
+  tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
+  tracker_->tracking_thres =
+      static_cast<int>(this->declare_parameter("tracker.tracking_thres", 5));
+  Tracker::outpost_cast_threshold = static_cast<double>(
+      this->declare_parameter("tracker.outpost.outpost_cast_threshold", 0.18));
+  Tracker::outpost_dz =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_dz", 0.1));
+  Tracker::outpost_r =
+      static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
+
+  lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
+
+  float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
+  float bias_time =
+      static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
+  float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
+  float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
+  float pitch_bias =
+      static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
+
+  bool use_table = this->declare_parameter("tracker.calculate_mode", true);
+
+  double max_x = this->declare_parameter("tracker.table.max_x", 13.0);
+  double min_x = this->declare_parameter("tracker.table.min_x", 0.0);
+  double max_y = this->declare_parameter("tracker.table.max_y", 2.0);
+  double min_y = this->declare_parameter("tracker.table.min_y", -1.0);
+  double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
+
+  double max_x_lob = this->declare_parameter("tracker.table.max_x_lob", 22.0);
+  double min_x_lob = this->declare_parameter("tracker.table.min_x_lob", 0.0);
+  double max_y_lob = this->declare_parameter("tracker.table.max_y_lob", 3.0);
+  double min_y_lob = this->declare_parameter("tracker.table.min_y_lob", -1.0);
+  double resolution_lob = this->declare_parameter("tracker.table.resolution_lob", 0.01);
+
+  k_yaw_ = this->declare_parameter("tracker.k_yaw", 0.0);
+  k_pitch_ = this->declare_parameter("tracker.k_pitch", 0.0);
+
+  std::string package_prefix =
+      ament_index_cpp::get_package_share_directory("rm_vision_bringup") + "/config/";
+  table_filename_normal_ =
+      package_prefix + this->declare_parameter("tracker.table.filename", "table.bin");
+  ;
+  RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
+               table_filename_normal_.c_str());
+  if (is_hero_)
+  {
+    table_filename_lob_ =
+        package_prefix + this->declare_parameter("tracker.table.filename_lob", "");
+    RCLCPP_ERROR(this->get_logger(), "table_filename_lob_: %s",
+                 table_filename_lob_.c_str());
+  }
+
+  SolveTrajectory::CalculateMode calculate_mode =
+      use_table ? SolveTrajectory::CalculateMode::TABLE_LOOKUP
+                : SolveTrajectory::CalculateMode::NORMAL;
+
+  table_config_ = {max_x, min_x, max_y, min_y, resolution, table_filename_normal_};
+  if (is_hero_)
+  {
+    table_config_lob_ = {max_x_lob, min_x_lob,      max_y_lob,
+                         min_y_lob, resolution_lob, table_filename_lob_};
+  }
+  else
+  {
+    table_config_lob_ = table_config_;
+  }
+  gaf_solver_ =
+      std::make_unique<SolveTrajectory>(k, bias_time, s_bias, z_bias, pitch_bias,
+                                        calculate_mode, table_config_, table_config_lob_);
+}
+
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
@@ -322,12 +330,6 @@ void ArmorTrackerNode::ArmorsCallback(
   rclcpp::Time time = armors_msg->header.stamp;
   target_msg.header.stamp = time;
   target_msg.header.frame_id = target_frame_;
-
-  // geometry_msgs::msg::PoseStamped armor_in_gimbal;
-  // armor_in_gimbal.header.stamp = time;
-  // armor_in_gimbal.header.frame_id = target_frame_;
-  // armor_in_gimbal.pose = tracker_->tracked_armor.pose;
-  // armor_pose_pub_->publish(armor_in_gimbal);
 
   // Update tracker
   double gimbal_yaw_error{0.0};
@@ -406,8 +408,10 @@ void ArmorTrackerNode::ArmorsCallback(
       gimbal_yaw_error = yaw - gimbal_yaw;
       gimbal_pitch_error = pitch - gimbal_pitch;
 
-      yaw += 0.0 * gimbal_yaw_error;
-      pitch += 0.0 * gimbal_pitch_error;
+      k_yaw_ = this->get_parameter("tracker.k_yaw").as_double();
+      k_pitch_ = this->get_parameter("tracker.k_pitch").as_double();
+      yaw += k_yaw_ * gimbal_yaw_error;
+      pitch += k_pitch_ * gimbal_pitch_error;
 
       target_msg.aiming_point.x = aim_x;
       target_msg.aiming_point.y = aim_y;
@@ -491,18 +495,6 @@ void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& ta
         std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0);
     for (size_t i = 0; i < a_n; i++)
     {
-      // double tmp_yaw =
-      //     yaw + static_cast<double>(i) * (2 * M_PI / static_cast<double>(a_n));
-      // // Only 4 armors has 2 radius and height
-      // if (a_n == 4)
-      // {
-      //   r = is_current_pair ? r1 : r2;
-      //   p_a.z = za + (is_current_pair ? 0 : dz);
-      //   is_current_pair = !is_current_pair;
-      // }
-      // p_a.x = xc - r * cos(tmp_yaw);
-      // p_a.y = yc - r * sin(tmp_yaw);
-
       SolveTrajectory::TargetPostion armor_position =
           gaf_solver_->SolveTrajectory::PredictArmor(
               std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0, i,

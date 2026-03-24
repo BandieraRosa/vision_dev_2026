@@ -23,11 +23,7 @@ do
         echo "等待 ${delay_time}秒 后启动..."
         sleep $delay_time
         
-<<<<<<< HEAD
-        gnome-terminal --title="tracker" -- bash -c "cd /home/find/code/vision_/vision_dev/ && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py"
-=======
         gnome-terminal --title="tracker" -- bash -c "cd /home/nvidia/vision_dev/ && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py"
->>>>>>> 01660d2 (解决nx libxr问题)
         
         [ $? -eq 0 ] && echo "启动成功" || echo "启动失败"
     else
