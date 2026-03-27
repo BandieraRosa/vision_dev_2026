@@ -37,13 +37,16 @@ struct Light : public cv::RotatedRect
     // 计算灯条的宽度，即排序后前两个顶点之间的欧几里得距离
     width = cv::norm(p[0] - p[1]);
 
-    // 在平面图像中，计算灯条相对于垂直方向的倾斜角度（弧度制）
+    axis = top - bottom;
+    axis = axis / cv::norm(axis);
 
+    // 在平面图像中，计算灯条相对于垂直方向的倾斜角度（弧度制）
     tilt_angle = static_cast<float>(tilt_angle / CV_PI * 180);
   }
 
   int color;
   cv::Point2f top, bottom;
+  cv::Point2f axis;
   double length;
   double width;
   float tilt_angle;

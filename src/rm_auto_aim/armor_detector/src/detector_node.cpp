@@ -31,6 +31,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   // Detector
   detector_ = InitDetector();
 
+  // Light corner corrector
+  corner_corrector_ = std::make_unique<LightCornerCorrector>();
+
   // Armors Publisher
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
       "/detector/armors", rclcpp::SensorDataQoS());
@@ -259,6 +262,12 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   detector_->classifier->SetThreshold(get_parameter("classifier_threshold").as_double());
 
   auto armors = detector_->Detect(img);
+
+  // Correct the corners of the detected armors
+  for (auto& armor : armors)
+  {
+    corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+  }
 
   auto final_time = this->now();
   auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;

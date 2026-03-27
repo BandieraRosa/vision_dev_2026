@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "armor_detector/detector.hpp"
+#include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
@@ -40,7 +41,7 @@ class ArmorDetectorNode : public rclcpp::Node
 
   // Armor Detector
   std::unique_ptr<Detector> detector_;
-
+  std::unique_ptr<LightCornerCorrector> corner_corrector_;
   // Detected armors publisher
   auto_aim_interfaces::msg::Armors armors_msg_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr armors_pub_;
