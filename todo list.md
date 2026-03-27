@@ -14,3 +14,11 @@ Tracker/Outpost：
 Serial：
 - [x] 云台测试转移至`/test`
 - [X] 增加串口通信延迟测试（`time_offset`）
+
+Detector: 
+Current branch: `Detector_dev`
+分支开发可能的目标：
+- [ ] PCA重建灯条角点。
+- [ ] 光束法平差降自由度优化
+- [ ] 结合模型推理输出提高召回度
+- [ ] 单应矩阵约束
