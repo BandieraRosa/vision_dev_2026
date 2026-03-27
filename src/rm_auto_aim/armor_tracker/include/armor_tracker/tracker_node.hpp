@@ -45,8 +45,8 @@ class ArmorTrackerNode : public rclcpp::Node
   double dt_;
 
   // Armor tracker
-  double s2qxyz_, s2qyaw_, s2qr_;
-  double s2qxyz_armor_, s2qyaw_armor_, s2qr_armor_;
+  double s2_q_x_, s2_q_y_, s2_q_z_, s2_q_yaw_, s2_q_r_;
+  double s2_q_x_armor_, s2_q_y_armor_, s2_q_z_armor_, s2_q_yaw_armor_, s2_q_r_armor_;
   double s2qxyz_outpost_, s2qyaw_outpost_, s2qr_outpost_;
   double r_xyz_factor_, r_yaw_;
   double lost_time_thres_;

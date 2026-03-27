@@ -32,11 +32,16 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   auto j_f = [this](const Eigen::VectorXd&)
   {
     Eigen::MatrixXd f(9, 9);
-    // clang-format off 临时禁用格式化工具，确保矩阵按指定格式排列
-    f << 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0,
-        0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 1, dt_, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        1;
+    // clang-format off
+    f << 1, dt_, 0, 0, 0, 0, 0, 0, 0, 
+         0, 1, 0, 0, 0, 0, 0, 0, 0, 
+         0, 0, 1, dt_, 0, 0, 0, 0, 0, 
+         0, 0, 0, 1, 0, 0, 0, 0, 0, 
+         0, 0, 0, 0, 1, dt_, 0, 0, 0, 
+         0, 0, 0, 0, 0, 1, 0, 0, 0, 
+         0, 0, 0, 0, 0, 0, 1, dt_, 0, 
+         0, 0, 0, 0, 0, 0, 0, 1, 0, 
+         0, 0, 0, 0, 0, 0, 0, 0, 1;
     // clang-format on
     return f;
   };
@@ -67,48 +72,69 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return h;
   };
   // update_Q - process noise covariance matrix 过程噪声协方差矩阵
-  s2qxyz_armor_ = this->declare_parameter("ekf.sigma2_q_xyz", 20.0);
-  s2qyaw_armor_ = this->declare_parameter("ekf.sigma2_q_yaw", 100.0);
-  s2qr_armor_ = this->declare_parameter("ekf.sigma2_q_r", 800.0);
-  s2qxyz_outpost_ = this->declare_parameter("ekf.sigma2_q_xyz_outpost", 0.005);
-  s2qyaw_outpost_ = this->declare_parameter("ekf.sigma2_q_yaw_outpost", 2.0);
-  s2qr_outpost_ = this->declare_parameter("ekf.sigma2_q_r_outpost", 0.0);
-  s2qxyz_ = s2qxyz_armor_;
-  s2qyaw_ = s2qyaw_armor_;
-  s2qr_ = s2qr_armor_;
+
+  s2_q_x_ = s2_q_x_armor_;
+  s2_q_y_ = s2_q_y_armor_;
+  s2_q_z_ = s2_q_z_armor_;
+  s2_q_yaw_ = s2_q_yaw_armor_;
+  s2_q_r_ = s2_q_r_armor_;
   auto u_q = [this]()
   {
     Eigen::MatrixXd q(9, 9);
-    double t = dt_, x = s2qxyz_, y = s2qyaw_, r = s2qr_;
+    double t = dt_, x = s2_q_x_, y = s2_q_y_, z = s2_q_z_, yaw = s2_q_yaw_, r = s2_q_r_;
     double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
     double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y, q_vy_vy = pow(t, 2) * y;
-    double q_r = pow(t, 4) / 4 * r;
+    double q_z_z = pow(t, 4) / 4 * z, q_z_vz = pow(t, 3) / 2 * z, q_vz_vz = pow(t, 2) * z;
+    double q_yaw_yaw = pow(t, 4) / 4 * yaw, q_yaw_vyaw = pow(t, 3) / 2 * yaw,
+           q_vyaw_vyaw = pow(t, 2) * yaw;
+    double q_r_r = pow(t, 4) / 4 * r;
     // clang-format off
-    //    xc      v_xc    yc      v_yc    za      v_za    yaw     v_yaw   r
-    q <<  q_x_x,  q_x_vx, 0,      0,      0,      0,      0,      0,      0,
-          q_x_vx, q_vx_vx,0,      0,      0,      0,      0,      0,      0,
-          0,      0,      q_x_x,  q_x_vx, 0,      0,      0,      0,      0,
-          0,      0,      q_x_vx, q_vx_vx,0,      0,      0,      0,      0,
-          0,      0,      0,      0,      q_x_x,  q_x_vx, 0,      0,      0,
-          0,      0,      0,      0,      q_x_vx, q_vx_vx,0,      0,      0,
-          0,      0,      0,      0,      0,      0,      q_y_y,  q_y_vy, 0,
-          0,      0,      0,      0,      0,      0,      q_y_vy, q_vy_vy,0,
-          0,      0,      0,      0,      0,      0,      0,      0,      q_r;
+    //    xc      v_xc     yc      v_yc     za      v_za     yaw         v_yaw        r
+    q <<  q_x_x,  q_x_vx,  0,      0,       0,      0,       0,          0,           0,
+          q_x_vx, q_vx_vx, 0,      0,       0,      0,       0,          0,           0,
+          0,      0,       q_y_y,  q_y_vy,  0,      0,       0,          0,           0,
+          0,      0,       q_y_vy, q_vy_vy, 0,      0,       0,          0,           0,
+          0,      0,       0,      0,       q_z_z,  q_z_vz,  0,          0,           0,
+          0,      0,       0,      0,       q_z_vz, q_vz_vz, 0,          0,           0,
+          0,      0,       0,      0,       0,      0,       q_yaw_yaw,  q_yaw_vyaw,  0,
+          0,      0,       0,      0,       0,      0,       q_yaw_vyaw, q_vyaw_vyaw, 0,
+          0,      0,       0,      0,       0,      0,       0,          0,           q_r_r;
     // clang-format on
     return q;
   };
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
-  r_xyz_factor_ = this->declare_parameter("ekf.r_xyz_factor", 0.05);
-  r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.02);
-  // todo: dynamic R
-  [[maybe_unused]] double center_yaw = std::atan2(
-      tracker_->tracked_armor.pose.position.y, tracker_->tracked_armor.pose.position.x);
-  // ;double delta_yaw = ;
-  auto u_r = [this](const Eigen::VectorXd& z)
+  auto u_r = [this](const Eigen::VectorXd& x)
   {
-    Eigen::DiagonalMatrix<double, 4> r;
-    double x = r_xyz_factor_;
-    r.diagonal() << abs(x * z[0]), abs(x * z[1]), abs(x * z[2]), r_yaw_;
+    Eigen::MatrixXd r(4, 4);
+
+    constexpr double d2_min = 0.25;
+    constexpr double d2_max = 25.0;
+
+    double min_xyz_var = r_xyz_factor_ * d2_min;
+    double max_xyz_var =
+        r_xyz_factor_ * d2_max;  // 上限设置，防止距离过大时，测量噪声过大
+    // 陀螺仪飘了怎么办，旋转中心与世界系原点相同，不影响距离估计
+    double d2 = x[0] * x[0] + x[2] * x[2] + x[4] * x[4];
+    d2 = std::clamp(d2, d2_min, d2_max);
+    // 线性归一，认为噪声方差与距离平方成正相关，符合实际。距离变大时，噪声方差变化显著，设上限截断效果不一定好，可根据实际情况调整为log归一化
+    double r_xyz_var =
+        min_xyz_var + (max_xyz_var - min_xyz_var) * (d2 - d2_min) / (d2_max - d2_min);
+    double r_x_var = r_xyz_var,r_y_var = r_xyz_var / 2,r_z_var = r_xyz_var / 2;
+    double max_yaw_var = r_yaw_ * 10;
+    double r_yaw_var = r_yaw_ * 1 / std::fabs(std::cos(x[6]));
+    r_yaw_var = std::min(r_yaw_var, max_yaw_var);
+
+    r.diagonal() << r_x_var, r_y_var, r_z_var, r_yaw_var;
+
+    // xyz与yaw在pnp中耦合解算，协方差设为0不算严谨，可尝试设置图像噪声矩阵驱动观测噪声
+    // // clang-format off
+    // //   xc         yc             za             yaw
+    // r << r_xyz_var, 0,             0,             0,
+    //      0,         r_xyz_var / 2, 0,             0,
+    //      0,         0,             r_xyz_var / 2, 0,
+    //      0,         0,             0,             r_yaw_var;
+    // // clang-format on
+
     return r;
   };
   // P - error estimate covariance matrix
@@ -118,9 +144,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // outpost的EKF参数
   auto switch_q = [this](bool flag)
   {
-    s2qxyz_ = flag ? s2qxyz_outpost_ : s2qxyz_armor_;
-    s2qyaw_ = flag ? s2qyaw_outpost_ : s2qyaw_armor_;
-    s2qr_ = flag ? s2qr_outpost_ : s2qr_armor_;
+    s2_q_x_ = flag ? s2qxyz_outpost_ : s2_q_x_armor_;
+    s2_q_yaw_ = flag ? s2qyaw_outpost_ : s2_q_yaw_armor_;
+    s2_q_r_ = flag ? s2qr_outpost_ : s2_q_r_armor_;
   };
 
   tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
@@ -200,13 +226,13 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
 void ArmorTrackerNode::InitParameters()
 {
-  // Maximum allowable armor distance in the XOY plane
+  // 最大可观测装甲板距离
   max_armor_distance_ = this->declare_parameter("max_armor_distance", 10.0);
 
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
   is_hero_ = (robot_type == "hero");
 
-  // Tracker
+  // Tracker init parameters
   double max_match_distance = this->declare_parameter("tracker.max_match_distance", 0.15);
   double max_match_yaw_diff = this->declare_parameter("tracker.max_match_yaw_diff", 1.0);
   tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
@@ -218,14 +244,27 @@ void ArmorTrackerNode::InitParameters()
       static_cast<double>(this->declare_parameter("tracker.outpost.outpost_dz", 0.1));
   Tracker::outpost_r =
       static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
-
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
+  // EKF init parameters
+  s2_q_x_armor_ = this->declare_parameter("ekf.sigma2_q_x", 0.1);
+  s2_q_y_armor_ = this->declare_parameter("ekf.sigma2_q_y", 0.1);
+  s2_q_z_armor_ = this->declare_parameter("ekf.sigma2_q_z", 0.1);
+  s2_q_yaw_armor_ = this->declare_parameter("ekf.sigma2_q_yaw", 2.0);
+  s2_q_r_armor_ = this->declare_parameter("ekf.sigma2_q_r", 80.0);
+  s2qxyz_outpost_ = this->declare_parameter("ekf.sigma2_q_xyz_outpost", 0.005);
+  s2qyaw_outpost_ = this->declare_parameter("ekf.sigma2_q_yaw_outpost", 2.0);
+  s2qr_outpost_ = this->declare_parameter("ekf.sigma2_q_r_outpost", 0.0);
+
+  r_xyz_factor_ = this->declare_parameter("ekf.r_xyz_factor", 0.05);
+  r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.02);
+
+  // SolveTarget init parameters
   float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
   float bias_time =
       static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
-  float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.19133));
-  float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.21265));
+  float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.0));
+  float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.0));
   float pitch_bias =
       static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
 

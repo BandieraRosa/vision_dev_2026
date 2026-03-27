@@ -47,7 +47,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict()
 
 Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
 {
-  H = jacobian_h(x_pri), R = update_R(z);
+  H = jacobian_h(x_pri), R = update_R(x_pri);
 
   K = P_pri * H.transpose() *
       (H * P_pri * H.transpose() + R).inverse();  // inverse计算逆矩阵

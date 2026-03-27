@@ -156,21 +156,9 @@ void Tracker::MatchSameIdArmor(const Armors::SharedPtr& armors_msg,
 
 void Tracker::ClampTargetRadius()
 {
-  if (target_state(8) < 0.12)
-  {
-    target_state(8) = 0.12;
-    ekf.setState(target_state);
-  }
-  else if (target_state(8) > 0.4)
-  {
-    target_state(8) = 0.4;
-    ekf.setState(target_state);
-  }
-  else if (tracked_id == "outpost")
-  {
-    target_state(8) = outpost_r;
-    ekf.setState(target_state);
-  }
+  target_state(8) = (tracked_id == "outpost") ? outpost_r : std::clamp(target_state(8), 0.12, 0.4);
+
+  ekf.setState(target_state);
 }
 
 void Tracker::UpdateTrackerState(bool& matched)
@@ -231,7 +219,6 @@ void Tracker::InitEkf(const Armor& armor)
   double xa = armor.pose.position.x;
   double ya = armor.pose.position.y;
   double za = armor.pose.position.z;
-  last_yaw_ = 0;
   double yaw = OrientationToYaw(armor.pose.orientation);
 
   // 设置初始位置在目标后面0.2米
