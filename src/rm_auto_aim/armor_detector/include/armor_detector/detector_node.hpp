@@ -32,6 +32,7 @@ class ArmorDetectorNode : public rclcpp::Node
   void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG);
 
   std::unique_ptr<Detector> InitDetector();
+  std::unique_ptr<LightCornerCorrector> InitLightCornerCorrector();
   std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
 
   void CreateDebugPublishers();

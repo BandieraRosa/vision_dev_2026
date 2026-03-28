@@ -12,7 +12,7 @@ struct SymmetryAxis
 {
   cv::Point2f centroid;
   cv::Point2f direction;
-  float mean_val;  // Mean brightness
+  double mean_val;  // Mean brightness
 };
 
 // This class is used to improve the precision of the corner points of the light bar.

@@ -32,7 +32,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   detector_ = InitDetector();
 
   // Light corner corrector
-  corner_corrector_ = std::make_unique<LightCornerCorrector>();
+  corner_corrector_ = InitLightCornerCorrector();
 
   // Armors Publisher
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -246,6 +246,18 @@ std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
   return detector;
 }
 
+std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
+{
+  bool use_corner_corrector =
+      static_cast<bool>(this->declare_parameter("use_corner_corrector", false));
+  if (use_corner_corrector)
+  {
+    // Light corner corrector
+    return std::make_unique<LightCornerCorrector>();
+  }
+  return nullptr;
+}
+
 std::vector<Armor> ArmorDetectorNode::DetectArmors(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
@@ -264,9 +276,12 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   auto armors = detector_->Detect(img);
 
   // Correct the corners of the detected armors
-  for (auto& armor : armors)
+  if (corner_corrector_ != nullptr)
   {
-    corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+    for (auto& armor : armors)
+    {
+      corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+    }
   }
 
   auto final_time = this->now();

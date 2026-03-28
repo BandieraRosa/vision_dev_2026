@@ -72,7 +72,7 @@ SymmetryAxis LightCornerCorrector::FindSymmetryAxis(const cv::Mat &gray_img,
 
   // Get normalized light image
   cv::Mat roi = gray_img(light_box);
-  float mean_val = cv::mean(roi)[0];
+  double mean_val = cv::mean(roi)[0];
   roi.convertTo(roi, CV_32F);
   cv::normalize(roi, roi, 0, MAX_BRIGHTNESS, cv::NORM_MINMAX);
 
@@ -118,8 +118,8 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
                                              const SymmetryAxis &axis,
                                              const std::string &order)
 {
-  constexpr float START = 0.8 / 2;
-  constexpr float END = 1.2 / 2;
+  constexpr double START = 0.8 / 2;
+  constexpr double END = 1.2 / 2;
 
   auto in_image = [&gray_img](const cv::Point &point) -> bool
   {
@@ -127,10 +127,10 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
            point.y < gray_img.rows;
   };
 
-  auto distance = [](float x0, float y0, float x1, float y1) -> float
+  auto distance = [](double x0, double y0, double x1, double y1) -> double
   { return std::sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1)); };
 
-  int oper = order == "top" ? 1 : -1;
+  double oper = order == "top" ? 1.0 : -1.0;
   double l = light.length;
   double dx = axis.direction.x * oper;
   double dy = axis.direction.y * oper;
@@ -142,16 +142,16 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
   int half_n = std::round(n / 2);
   for (int i = -half_n; i <= half_n; i++)
   {
-    float x0 = axis.centroid.x + l * START * dx + i;
-    float y0 = axis.centroid.y + l * START * dy;
+    double x0 = axis.centroid.x + l * START * dx + i;
+    double y0 = axis.centroid.y + l * START * dy;
 
     cv::Point2f prev = cv::Point2f(x0, y0);
     cv::Point2f corner = cv::Point2f(x0, y0);
-    float max_brightness_diff = 0;
+    double max_brightness_diff = 0;
     bool has_corner = false;
     // Search along the symmetry axis to find the corner that has the maximum brightness
     // difference
-    for (float x = x0 + dx, y = y0 + dy; distance(x, y, x0, y0) < l * (END - START);
+    for (double x = x0 + dx, y = y0 + dy; distance(x, y, x0, y0) < l * (END - START);
          x += dx, y += dy)
     {
       cv::Point2f cur = cv::Point2f(x, y);
@@ -160,7 +160,7 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
         break;
       }
 
-      float brightness_diff = gray_img.at<uchar>(prev) - gray_img.at<uchar>(cur);
+      double brightness_diff = gray_img.at<uchar>(prev) - gray_img.at<uchar>(cur);
       if (brightness_diff > max_brightness_diff &&
           gray_img.at<uchar>(prev) > axis.mean_val)
       {
