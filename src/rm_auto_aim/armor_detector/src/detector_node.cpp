@@ -97,7 +97,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
         if (!pnp_solver_)
         {
-          pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d);
+          pnp_solver_ = InitPnPSolver();
           if (robot_type != "hero")
           {
             cam_info_sub_.reset();  // 只需要接收第一条相机内参消息，之后就可以停掉订阅了
@@ -256,6 +256,21 @@ std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrecto
     return std::make_unique<LightCornerCorrector>();
   }
   return nullptr;
+}
+
+std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
+{
+  bool use_new_pnp_filter_method =
+      this->declare_parameter("pnp_filter.use_new_pnp_filter_method", false);
+  double max_normal_dot = this->declare_parameter("pnp_filter.max_normal_dot", 0.0);
+  double reproj_weight = this->declare_parameter("pnp_filter.reproj_weight", 1.0);
+  double normal_weight = this->declare_parameter("pnp_filter.normal_weight", 0.5);
+  return std::make_unique<PnPSolver>(
+      cam_info_->k, cam_info_->d,
+      PnPSolver::PnpFilterParams{.new_pnp_filter_method = use_new_pnp_filter_method,
+                                 .max_normal_dot = max_normal_dot,
+                                 .reproj_weight = reproj_weight,
+                                 .normal_weight = normal_weight});
 }
 
 std::vector<Armor> ArmorDetectorNode::DetectArmors(

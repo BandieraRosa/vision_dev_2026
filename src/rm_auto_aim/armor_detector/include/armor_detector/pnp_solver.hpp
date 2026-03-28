@@ -15,8 +15,18 @@ namespace rm_auto_aim
 class PnPSolver
 {
  public:
+  struct PnpFilterParams
+  {
+    bool new_pnp_filter_method;
+    double max_normal_dot;  // 更严格可设为 -0.1 / -0.2, 更宽松可设为 0.1 / 0.2
+    // 评分权重
+    double reproj_weight;
+    double normal_weight;
+  };
+
   PnPSolver(const std::array<double, 9>& camera_matrix,
-            const std::vector<double>& distortion_coefficients);
+            const std::vector<double>& distortion_coefficients,
+            PnpFilterParams filter_params);
 
   // Get 3d position
   bool SolvePnP(const Armor& armor, cv::Mat& rvec, cv::Mat& tvec);
@@ -28,8 +38,28 @@ class PnPSolver
                      const std::vector<double>& distortion_coefficients);
 
  private:
+  struct Candidate
+  {
+    cv::Mat rvec;
+    cv::Mat tvec;
+    double reprojection_error = 1e9;
+    double score = 1e18;
+    bool valid = false;
+  };
+
+  bool SelectBestFilteredPnPResult(const std::array<cv::Point3f, 4>& object_points,
+                                   const std::vector<cv::Mat>& rvecs,
+                                   const std::vector<cv::Mat>& tvecs,
+                                   const std::vector<double>& reprojection_errors,
+                                   cv::Mat& rvec, cv::Mat& tvec);
+
+  Candidate EvaluateCandidate(const cv::Mat& cand_rvec, const cv::Mat& cand_tvec,
+                              double reprojection_error,
+                              const std::array<cv::Point3f, 4>& object_points);
+
   cv::Mat camera_matrix_;
   cv::Mat dist_coeffs_;
+  PnpFilterParams pnp_filter_params_;
 
   // Unit: mm
   static constexpr float SMALL_ARMOR_WIDTH = 135;

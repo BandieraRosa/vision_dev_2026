@@ -33,6 +33,8 @@ class ArmorDetectorNode : public rclcpp::Node
 
   std::unique_ptr<Detector> InitDetector();
   std::unique_ptr<LightCornerCorrector> InitLightCornerCorrector();
+  std::unique_ptr<PnPSolver> InitPnPSolver();
+
   std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
 
   void CreateDebugPublishers();
