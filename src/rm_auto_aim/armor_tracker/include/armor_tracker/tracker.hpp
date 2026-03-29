@@ -32,10 +32,8 @@ class Tracker  // 整车观测
 
   void Init(const Armors::SharedPtr& armors_msg);
 
-  void MatchSameIdArmor(const Armors::SharedPtr& armors_msg,
-                        Eigen::VectorXd& ekf_prediction, Armor& same_id_armor,
-                        int& same_id_armors_count, double& min_position_diff,
-                        double& yaw_diff);
+  bool MatchArmor(const Armors::SharedPtr& armors_msg, Eigen::VectorXd& ekf_prediction,
+                  int& same_id_armors_count, double& min_position_diff, double& yaw_diff);
   void ClampTargetRadius();
   void UpdateTrackerState(bool& matched);
   void Update(const Armors::SharedPtr& armors_msg);
@@ -54,11 +52,11 @@ class Tracker  // 整车观测
   } tracker_state;
 
   // 装甲板情况
-  std::string tracked_id;        // 装甲板号
-  Armor tracked_armor;           // 被跟踪的装甲板
-  ArmorsNum tracked_armors_num;  // 被跟踪装甲版数
-  std::string tracked_armor_type; // 被跟踪装甲板类型
-  Armor last_tracked_armor{};    // 上一次被跟踪的装甲板
+  std::string tracked_id;          // 装甲板号
+  Armor tracked_armor;             // 被跟踪的装甲板
+  ArmorsNum tracked_armors_num;    // 被跟踪装甲版数
+  std::string tracked_armor_type;  // 被跟踪装甲板类型
+  Armor last_tracked_armor{};      // 上一次被跟踪的装甲板
   bool first_tracked = true;
   bool is_outpost = false;
   VoidBoolFunc switch_q_;
@@ -88,6 +86,10 @@ class Tracker  // 整车观测
   void ResetState(double& yaw, const geometry_msgs::msg::Point& position);
   void UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw);
   void HandleArmorJump(const Armor& current_armor);
+  void SoftBreakEKF(const double y_pri, const double y_mea);
+  void VelocityConstrain(double vx_max, double vy_max,
+                                    double vz_max, double vyaw_max,
+                                    double yaw_coupling);
 
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
 
@@ -100,6 +102,7 @@ class Tracker  // 整车观测
 
   int detect_count_;
   int lost_count_;
+  int y_diff_count_ = 0;
 
   double last_yaw_;
 };

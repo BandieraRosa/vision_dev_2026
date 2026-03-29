@@ -105,7 +105,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // update_R - measurement noise covariance matrix 观测噪声协方差矩阵
   auto u_r = [this](const Eigen::VectorXd& x)
   {
-    Eigen::MatrixXd r(4, 4);
+    Eigen::DiagonalMatrix<double, 4> r;
 
     constexpr double d2_min = 0.25;
     constexpr double d2_max = 25.0;
@@ -356,7 +356,7 @@ void ArmorTrackerNode::ArmorsCallback(
           armors_msg->armors.begin(), armors_msg->armors.end(),
           [this](const auto_aim_interfaces::msg::Armor& armor)
           {
-            return armor.pose.position.z > 2.0 ||
+            return std::fabs(armor.pose.position.z) > 2.0 ||
                    Eigen::Vector2d(armor.pose.position.x, armor.pose.position.y).norm() >
                        max_armor_distance_;
           }),
@@ -433,14 +433,17 @@ void ArmorTrackerNode::ArmorsCallback(
       tf2::Matrix3x3(q_yaw).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
       target_msg.gimbal_yaw = gimbal_yaw;
       tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
-      target_msg.gimbal_pitch = -gimbal_pitch;
+      target_msg.gimbal_pitch = gimbal_pitch;
       double pitch = 0, yaw = 0, aim_x = 0, aim_y = 0, aim_z = 0;
       int idx{};
       auto msg = std::make_shared<auto_aim_interfaces::msg::Target>(target_msg);
-
       bool is_fire = false;
+
+      // 自然系下pitch向下为正，而AutoSolveTrajectory中pitch向上为正
       gaf_solver_->AutoSolveTrajectory(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx,
                                        msg);
+      pitch = -pitch;
+
       bc_yaw = yaw;
       bc_pitch = pitch;
 
