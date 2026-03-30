@@ -1,5 +1,5 @@
-#ifndef LIGHT_CORNER__CORRECTOR_HPP_
-#define LIGHT_CORNER__CORRECTOR_HPP_
+#ifndef ARMOR_DETECTOR__LIGHT_CORNER_CORRECTOR_HPP_
+#define ARMOR_DETECTOR__LIGHT_CORNER_CORRECTOR_HPP_
 
 #include <opencv2/core.hpp>
 
@@ -38,4 +38,4 @@ class LightCornerCorrector
 
 };  // namespace rm_auto_aim
 
-#endif  // LIGHT_CORNER__CORRECTOR_HPP_
+#endif  // ARMOR_DETECTOR__LIGHT_CORNER_CORRECTOR_HPP_
