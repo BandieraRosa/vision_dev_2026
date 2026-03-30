@@ -8,16 +8,16 @@ namespace rm_auto_aim
 
 void LightCornerCorrector::CorrectCorners(Armor &armor, const cv::Mat &gray_img)
 {
-  // If the width of the light is too small, the correction is not performed
+  // 如果灯条宽度过小，则不进行校正
   constexpr int PASS_OPTIMIZE_WIDTH = 3;
 
   if (armor.left_light.width > PASS_OPTIMIZE_WIDTH)
   {
-    // Find the symmetry axis of the light
+    // 找到灯条的对称轴
     SymmetryAxis left_axis = FindSymmetryAxis(gray_img, armor.left_light);
     armor.left_light.center = left_axis.centroid;
     armor.left_light.axis = left_axis.direction;
-    // Find the corner of the light
+    // 查找灯条的角点
     if (cv::Point2f t = FindCorner(gray_img, armor.left_light, left_axis, "top"); t.x > 0)
     {
       armor.left_light.top = t;
@@ -31,11 +31,11 @@ void LightCornerCorrector::CorrectCorners(Armor &armor, const cv::Mat &gray_img)
 
   if (armor.right_light.width > PASS_OPTIMIZE_WIDTH)
   {
-    // Find the symmetry axis of the light
+    // 找到灯条的对称轴
     SymmetryAxis right_axis = FindSymmetryAxis(gray_img, armor.right_light);
     armor.right_light.center = right_axis.centroid;
     armor.right_light.axis = right_axis.direction;
-    // Find the corner of the light
+    // 查找灯条的角点
     if (cv::Point2f t = FindCorner(gray_img, armor.right_light, right_axis, "top");
         t.x > 0)
     {
@@ -55,14 +55,14 @@ SymmetryAxis LightCornerCorrector::FindSymmetryAxis(const cv::Mat &gray_img,
   constexpr float MAX_BRIGHTNESS = 25;
   constexpr float SCALE = 0.07;
 
-  // Scale the bounding box
+  // 缩放
   cv::Rect light_box = light.boundingRect();
   light_box.x -= light_box.width * SCALE;
   light_box.y -= light_box.height * SCALE;
   light_box.width += light_box.width * SCALE * 2;
   light_box.height += light_box.height * SCALE * 2;
 
-  // Check boundary
+  // 检查并裁剪到图像边界
   light_box.x = std::max(light_box.x, 0);
   light_box.x = std::min(light_box.x, gray_img.cols - 1);
   light_box.y = std::max(light_box.y, 0);
@@ -70,19 +70,19 @@ SymmetryAxis LightCornerCorrector::FindSymmetryAxis(const cv::Mat &gray_img,
   light_box.width = std::min(light_box.width, gray_img.cols - light_box.x);
   light_box.height = std::min(light_box.height, gray_img.rows - light_box.y);
 
-  // Get normalized light image
+  // 获取并归一化灯条区域图像
   cv::Mat roi = gray_img(light_box);
   double mean_val = cv::mean(roi)[0];
   roi.convertTo(roi, CV_32F);
   cv::normalize(roi, roi, 0, MAX_BRIGHTNESS, cv::NORM_MINMAX);
 
-  // Calculate the centroid
+  // 计算质心
   cv::Moments moments = cv::moments(roi, false);
   cv::Point2f centroid =
       cv::Point2f(moments.m10 / moments.m00, moments.m01 / moments.m00) +
       cv::Point2f(light_box.x, light_box.y);
 
-  // Initialize the PointCloud
+  // 初始化点云
   std::vector<cv::Point2f> points;
   for (int i = 0; i < roi.rows; i++)
   {
@@ -96,14 +96,14 @@ SymmetryAxis LightCornerCorrector::FindSymmetryAxis(const cv::Mat &gray_img,
   }
   cv::Mat points_mat = cv::Mat(points).reshape(1);
 
-  // PCA (Principal Component Analysis)
+  // PCA
   auto pca = cv::PCA(points_mat, cv::Mat(), cv::PCA::DATA_AS_ROW);
 
-  // Get the symmetry axis
+  // 提取对称轴向量
   cv::Point2f axis =
       cv::Point2f(pca.eigenvectors.at<float>(0, 0), pca.eigenvectors.at<float>(0, 1));
 
-  // Normalize the axis
+  // 归一化轴向量
   axis = axis / cv::norm(axis);
 
   if (axis.y > 0)
@@ -137,7 +137,7 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
 
   std::vector<cv::Point2f> candidates;
 
-  // Select multiple corner candidates and take the average as the final corner
+  // 选择多个角点候选并取平均作为最终角点
   int n = light.width - 2;
   int half_n = std::round(n / 2);
   for (int i = -half_n; i <= half_n; i++)
@@ -149,8 +149,7 @@ cv::Point2f LightCornerCorrector::FindCorner(const cv::Mat &gray_img, const Ligh
     cv::Point2f corner = cv::Point2f(x0, y0);
     double max_brightness_diff = 0;
     bool has_corner = false;
-    // Search along the symmetry axis to find the corner that has the maximum brightness
-    // difference
+    // 沿对称轴搜索具有最大亮度差的角点
     for (double x = x0 + dx, y = y0 + dy; distance(x, y, x0, y0) < l * (END - START);
          x += dx, y += dy)
     {
