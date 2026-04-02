@@ -208,7 +208,7 @@ std::array<Eigen::Vector2d, 4> ArmorPoseOptimizer::UndistortPoints(
 //
 // ============================================================================
 
-void ArmorPoseOptimizer::ComputeResidualAndJacobian(
+bool ArmorPoseOptimizer::ComputeResidualAndJacobian(
     double yaw, double pitch_prior, const Eigen::Vector3d& t_cam,
     const std::array<Eigen::Vector3d, 4>& obj_points,
     const std::array<Eigen::Vector2d, 4>& img_points_ud,
@@ -217,13 +217,20 @@ void ArmorPoseOptimizer::ComputeResidualAndJacobian(
   // 预计算：这些矩阵在一次调用中对所有点通用
   Eigen::Matrix3d ry_prior = Ry(pitch_prior);
   Eigen::Matrix3d r_cam = r_cam_gimbal_ * Rz(yaw) * ry_prior;
-  Eigen::Matrix3d d_r_cam_dyaw = r_cam_gimbal_ * dRz_dyaw(yaw) * ry_prior;
+  Eigen::Matrix3d d_r_cam_dyaw = r_cam_gimbal_ * DRzDyaw(yaw) * ry_prior;
 
   for (auto i = 0; i < 4; ++i)
   {
     // 变换到相机坐标系
     Eigen::Vector3d p_cam = r_cam * obj_points[i] + t_cam;
     double x = p_cam(0), y = p_cam(1), z = p_cam(2);
+
+    // 点在相机后方或过近，投影无意义，会导致除零 / 数值爆炸
+    if (z <= 1e-6)
+    {
+      return false;
+    }
+
     double z_inv = 1.0 / z;
     double z_inv2 = z_inv * z_inv;
 
@@ -255,6 +262,8 @@ void ArmorPoseOptimizer::ComputeResidualAndJacobian(
     int64_t index = static_cast<int64_t>(2) * i;
     jacobian.block<2, 4>(index, 0) = j_i;
   }
+
+  return true;
 }
 
 // ============================================================================
@@ -269,9 +278,16 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
 
   Eigen::Matrix<double, 8, 1> residual;
   Eigen::Matrix<double, 8, 4> jacobian;
-  ComputeResidualAndJacobian(yaw, pitch_prior, t_cam, obj_points, img_points_ud, residual,
-                             jacobian);
+
+  // 初始状态如果就有点在相机后方，直接放弃优化
+  if (!ComputeResidualAndJacobian(yaw, pitch_prior, t_cam, obj_points, img_points_ud,
+                                  residual, jacobian))
+  {
+    return false;
+  }
+
   double cost = residual.squaredNorm();
+  bool ever_succeeded = false;  // 至少一次成功
 
   for (int iter = 0; iter < params_.max_iterations; ++iter)
   {
@@ -306,8 +322,19 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
     // 计算新的残差和代价
     Eigen::Matrix<double, 8, 1> residual_new;
     Eigen::Matrix<double, 8, 4> jacobian_new;
-    ComputeResidualAndJacobian(yaw_new, pitch_prior, t_cam_new, obj_points, img_points_ud,
-                               residual_new, jacobian_new);
+
+    // 检查新参数是否导致 z <= 0（点落到相机后方），如果是则视为步骤失败
+    if (!ComputeResidualAndJacobian(yaw_new, pitch_prior, t_cam_new, obj_points,
+                                    img_points_ud, residual_new, jacobian_new))
+    {
+      lambda *= params_.lambda_scale_up;
+      if (lambda > 1e10)
+      {
+        return ever_succeeded;
+      }
+      continue;
+    }
+
     double cost_new = residual_new.squaredNorm();
 
     if (cost_new < cost)
@@ -317,11 +344,14 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
       t_cam = t_cam_new;
       residual = residual_new;
       jacobian = jacobian_new;
+      ever_succeeded = true;
 
       // 检查收敛条件
       double relative_cost_change = (cost - cost_new) / (cost + 1e-15);
       cost = cost_new;
       lambda /= params_.lambda_scale_down;
+      // 防止 lambda 下溢
+      lambda = std::max(lambda, 1e-15);
 
       if (delta.norm() < params_.convergence_eps ||
           relative_cost_change < params_.cost_convergence_eps)
@@ -337,12 +367,27 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
       // 阻尼过大说明已在极值点附近或问题有困难
       if (lambda > 1e10)
       {
-        return true;  // 视为已收敛（无法继续改善）
+        // 若从未成功过，说明初始点附近就无法改善，返回失败
+        return ever_succeeded;
       }
     }
   }
 
-  // 达到最大迭代次数，仍视为成功（已经在改善）
+  // 达到最大迭代次数
+  // 若有过成功步骤，参数已被改善，视为成功；否则视为失败
+  return ever_succeeded;
+}
+
+bool ArmorPoseOptimizer::RunRangeSolve(
+    double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
+    const std::array<Eigen::Vector3d, 4>& obj_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud)
+{
+  constexpr double RANGE_DEG = 140.0;  // 搜索范围 ±70°
+  constexpr double MIN_ERROR = 1e10;
+  double best_yaw = yaw;
+  // 此处需要获取云台当前欧拉角
+
   return true;
 }
 
@@ -406,7 +451,7 @@ Eigen::Matrix3d ArmorPoseOptimizer::Rz(double yaw)
   return r;
 }
 
-Eigen::Matrix3d ArmorPoseOptimizer::dRz_dyaw(double yaw)
+Eigen::Matrix3d ArmorPoseOptimizer::DRzDyaw(double yaw)
 {
   double c = std::cos(yaw), s = std::sin(yaw);
   Eigen::Matrix3d d_r;

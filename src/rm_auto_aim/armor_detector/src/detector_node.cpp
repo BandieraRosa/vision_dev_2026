@@ -149,14 +149,33 @@ void ArmorDetectorNode::ImageCallback(
         {
           try
           {
-            auto tf_stamped = tf2_buffer_->lookupTransform(
+            auto odom_to_camera_optical = tf2_buffer_->lookupTransform(
                 "gimbal_odom", img_msg->header.frame_id, img_msg->header.stamp,
                 rclcpp::Duration::from_seconds(0.01));
 
             Eigen::Quaterniond q;
-            tf2::fromMsg(tf_stamped.transform.rotation, q);
-            Eigen::Matrix3d r_gimbal_cam = q.toRotationMatrix();
-            pose_optimizer_->SetCameraToGimbalRotation(r_gimbal_cam);
+            tf2::fromMsg(odom_to_camera_optical.transform.rotation, q);
+            Eigen::Matrix3d rmat_gimbal_cam = q.toRotationMatrix();
+
+            auto odom_to_gimbal = tf2_buffer_->lookupTransform(
+                "gimbal_odom", "pitch_link", img_msg->header.stamp,
+                rclcpp::Duration::from_seconds(0.01));
+
+            tf2::Quaternion qu(
+                odom_to_gimbal.transform.rotation.x, odom_to_gimbal.transform.rotation.y,
+                odom_to_gimbal.transform.rotation.z, odom_to_gimbal.transform.rotation.w);
+            tf2::Matrix3x3 m(qu);
+            double roll = NAN, pitch = NAN, yaw = NAN;
+            m.getRPY(roll, pitch, yaw);
+
+            pose_optimizer_->SetCameraToGimbalRotation(rmat_gimbal_cam);
+
+            // TF 查询成功后才执行优化；失败时 rvec/tvec 保持原始 PnP 结果不变
+            if (!pose_optimizer_->Optimize(armor, rvec, tvec))
+            {
+              RCLCPP_DEBUG(this->get_logger(),
+                           "Pose optimization failed, using original PnP result.");
+            }
           }
           catch (const tf2::TransformException& ex)
           {

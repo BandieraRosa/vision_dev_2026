@@ -84,7 +84,7 @@ class ArmorPoseOptimizer
   static Eigen::Matrix3d Rz(double yaw);
 
   /// Rz 对 yaw 的解析导数
-  static Eigen::Matrix3d dRz_dyaw(double yaw);
+  static Eigen::Matrix3d DRzDyaw(double yaw);
 
   /// 绕 y 轴旋转矩阵（装甲板安装 pitch）
   static Eigen::Matrix3d Ry(double pitch);
@@ -104,7 +104,7 @@ class ArmorPoseOptimizer
       const std::array<cv::Point2f, 4>& points);
 
   /// 计算残差与雅可比
-  void ComputeResidualAndJacobian(double yaw, double pitch_prior,
+  bool ComputeResidualAndJacobian(double yaw, double pitch_prior,
                                   const Eigen::Vector3d& t_cam,
                                   const std::array<Eigen::Vector3d, 4>& obj_points,
                                   const std::array<Eigen::Vector2d, 4>& img_points_ud,
@@ -115,6 +115,10 @@ class ArmorPoseOptimizer
   bool RunLM(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
              const std::array<Eigen::Vector3d, 4>& obj_points,
              const std::array<Eigen::Vector2d, 4>& img_points_ud);
+
+  bool RunRangeSolve(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
+                     const std::array<Eigen::Vector3d, 4>& obj_points,
+                     const std::array<Eigen::Vector2d, 4>& img_points_ud);
 
   // Unit: mm
   static constexpr float SMALL_ARMOR_WIDTH = 135;
