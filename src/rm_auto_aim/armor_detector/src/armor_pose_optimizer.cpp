@@ -40,6 +40,74 @@ void ArmorPoseOptimizer::SetCameraToGimbalRotation(const Eigen::Matrix3d& R_gimb
   transform_set_ = true;
 }
 
+std::array<Eigen::Vector3d, 4> ArmorPoseOptimizer::ExtractObjectPoints(ArmorType type)
+{
+  // 与 PnPSolver 中定义的顺序一致
+  // 模型坐标系：x 前、y 左、z 上
+  // 装甲板在 yz 平面上，x = 0
+  //   [0]=(0, +half_y, -half_z)  左下
+  //   [1]=(0, +half_y, +half_z)  左上
+  //   [2]=(0, -half_y, +half_z)  右上
+  //   [3]=(0, -half_y, -half_z)  右下
+  const double hy = (type == ArmorType::SMALL) ? SMALL_HALF_Y : LARGE_HALF_Y;
+  const double hz = (type == ArmorType::SMALL) ? SMALL_HALF_Z : LARGE_HALF_Z;
+  return {Eigen::Vector3d(0, hy, -hz), Eigen::Vector3d(0, hy, hz),
+          Eigen::Vector3d(0, -hy, hz), Eigen::Vector3d(0, -hy, -hz)};
+}
+
+// ============================================================================
+//  投影与误差
+// ============================================================================
+
+Eigen::Matrix3d ArmorPoseOptimizer::BuildCameraRotation(double yaw,
+                                                        double pitch_prior) const
+{
+  return r_cam_gimbal_ * Rz(yaw) * Ry(pitch_prior);
+}
+
+bool ArmorPoseOptimizer::ProjectPoints(const Eigen::Matrix3d& R_cam,
+                                       const Eigen::Vector3d& t_cam,
+                                       const std::array<Eigen::Vector3d, 4>& obj_points,
+                                       std::array<Eigen::Vector2d, 4>& projected) const
+{
+  for (int i = 0; i < 4; ++i)
+  {
+    Eigen::Vector3d p_cam = R_cam * obj_points[i] + t_cam;
+    double z = p_cam(2);
+
+    if (z <= 1e-6)
+    {
+      return false;
+    }
+
+    double z_inv = 1.0 / z;
+    projected[i](0) = fx_ * p_cam(0) * z_inv + cx_;
+    projected[i](1) = fy_ * p_cam(1) * z_inv + cy_;
+  }
+  return true;
+}
+
+double ArmorPoseOptimizer::ComputeReprojectionError(
+    double yaw, double pitch_prior, const Eigen::Vector3d& t_cam,
+    const std::array<Eigen::Vector3d, 4>& obj_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud)
+{
+  Eigen::Matrix3d R_cam = BuildCameraRotation(yaw, pitch_prior);
+
+  std::array<Eigen::Vector2d, 4> projected;
+  if (!ProjectPoints(R_cam, t_cam, obj_points, projected))
+  {
+    return 1e9;
+  }
+
+  double total_error = 0.0;
+  for (int i = 0; i < 4; ++i)
+  {
+    total_error += (img_points_ud[i] - projected[i]).squaredNorm();
+  }
+  return total_error;
+}
+
 // ============================================================================
 //  主接口
 // ============================================================================
@@ -70,29 +138,8 @@ bool ArmorPoseOptimizer::Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tv
   // 去畸变
   auto img_points_ud = UndistortPoints(image_points);
 
-  // 物体点：与 PnPSolver 中定义的顺序一致
-  // 模型坐标系：x 前、y 左、z 上
-  // 装甲板在 yz 平面上，x = 0
-  std::array<Eigen::Vector3d, 4> obj_points;
-  if (armor.type == ArmorType::SMALL)
-  {
-    // SMALL_ARMOR_POINTS 的定义顺序（从 pnp_solver.hpp）：
-    //   [0]=(0, +half_y, -half_z)  左下
-    //   [1]=(0, +half_y, +half_z)  左上
-    //   [2]=(0, -half_y, +half_z)  右上
-    //   [3]=(0, -half_y, -half_z)  右下
-    constexpr double HY = SMALL_HALF_Y;
-    constexpr double HZ = SMALL_HALF_Z;
-    obj_points = {Eigen::Vector3d(0, HY, -HZ), Eigen::Vector3d(0, HY, HZ),
-                  Eigen::Vector3d(0, -HY, HZ), Eigen::Vector3d(0, -HY, -HZ)};
-  }
-  else
-  {
-    constexpr double HY = LARGE_HALF_Y;
-    constexpr double HZ = LARGE_HALF_Z;
-    obj_points = {Eigen::Vector3d(0, HY, -HZ), Eigen::Vector3d(0, HY, HZ),
-                  Eigen::Vector3d(0, -HY, HZ), Eigen::Vector3d(0, -HY, -HZ)};
-  }
+  // 物体点
+  auto obj_points = ExtractObjectPoints(armor.type);
 
   // ---- Step 3: yaw 优化 ----
   double yaw = yaw_init;
@@ -102,12 +149,11 @@ bool ArmorPoseOptimizer::Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tv
   if (params_.optimize_method == Params::OptimizeMethod::RANGE_LM)
   {
     // 先范围搜索后 LM 微调
-    opt_success = RunRangeSolve(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+    double range_error = 0.0;
+    opt_success =
+        RunRangeSolve(yaw, pitch_prior, t_cam, obj_points, img_points_ud, &range_error);
     if (opt_success)
     {
-      double range_error =
-          ComputeReprojectionError(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
-
       double yaw_lm = yaw;
       Eigen::Vector3d t_lm = t_cam;
       bool lm_success = RunLM(yaw_lm, pitch_prior, t_lm, obj_points, img_points_ud);
@@ -144,8 +190,7 @@ bool ArmorPoseOptimizer::Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tv
   }
 
   // ---- Step 4: 写回结果 ----
-  // 优化后旋转：R_cam = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)
-  Eigen::Matrix3d r_cam_optimized = r_cam_gimbal_ * Rz(yaw) * Ry(pitch_prior);
+  Eigen::Matrix3d r_cam_optimized = BuildCameraRotation(yaw, pitch_prior);
   rvec = RotationMatrixToRvec(r_cam_optimized);
 
   tvec.at<double>(0) = t_cam(0);
@@ -256,7 +301,7 @@ bool ArmorPoseOptimizer::ComputeResidualAndJacobian(
 {
   // 预计算：这些矩阵在一次调用中对所有点通用
   Eigen::Matrix3d ry_prior = Ry(pitch_prior);
-  Eigen::Matrix3d r_cam = r_cam_gimbal_ * Rz(yaw) * ry_prior;
+  Eigen::Matrix3d r_cam = BuildCameraRotation(yaw, pitch_prior);
   Eigen::Matrix3d d_r_cam_dyaw = r_cam_gimbal_ * DRzDyaw(yaw) * ry_prior;
 
   for (auto i = 0; i < 4; ++i)
@@ -421,7 +466,7 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
 bool ArmorPoseOptimizer::RunRangeSolve(
     double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
     const std::array<Eigen::Vector3d, 4>& obj_points,
-    const std::array<Eigen::Vector2d, 4>& img_points_ud)
+    const std::array<Eigen::Vector2d, 4>& img_points_ud, double* best_error_out)
 {
   const double HALF_RANGE_RAD = params_.range_search_half_range_deg * M_PI / 180.0;
   const double COARSE_STEP_RAD = params_.range_search_coarse_step_deg * M_PI / 180.0;
@@ -476,11 +521,15 @@ bool ArmorPoseOptimizer::RunRangeSolve(
 
   yaw = best_yaw;
   t_cam = best_t;  // 同步更新平移（消除 yaw-t 耦合）
+  if (best_error_out)
+  {
+    *best_error_out = min_error;
+  }
   return true;
 }
 
 // ============================================================================
-//  候选 yaw 评估：解析求解最优平移 + 重投影误差
+//  固定旋转下解析求解最优平移
 // ============================================================================
 //
 //  对于固定的 R_cam = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)，
@@ -497,44 +546,35 @@ bool ArmorPoseOptimizer::RunRangeSolve(
 //  4 个点共 8 个方程 → 8×3 超定系统 A t = b
 //  通过 3×3 正规方程 (A^T A) t = A^T b 求解。
 //
-//  开销：每个候选 yaw 仅需 4 次旋转×向量乘法 + 1 次 3×3 LDLT 求解，
-//  约 ~200 flops，相比固定 t 的版本仅多出 3×3 线性求解的开销。
+//  调用方预计算 q_i = R_cam * P_obj_i 后传入，
+//  本函数仅需构建线性系统 + 1 次 3×3 LDLT 求解。
 //
 // ============================================================================
 
-double ArmorPoseOptimizer::EvaluateCandidateYaw(
-    double yaw, double pitch_prior, const std::array<Eigen::Vector3d, 4>& obj_points,
-    const std::array<Eigen::Vector2d, 4>& img_points_ud, Eigen::Vector3d& t_out)
+bool ArmorPoseOptimizer::SolveTranslationForFixedRotation(
+    const std::array<Eigen::Vector3d, 4>& rotated_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud, Eigen::Vector3d& t_out) const
 {
-  Eigen::Matrix3d r_cam = r_cam_gimbal_ * Rz(yaw) * Ry(pitch_prior);
-
-  // 预计算旋转后的物体点
-  std::array<Eigen::Vector3d, 4> q;
-  for (int i = 0; i < 4; ++i)
-  {
-    q[i] = r_cam * obj_points[i];
-  }
-
   // 构建线性系统 A * t = b
   Eigen::Matrix<double, 8, 3> a;
   Eigen::Matrix<double, 8, 1> b;
 
   for (int i = 0; i < 4; ++i)
   {
-    double u_prime = img_points_ud[i](0);
-    double v_prime = img_points_ud[i](1);
-    double du = u_prime - cx_;
-    double dv = v_prime - cy_;
+    const Eigen::Vector3d& q = rotated_points[i];
+
+    double du = img_points_ud[i](0) - cx_;
+    double dv = img_points_ud[i](1) - cy_;
 
     a(2 * i, 0) = fx_;
     a(2 * i, 1) = 0.0;
     a(2 * i, 2) = -du;
-    b(2 * i) = du * q[i](2) - fx_ * q[i](0);
+    b(2 * i) = du * q(2) - fx_ * q(0);
 
     a(2 * i + 1, 0) = 0.0;
     a(2 * i + 1, 1) = fy_;
     a(2 * i + 1, 2) = -dv;
-    b(2 * i + 1) = dv * q[i](2) - fy_ * q[i](1);
+    b(2 * i + 1) = dv * q(2) - fy_ * q(1);
   }
 
   // 正规方程求解 (A^T A) t = A^T b
@@ -545,65 +585,46 @@ double ArmorPoseOptimizer::EvaluateCandidateYaw(
   if (ldlt.info() != Eigen::Success || !ldlt.isPositive())
   {
     // 线性系统退化（不应在正常装甲板几何下发生）
-    return 1e9;
+    return false;
   }
 
-  Eigen::Vector3d t = ldlt.solve(at_b);
-
-  // 验证：所有点必须在相机前方，并计算重投影误差
-  double total_error = 0.0;
-  for (int i = 0; i < 4; ++i)
-  {
-    Eigen::Vector3d p_cam = q[i] + t;
-    double z = p_cam(2);
-
-    if (z <= 1e-6)
-    {
-      return 1e9;  // 有点在相机后方，该 yaw 无效
-    }
-
-    double u_proj = fx_ * p_cam(0) / z + cx_;
-    double v_proj = fy_ * p_cam(1) / z + cy_;
-
-    double du = img_points_ud[i](0) - u_proj;
-    double dv = img_points_ud[i](1) - v_proj;
-    total_error += du * du + dv * dv;
-  }
-
-  t_out = t;
-  return total_error;
+  t_out = ldlt.solve(at_b);
+  return true;
 }
 
 // ============================================================================
-//  重投影误差计算
+//  候选 yaw 评估
 // ============================================================================
 
-double ArmorPoseOptimizer::ComputeReprojectionError(
-    double yaw, double pitch_prior, const Eigen::Vector3d& t_cam,
-    const std::array<Eigen::Vector3d, 4>& obj_points,
-    const std::array<Eigen::Vector2d, 4>& img_points_ud)
+double ArmorPoseOptimizer::EvaluateCandidateYaw(
+    double yaw, double pitch_prior, const std::array<Eigen::Vector3d, 4>& obj_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud, Eigen::Vector3d& t_out)
 {
-  // 旋转模型与 ComputeResidualAndJacobian 一致：
-  //   R_cam = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)
-  Eigen::Matrix3d r_cam = r_cam_gimbal_ * Rz(yaw) * Ry(pitch_prior);
+  Eigen::Matrix3d r_cam = BuildCameraRotation(yaw, pitch_prior);
+
+  // 预计算旋转后的物体点
+  std::array<Eigen::Vector3d, 4> q;
+  for (int i = 0; i < 4; ++i)
+  {
+    q[i] = r_cam * obj_points[i];
+  }
+
+  if (!SolveTranslationForFixedRotation(q, img_points_ud, t_out))
+  {
+    return 1e9;
+  }
 
   double total_error = 0.0;
   for (int i = 0; i < 4; ++i)
   {
-    Eigen::Vector3d p_cam = r_cam * obj_points[i] + t_cam;
-    double z = p_cam(2);
-
-    // 点在相机后方，返回极大值表示该 yaw 无效
-    if (z <= 1e-6)
+    Eigen::Vector3d p = q[i] + t_out;
+    if (p(2) <= 1e-6)
     {
       return 1e9;
     }
-
-    double u_proj = fx_ * p_cam(0) / z + cx_;
-    double v_proj = fy_ * p_cam(1) / z + cy_;
-
-    double du = img_points_ud[i](0) - u_proj;
-    double dv = img_points_ud[i](1) - v_proj;
+    double z_inv = 1.0 / p(2);
+    double du = img_points_ud[i](0) - (fx_ * p(0) * z_inv + cx_);
+    double dv = img_points_ud[i](1) - (fy_ * p(1) * z_inv + cy_);
     total_error += du * du + dv * dv;
   }
   return total_error;

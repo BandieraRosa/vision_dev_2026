@@ -106,6 +106,27 @@ class ArmorPoseOptimizer
   /// 绕 y 轴旋转矩阵（装甲板安装 pitch）
   static Eigen::Matrix3d Ry(double pitch);
 
+  /// 根据装甲板类型构造 4 个物体顶点坐标
+  /// 模型坐标系：x 前、y 左、z 上，装甲板在 yz 平面上（x = 0）
+  /// 顺序：左下、左上、右上、右下（与 PnPSolver 一致）
+  static std::array<Eigen::Vector3d, 4> ExtractObjectPoints(ArmorType type);
+
+  /// 构造相机系下的旋转矩阵：R_cam = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)
+  Eigen::Matrix3d BuildCameraRotation(double yaw, double pitch_prior) const;
+
+  /// 将 4 个物体点经刚体变换后做针孔投影，输出像素坐标
+  /// @return false 若存在 z <= 1e-6 的退化点（点在相机后方）
+  bool ProjectPoints(const Eigen::Matrix3d& R_cam, const Eigen::Vector3d& t_cam,
+                     const std::array<Eigen::Vector3d, 4>& obj_points,
+                     std::array<Eigen::Vector2d, 4>& projected) const;
+
+  /// 计算给定 (yaw, pitch_prior, t_cam) 下的重投影误差平方和
+  /// @return 重投影误差平方和；若有点在相机后方则返回 1e9
+  double ComputeReprojectionError(double yaw, double pitch_prior,
+                                  const Eigen::Vector3d& t_cam,
+                                  const std::array<Eigen::Vector3d, 4>& obj_points,
+                                  const std::array<Eigen::Vector2d, 4>& img_points_ud);
+
   // ---- 优化核心 ----
 
   /// 检查先验约束是否满足，并提取初始 yaw 和匹配到的 pitch 先验
@@ -136,16 +157,10 @@ class ArmorPoseOptimizer
 
   bool RunRangeSolve(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
                      const std::array<Eigen::Vector3d, 4>& obj_points,
-                     const std::array<Eigen::Vector2d, 4>& img_points_ud);
+                     const std::array<Eigen::Vector2d, 4>& img_points_ud,
+                     double* best_error_out = nullptr);
 
-  /// 计算给定 yaw 下的重投影误差
-  /// @return 重投影误差平方和；若有点在相机后方则返回 1e9
-  double ComputeReprojectionError(double yaw, double pitch_prior,
-                                  const Eigen::Vector3d& t_cam,
-                                  const std::array<Eigen::Vector3d, 4>& obj_points,
-                                  const std::array<Eigen::Vector2d, 4>& img_points_ud);
-
-  /// 评估候选 yaw：固定旋转后解析求解最优平移，再计算重投影误差
+  /// 固定旋转矩阵，解析求解最优平移向量
   ///
   /// 数学原理：对于固定 R = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)，
   /// 令 q_i = R * P_obj_i，投影方程展开后关于 t = (tx, ty, tz) 为线性系统：
@@ -154,11 +169,13 @@ class ArmorPoseOptimizer
   ///                            [tz]
   /// 4 个点产生 8 个方程，通过 3×3 正规方程 A^T A t = A^T b 求解。
   ///
-  /// @param yaw           候选 yaw 角
-  /// @param pitch_prior   锁定的 pitch 先验
-  /// @param obj_points    物体点
-  /// @param img_points_ud 去畸变后的图像点
-  /// @param t_out         [out] 该 yaw 下的最优平移向量
+  /// @param rotated_points 预计算的 R * P_obj_i
+  /// @return false 若线性系统退化（不应在正常装甲板几何下发生）
+  bool SolveTranslationForFixedRotation(
+      const std::array<Eigen::Vector3d, 4>& rotated_points,
+      const std::array<Eigen::Vector2d, 4>& img_points_ud, Eigen::Vector3d& t_out) const;
+
+  /// 评估候选 yaw：解析求解最优平移后计算重投影误差
   /// @return 重投影误差平方和；若退化（线性系统奇异 / z <= 0）则返回 1e9
   double EvaluateCandidateYaw(double yaw, double pitch_prior,
                               const std::array<Eigen::Vector3d, 4>& obj_points,
