@@ -329,6 +329,18 @@ std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
       this->declare_parameter("optimizer.max_roll_deviation", 15.0);
   opt_params.max_iterations =
       static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20));
+
+  opt_params.optimize_method =
+      static_cast<int>(this->declare_parameter("optimizer.optimize_method", 0));
+  opt_params.range_search_half_range_deg =
+      this->declare_parameter("optimizer.range_search_half_range_deg", 70.0);
+  opt_params.range_search_coarse_step_deg =
+      this->declare_parameter("optimizer.range_search_coarse_step_deg", 1.0);
+  opt_params.range_search_fine_range_deg =
+      this->declare_parameter("optimizer.range_search_fine_range_deg", 2.0);
+  opt_params.range_search_fine_step_deg =
+      this->declare_parameter("optimizer.range_search_fine_step_deg", 0.1);
+
   return std::make_unique<ArmorPoseOptimizer>(opt_params);
 }
 

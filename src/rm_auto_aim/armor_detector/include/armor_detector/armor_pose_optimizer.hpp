@@ -28,6 +28,15 @@ class ArmorPoseOptimizer
     // roll 偏差超过此值时认为先验不可用
     double max_roll_deviation = 10.0;
 
+    // ---- 优化方法选择 ----
+    //   0 = LM_ONLY:        纯 Levenberg-Marquardt 迭代法
+    //   1 = RANGE_ONLY:     纯两阶段范围搜索法（参考 COD 战队开源）
+    //   2 = RANGE_THEN_LM:  搜索定位全局最优 yaw 邻域，再用 LM 联合精优化 yaw + tvec
+    static constexpr int LM_ONLY = 0;
+    static constexpr int RANGE_ONLY = 1;
+    static constexpr int RANGE_THEN_LM = 2;
+    int optimize_method = LM_ONLY;
+
     // LM 优化参数
     int max_iterations = 20;             // 最大迭代次数
     double convergence_eps = 1e-6;       // 收敛阈值：参数更新量的范数
@@ -35,6 +44,14 @@ class ArmorPoseOptimizer
     double initial_lambda = 1e-3;        // LM 初始阻尼因子
     double lambda_scale_up = 10.0;       // 步骤失败时阻尼放大倍数
     double lambda_scale_down = 10.0;     // 步骤成功时阻尼缩小倍数
+
+    // 范围搜索参数
+    double range_search_half_range_deg =
+        70.0;  // 粗搜索半范围（°），以初始 yaw 为中心 ±70°
+    double range_search_coarse_step_deg = 1.0;  // 粗搜索步长（°）
+    double range_search_fine_range_deg =
+        2.0;                                  // 精搜索半范围（°），在粗搜索最优解附近 ±2°
+    double range_search_fine_step_deg = 0.1;  // 精搜索步长（°）
   };
 
   explicit ArmorPoseOptimizer(const Params& params);
@@ -104,6 +121,7 @@ class ArmorPoseOptimizer
       const std::array<cv::Point2f, 4>& points);
 
   /// 计算残差与雅可比
+  /// @return false 表示存在 z <= 0 的退化情况（点在相机后方），结果不可用
   bool ComputeResidualAndJacobian(double yaw, double pitch_prior,
                                   const Eigen::Vector3d& t_cam,
                                   const std::array<Eigen::Vector3d, 4>& obj_points,
@@ -119,6 +137,13 @@ class ArmorPoseOptimizer
   bool RunRangeSolve(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
                      const std::array<Eigen::Vector3d, 4>& obj_points,
                      const std::array<Eigen::Vector2d, 4>& img_points_ud);
+
+  /// 计算给定 yaw 下的重投影误差
+  /// @return 重投影误差平方和；若有点在相机后方则返回 1e9
+  double ComputeReprojectionError(double yaw, double pitch_prior,
+                                  const Eigen::Vector3d& t_cam,
+                                  const std::array<Eigen::Vector3d, 4>& obj_points,
+                                  const std::array<Eigen::Vector2d, 4>& img_points_ud);
 
   // Unit: mm
   static constexpr float SMALL_ARMOR_WIDTH = 135;

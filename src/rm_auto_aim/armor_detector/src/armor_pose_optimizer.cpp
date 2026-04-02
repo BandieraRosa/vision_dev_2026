@@ -94,11 +94,48 @@ bool ArmorPoseOptimizer::Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tv
                   Eigen::Vector3d(0, -HY, HZ), Eigen::Vector3d(0, -HY, -HZ)};
   }
 
-  // ---- Step 3: LM 优化 ----
+  // ---- Step 3: yaw 优化 ----
   double yaw = yaw_init;
   Eigen::Vector3d t_cam(tvec.at<double>(0), tvec.at<double>(1), tvec.at<double>(2));
 
-  if (!RunLM(yaw, pitch_prior, t_cam, obj_points, img_points_ud))
+  bool opt_success = false;
+
+  switch (params_.optimize_method)
+  {
+    case Params::RANGE_ONLY:
+    {
+      // 两阶段搜索法
+      opt_success = RunRangeSolve(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+      break;
+    }
+
+    case Params::RANGE_THEN_LM:
+    {
+      // 融合法：粗搜索定位全局最优 yaw 邻域 → LM 联合精优化 yaw + tvec
+      //
+      // 粗搜索保证 yaw 落入正确的极值盆地，
+      // LM 在此基础上联合优化 yaw 和 tvec，获得亚像素精度。
+      opt_success = RunRangeSolve(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+      if (opt_success)
+      {
+        // 以范围搜索结果为初始点运行 LM 精优化
+        // 即使 LM 未能进一步改善，范围搜索的结果仍然有效
+        // （RunLM 返回 false 时 yaw/t_cam 保持 range search 的值不变）
+        RunLM(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+      }
+      break;
+    }
+
+    case Params::LM_ONLY:
+    default:
+    {
+      // 纯 Levenberg-Marquardt 迭代法
+      opt_success = RunLM(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+      break;
+    }
+  }
+
+  if (!opt_success)
   {
     return false;
   }
@@ -383,12 +420,90 @@ bool ArmorPoseOptimizer::RunRangeSolve(
     const std::array<Eigen::Vector3d, 4>& obj_points,
     const std::array<Eigen::Vector2d, 4>& img_points_ud)
 {
-  constexpr double RANGE_DEG = 140.0;  // 搜索范围 ±70°
-  constexpr double MIN_ERROR = 1e10;
-  double best_yaw = yaw;
-  // 此处需要获取云台当前欧拉角
+  const double HALF_RANGE_RAD = params_.range_search_half_range_deg * M_PI / 180.0;
+  const double COARSE_STEP_RAD = params_.range_search_coarse_step_deg * M_PI / 180.0;
+  const double FINE_RANGE_RAD = params_.range_search_fine_range_deg * M_PI / 180.0;
+  const double FINE_STEP_RAD = params_.range_search_fine_step_deg * M_PI / 180.0;
 
+  // 以当前初始 yaw 为中心进行搜索
+  const double CENTER_YAW = yaw;
+  double best_yaw = yaw;
+  double min_error =
+      ComputeReprojectionError(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
+
+  // 初始状态如果所有点都在相机后方，直接放弃
+  if (min_error >= 1e9)
+  {
+    return false;
+  }
+
+  // ---- Stage 1: 粗搜索 ----
+  // 以初始 yaw 为中心，在 ±half_range 范围内以 coarse_step 步长搜索
+  for (double candidate = CENTER_YAW - HALF_RANGE_RAD;
+       candidate <= CENTER_YAW + HALF_RANGE_RAD; candidate += COARSE_STEP_RAD)
+  {
+    double error = ComputeReprojectionError(candidate, pitch_prior, t_cam, obj_points,
+                                            img_points_ud);
+    if (error < min_error)
+    {
+      min_error = error;
+      best_yaw = candidate;
+    }
+  }
+
+  // ---- Stage 2: 精搜索 ----
+  // 在粗搜索最优解附近 ±fine_range 范围内以 fine_step 步长细化
+  const double FINE_START = best_yaw - FINE_RANGE_RAD;
+  const double FINE_END = best_yaw + FINE_RANGE_RAD;
+  for (double candidate = FINE_START; candidate <= FINE_END; candidate += FINE_STEP_RAD)
+  {
+    double error = ComputeReprojectionError(candidate, pitch_prior, t_cam, obj_points,
+                                            img_points_ud);
+    if (error < min_error)
+    {
+      min_error = error;
+      best_yaw = candidate;
+    }
+  }
+
+  yaw = best_yaw;
+  // 范围搜索法仅优化 yaw，t_cam 保持 PnP 原始值不变
   return true;
+}
+
+// ============================================================================
+//  重投影误差计算
+// ============================================================================
+
+double ArmorPoseOptimizer::ComputeReprojectionError(
+    double yaw, double pitch_prior, const Eigen::Vector3d& t_cam,
+    const std::array<Eigen::Vector3d, 4>& obj_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud)
+{
+  // 旋转模型与 ComputeResidualAndJacobian 一致：
+  //   R_cam = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)
+  Eigen::Matrix3d r_cam = r_cam_gimbal_ * Rz(yaw) * Ry(pitch_prior);
+
+  double total_error = 0.0;
+  for (int i = 0; i < 4; ++i)
+  {
+    Eigen::Vector3d p_cam = r_cam * obj_points[i] + t_cam;
+    double z = p_cam(2);
+
+    // 点在相机后方，返回极大值表示该 yaw 无效
+    if (z <= 1e-6)
+    {
+      return 1e9;
+    }
+
+    double u_proj = fx_ * p_cam(0) / z + cx_;
+    double v_proj = fy_ * p_cam(1) / z + cy_;
+
+    double du = img_points_ud[i](0) - u_proj;
+    double dv = img_points_ud[i](1) - v_proj;
+    total_error += du * du + dv * dv;
+  }
+  return total_error;
 }
 
 // ============================================================================
