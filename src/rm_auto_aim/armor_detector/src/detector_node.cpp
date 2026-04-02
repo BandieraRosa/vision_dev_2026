@@ -181,7 +181,6 @@ void ArmorDetectorNode::ImageCallback(
           {
             RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
           }
-          pose_optimizer_->Optimize(armor, rvec, tvec);
         }
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];
