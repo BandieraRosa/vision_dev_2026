@@ -29,13 +29,13 @@ class ArmorPoseOptimizer
     double max_roll_deviation = 10.0;
 
     // ---- 优化方法选择 ----
-    //   0 = LM_ONLY:        纯 Levenberg-Marquardt 迭代法
-    //   1 = RANGE_ONLY:     纯两阶段范围搜索法（参考 COD 战队开源）
-    //   2 = RANGE_THEN_LM:  搜索定位全局最优 yaw 邻域，再用 LM 联合精优化 yaw + tvec
-    static constexpr int LM_ONLY = 0;
-    static constexpr int RANGE_ONLY = 1;
-    static constexpr int RANGE_THEN_LM = 2;
-    int optimize_method = LM_ONLY;
+    enum class OptimizeMethod : uint8_t
+    {
+      LM = 0,
+      RANGE = 1,
+      RANGE_LM = 2,  // 在范围搜索基础上以最优解为起点再跑 LM
+    };
+    OptimizeMethod optimize_method = OptimizeMethod::RANGE_LM;
 
     // LM 优化参数
     int max_iterations = 20;             // 最大迭代次数
@@ -144,6 +144,26 @@ class ArmorPoseOptimizer
                                   const Eigen::Vector3d& t_cam,
                                   const std::array<Eigen::Vector3d, 4>& obj_points,
                                   const std::array<Eigen::Vector2d, 4>& img_points_ud);
+
+  /// 评估候选 yaw：固定旋转后解析求解最优平移，再计算重投影误差
+  ///
+  /// 数学原理：对于固定 R = R_cam_gimbal * Rz(yaw) * Ry(pitch_prior)，
+  /// 令 q_i = R * P_obj_i，投影方程展开后关于 t = (tx, ty, tz) 为线性系统：
+  ///   [fx   0   -(u'_i - cx)] [tx]   [(u'_i - cx)*qz_i - fx*qx_i]
+  ///   [0    fy  -(v'_i - cy)] [ty] = [(v'_i - cy)*qz_i - fy*qy_i]
+  ///                            [tz]
+  /// 4 个点产生 8 个方程，通过 3×3 正规方程 A^T A t = A^T b 求解。
+  ///
+  /// @param yaw           候选 yaw 角
+  /// @param pitch_prior   锁定的 pitch 先验
+  /// @param obj_points    物体点
+  /// @param img_points_ud 去畸变后的图像点
+  /// @param t_out         [out] 该 yaw 下的最优平移向量
+  /// @return 重投影误差平方和；若退化（线性系统奇异 / z <= 0）则返回 1e9
+  double EvaluateCandidateYaw(double yaw, double pitch_prior,
+                              const std::array<Eigen::Vector3d, 4>& obj_points,
+                              const std::array<Eigen::Vector2d, 4>& img_points_ud,
+                              Eigen::Vector3d& t_out);
 
   // Unit: mm
   static constexpr float SMALL_ARMOR_WIDTH = 135;

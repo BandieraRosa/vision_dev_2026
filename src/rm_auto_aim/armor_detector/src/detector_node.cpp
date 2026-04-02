@@ -330,8 +330,20 @@ std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
   opt_params.max_iterations =
       static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20));
 
-  opt_params.optimize_method =
-      static_cast<int>(this->declare_parameter("optimizer.optimize_method", 0));
+  std::string optimize_method_str =
+      this->declare_parameter("optimizer.optimize_method", std::string("RANGE_SHORT_LM"));
+  if (optimize_method_str == "LM")
+  {
+    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::LM;
+  }
+  else if (optimize_method_str == "RANGE")
+  {
+    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE;
+  }
+  else if (optimize_method_str == "RANGE_SHORT_LM")
+  {
+    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE_LM;
+  }
   opt_params.range_search_half_range_deg =
       this->declare_parameter("optimizer.range_search_half_range_deg", 70.0);
   opt_params.range_search_coarse_step_deg =
