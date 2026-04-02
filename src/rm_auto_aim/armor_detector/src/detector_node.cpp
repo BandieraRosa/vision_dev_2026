@@ -1,25 +1,12 @@
+
+#include "armor_detector/detector_node.hpp"
+
 #include <cv_bridge/cv_bridge.h>
-#include <rmw/qos_profiles.h>
-#include <tf2/LinearMath/Matrix3x3.h>
-#include <tf2/convert.h>
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <image_transport/image_transport.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
-#include <rclcpp/duration.hpp>
-#include <rclcpp/qos.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
-// STL
-#include <algorithm>
-#include <memory>
-#include <std_msgs/msg/bool.hpp>
-#include <string>
-#include <vector>
-
-#include "armor_detector/armor.hpp"
-#include "armor_detector/detector_node.hpp"
+#include <tf2_ros/create_timer_ros.hpp>
 
 namespace rm_auto_aim
 {
@@ -33,6 +20,14 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 
   // Light corner corrector
   corner_corrector_ = InitLightCornerCorrector();
+
+  // Pose optimizer
+  pose_optimizer_ = InitPoseOptimizer();
+  if (pose_optimizer_)
+  {
+    RCLCPP_INFO(this->get_logger(), "Pose optimizer enabled.");
+    InitTransformListener();
+  }
 
   // Armors Publisher
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -95,6 +90,12 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         cam_center_ = cv::Point2f(static_cast<float>(camera_info->k[2]),
                                   static_cast<float>(camera_info->k[5]));
         cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+        if (pose_optimizer_)
+        {
+          pose_optimizer_->SetCameraIntrinsics(
+              cv::Mat(3, 3, CV_64F, const_cast<double*>(cam_info_->k.data())),
+              cv::Mat(cam_info_->d));
+        }
         if (!pnp_solver_)
         {
           pnp_solver_ = InitPnPSolver();
@@ -144,6 +145,25 @@ void ArmorDetectorNode::ImageCallback(
       bool success = pnp_solver_->SolvePnP(armor, rvec, tvec);
       if (success)
       {
+        if (pose_optimizer_)
+        {
+          try
+          {
+            auto tf_stamped = tf2_buffer_->lookupTransform(
+                "gimbal_odom", img_msg->header.frame_id, img_msg->header.stamp,
+                rclcpp::Duration::from_seconds(0.01));
+
+            Eigen::Quaterniond q;
+            tf2::fromMsg(tf_stamped.transform.rotation, q);
+            Eigen::Matrix3d r_gimbal_cam = q.toRotationMatrix();
+            pose_optimizer_->SetCameraToGimbalRotation(r_gimbal_cam);
+          }
+          catch (const tf2::TransformException& ex)
+          {
+            RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
+          }
+          pose_optimizer_->Optimize(armor, rvec, tvec);
+        }
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];
         armor_msg.number = armor.number;
@@ -262,15 +282,46 @@ std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
 {
   bool use_new_pnp_filter_method =
       this->declare_parameter("pnp_filter.use_new_pnp_filter_method", false);
-  double max_normal_dot = this->declare_parameter("pnp_filter.max_normal_dot", 0.0);
-  double reproj_weight = this->declare_parameter("pnp_filter.reproj_weight", 1.0);
-  double normal_weight = this->declare_parameter("pnp_filter.normal_weight", 0.5);
-  return std::make_unique<PnPSolver>(
-      cam_info_->k, cam_info_->d,
-      PnPSolver::PnpFilterParams{.new_pnp_filter_method = use_new_pnp_filter_method,
-                                 .max_normal_dot = max_normal_dot,
-                                 .reproj_weight = reproj_weight,
-                                 .normal_weight = normal_weight});
+  PnPSolver::PnpFilterParams pnp_filter_params;
+  pnp_filter_params.new_pnp_filter_method = use_new_pnp_filter_method;
+  pnp_filter_params.max_normal_dot =
+      this->declare_parameter("pnp_filter.max_normal_dot", 0.0);
+  pnp_filter_params.reproj_weight =
+      this->declare_parameter("pnp_filter.reproj_weight", 1.0);
+  pnp_filter_params.normal_weight =
+      this->declare_parameter("pnp_filter.normal_weight", 0.5);
+  return std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d, pnp_filter_params);
+}
+
+std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
+{
+  bool use_pose_optimize = this->declare_parameter("use_pose_optimizer", false);
+  if (!use_pose_optimize)
+  {
+    return nullptr;
+  }
+  ArmorPoseOptimizer::Params opt_params;
+  opt_params.standard_pitch_deg =
+      this->declare_parameter("optimizer.standard_pitch_deg", 15.0);
+  opt_params.outpost_pitch_deg =
+      this->declare_parameter("optimizer.outpost_pitch_deg", -15.0);
+  opt_params.max_pitch_deviation =
+      this->declare_parameter("optimizer.max_pitch_deviation", 15.0);
+  opt_params.max_roll_deviation =
+      this->declare_parameter("optimizer.max_roll_deviation", 15.0);
+  opt_params.max_iterations =
+      static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20));
+  return std::make_unique<ArmorPoseOptimizer>(opt_params);
+}
+
+void ArmorDetectorNode::InitTransformListener()
+{
+  odom_frame_ = this->declare_parameter("target_frame", "gimbal_odom");
+  tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
+      this->get_node_base_interface(), this->get_node_timers_interface());
+  tf2_buffer_->setCreateTimerInterface(timer_interface);
+  tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
 }
 
 std::vector<Armor> ArmorDetectorNode::DetectArmors(
