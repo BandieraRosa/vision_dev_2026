@@ -54,4 +54,4 @@ jobs:
         with:
           args: >
             --define "sonar.cfamily.compile-commands=build/compile_commands.json"
-            --define "sonar.exclusions=src/libxr/libxr/**, build/**, install/**, log/**"
+            --define "sonar.exclusions=src/libxr/libxr/**, build/**, install/**, log/**, src/hik_camera/hikSDK/**"
