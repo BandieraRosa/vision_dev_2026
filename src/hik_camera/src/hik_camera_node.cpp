@@ -290,7 +290,7 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  unsigned int n_image_node_num = 1;
+  unsigned int n_image_node_num = 3;
   ret = MV_CC_SetImageNodeNum(handle_, n_image_node_num);
   if (MV_OK != ret)
   {
