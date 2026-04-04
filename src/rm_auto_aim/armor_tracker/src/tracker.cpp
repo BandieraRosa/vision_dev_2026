@@ -389,18 +389,14 @@ void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, doubl
     // 可能不保证卡尔曼里是哪个装甲板的高度，但总是两个相邻的装甲板相减
     // 基于高——低装甲板高度差强行矫正索引
     // 低 中 高： 0 1 2
-    int sign = (target_state(7) > 0.1) - (target_state(7) < -0.1);
-    if (sign == 0)
-    {
-      return;
-    }
+    int sign = target_state(7) > 0 ? 1 : -1;
     if (std::fabs(z_diff) > outpost_cast_threshold)
     {
       outpost_idx = (sign == 1) ? 0 : 2;
     }
     else
     {
-      outpost_idx = (outpost_idx + sign) % 3;
+      outpost_idx = (outpost_idx + sign + 3) % 3;
     }
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
                 "Outpost Jump: z_diff=%.3f, current_idx=%d", z_diff, outpost_idx);

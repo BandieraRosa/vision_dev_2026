@@ -31,6 +31,10 @@ class ExtendedKalmanFilter
   // Update the estimated state based on measurement
   Eigen::MatrixXd update(const Eigen::VectorXd& z);
 
+  // Get the estimated state
+  Eigen::VectorXd getState();
+
+  // Get the health rate
   double GetHealthRate();
 
  private:

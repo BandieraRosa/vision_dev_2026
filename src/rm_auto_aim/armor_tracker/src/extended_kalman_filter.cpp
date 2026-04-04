@@ -66,11 +66,16 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
   return x_post;
 }
 
+Eigen::VectorXd ExtendedKalmanFilter::getState()
+{
+  return x_post;
+}
+
 double ExtendedKalmanFilter::GetHealthRate()
 {
   if (nis_window_.size() < 20)
   {
-    return true;
+    return 1.0;
   }
   int health = static_cast<int>(std::count_if(nis_window_.begin(), nis_window_.end(),
                                             [](double v)

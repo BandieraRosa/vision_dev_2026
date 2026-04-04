@@ -1,15 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(armor_tracker)
+project(planning_trajectory)
 
-## Use C++14
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-## By adding -Wall and -Werror, the compiler does not ignore warnings anymore,
-## enforcing cleaner code.
-# add_definitions(-Wall -Werror)
-
-## Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #######################
@@ -28,7 +22,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN rm_auto_aim::ArmorTrackerNode
+  PLUGIN rm_auto_aim::PlanningTrajectoryNode
   EXECUTABLE ${PROJECT_NAME}_node
 )
 
@@ -44,19 +38,10 @@ if(BUILD_TESTING)
     ament_cmake_cpplint
   )
   ament_lint_auto_find_test_dependencies()
-
-  find_package(ament_cmake_gtest)
-
-  file(GLOB TEST_SOURCES test/*.cpp)
-  foreach(TEST_SOURCE ${TEST_SOURCES})
-    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)  
-    ament_add_gtest(${TEST_NAME} ${TEST_SOURCE})
-    target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
-  endforeach()
 endif()
 
 #############
 ## Install ##
 #############
 
-ament_auto_package()
+ament_auto_package(INSTALL_TO_SHARE tools)

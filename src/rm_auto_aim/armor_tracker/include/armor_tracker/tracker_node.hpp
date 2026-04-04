@@ -12,7 +12,6 @@
 #include <std_msgs/msg/int32.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include "SolveTrajectory.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
@@ -51,7 +50,6 @@ class ArmorTrackerNode : public rclcpp::Node
   double r_xyz_factor_, r_yaw_;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
-  std::unique_ptr<SolveTrajectory> gaf_solver_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;
@@ -82,10 +80,6 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Lob shot
   bool is_hero_{false};
-  std::string table_filename_normal_;
-  std::string table_filename_lob_;
-  TrajectoryTable::TableConfig table_config_;
-  TrajectoryTable::TableConfig table_config_lob_;
   std::string last_frame_id_ = "camera_optical_frame";
 
   // control

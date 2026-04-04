@@ -1,4 +1,4 @@
-#include "armor_tracker/SolveTrajectory.hpp"
+#include "planning_trajectory/trajectory_solver.hpp"
 
 #include <cmath>
 #include <memory>
@@ -6,13 +6,13 @@
 namespace rm_auto_aim
 {
 
-SolveTrajectory::SolveTrajectory(const double& k, const double& bias_time,
-                                 const double& s_bias, const double& z_bias,
-                                 const double& pitch_bias, CalculateMode calculate_mode,
-                                 const TrajectoryTable::TableConfig& table_config,
-                                 const TrajectoryTable::TableConfig& table_config_lob_)
-    : table_(std::make_shared<TrajectoryTable>(table_config)),
-      table_lob_(std::make_shared<TrajectoryTable>(table_config_lob_)),
+TrajectorySolver::TrajectorySolver(const double& k, const double& bias_time,
+                                   const double& s_bias, const double& z_bias,
+                                   const double& pitch_bias, CalculateMode calculate_mode,
+                                   const Table::TableConfig& table_config,
+                                   const Table::TableConfig& table_config_lob_)
+    : table_(std::make_shared<Table>(table_config)),
+      table_lob_(std::make_shared<Table>(table_config_lob_)),
       calculate_mode_(calculate_mode),
       k_(k),
       pitch_bias_(pitch_bias),
@@ -42,7 +42,7 @@ SolveTrajectory::SolveTrajectory(const double& k, const double& bias_time,
   }
 }
 
-void SolveTrajectory::Init(
+void TrajectorySolver::Init(
     const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
 {
   if (!std::isnan(velocity_msg->velocity))
@@ -57,7 +57,7 @@ void SolveTrajectory::Init(
   }
 }
 
-void SolveTrajectory::ReBuild()
+void TrajectorySolver::ReBuild()
 {
   selected_idx_ = SpecialArmor::LOST;
   last_x_v_ = 0.0f;
@@ -65,40 +65,38 @@ void SolveTrajectory::ReBuild()
   last_v_yaw_ = 0.0f;
 }
 
-SolveTrajectory::TargetPostion SolveTrajectory::PredictCenter(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay)
+TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
 {
-  TargetPostion center;
-  if (msg->armors_num == 4)
+  TarPostion center;
+  if (target_.num == 4)
   {
-    center.x = msg->position.x + msg->velocity.x * time_delay;
-    center.y = msg->position.y + msg->velocity.y * time_delay;
-    center.z = msg->position.z;
-    center.yaw = msg->yaw + msg->v_yaw * time_delay;
+    center.x = target_.position.x + target_.velocity.x * time_delay;
+    center.y = target_.position.y + target_.velocity.y * time_delay;
+    center.z = target_.position.z;
+    center.yaw = target_.position.yaw + target_.velocity.yaw * time_delay;
   }
   else
   {
-    center.x = msg->position.x;
-    center.y = msg->position.y;
-    center.z = msg->position.z;
-    center.yaw = msg->yaw + msg->v_yaw * time_delay;
+    center.x = target_.position.x;
+    center.y = target_.position.y;
+    center.z = target_.position.z;
+    center.yaw = target_.position.yaw + target_.velocity.yaw * time_delay;
   }
   return center;
 }
 
-SolveTrajectory::TargetPostion SolveTrajectory::PredictArmor(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx,
-    SolveTrajectory::TargetPostion& pre_center)
+TrajectorySolver::TarPostion TrajectorySolver::PredictArmor(
+    double time_delay, int idx, TrajectorySolver::TarPostion& pre_center)
 {
-  TargetPostion pre_pos;
+  TarPostion pre_pos;
 
-  if (msg->armors_num == 4)
+  if (target_.num == 4)
   {
-    double sign = msg->v_yaw > 0 ? 1.0f : -1.0f;
+    double sign = target_.velocity.yaw > 0 ? 1.0f : -1.0f;
 
-    double radius = idx % 2 ? msg->radius_2 : msg->radius_1;
+    double radius = idx % 2 ? target_.radius2 : target_.radius1;
 
-    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / msg->armors_num;
+    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / target_.num;
 
     pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
     pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
@@ -107,32 +105,16 @@ SolveTrajectory::TargetPostion SolveTrajectory::PredictArmor(
   }
   else  // 3个装甲板,是前哨站
   {
-    double radius = msg->radius_1;
-    double sign = 0.0;
-    if (msg->v_yaw > 0.1)
-    {
-      sign = 1.0;
-    }
-    else if (msg->v_yaw < -0.1)
-    {
-      sign = -1.0;
-    }
-    double tmp_yaw = pre_center.yaw - sign * idx * 2.0 * M_PI / msg->armors_num;
+    double radius = target_.radius1;
+    double sign = target_.velocity.yaw > 0 ? 1.0f : -1.0f;
+    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / target_.num;
 
     pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
     pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
 
-    int id = Tracker::outpost_idx;
-    if (msg->v_yaw > 0.1)
-    {
-      id = (Tracker::outpost_idx + idx) % msg->armors_num;  // 低->中->高
-    }
-    else if (msg->v_yaw < -0.1)
-    {
-      id =
-          (Tracker::outpost_idx - idx + msg->armors_num) % msg->armors_num;  // 高->中->低
-    }
-    pre_pos.z = pre_center.z + Tracker::outpost_dz * (id - 1);
+    int id =
+        target_.outpost_idx + (sign == 1.0f ? idx : (target_.num - idx)) % target_.num;
+    pre_pos.z = pre_center.z + outpost_dz * (id - 1);
 
     pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
   }
@@ -142,26 +124,24 @@ SolveTrajectory::TargetPostion SolveTrajectory::PredictArmor(
 
 // 从图片时间到打到的时间：自瞄处理的时间+电控延迟(从视觉发信号到电机动和发弹延迟)+云台转动时间+飞行时间
 // msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
-void SolveTrajectory::PredictAllArmorPosition(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay)
+void TrajectorySolver::PredictAllArmorPosition(double time_delay)
 {
-  TargetPostion pre_center = PredictCenter(msg, time_delay);
-  for (int i = 0; i < msg->armors_num; i++)
+  TarPostion pre_center = PredictCenter(time_delay);
+  for (int i = 0; i < target_.num; i++)
   {
-    pre_position_[i] = PredictArmor(msg, time_delay, i, pre_center);
+    pre_position_[i] = PredictArmor(time_delay, i, pre_center);
   }
 }
 
-void SolveTrajectory::PredictOneArmorPosition(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, double time_delay, int idx)
+void TrajectorySolver::PredictOneArmorPosition(double time_delay, int idx)
 {
-  pre_center_ = PredictCenter(msg, time_delay);
-  pre_position_[idx] = PredictArmor(msg, time_delay, idx, pre_center_);
+  TarPostion pre_center = PredictCenter(time_delay);
+  pre_position_[idx] = PredictArmor(time_delay, idx, pre_center);
 }
 
 // 计算简化单向空气阻力模型下的弹道高度，用于正常模式
-double SolveTrajectory::MonoDirectionalAirResistanceModel(double s, double angle,
-                                                          double v)
+double TrajectorySolver::MonoDirectionalAirResistanceModel(double s, double angle,
+                                                           double v)
 {
   double cos_angle = std::cos(angle);
   if (cos_angle <= 0)
@@ -184,7 +164,7 @@ double SolveTrajectory::MonoDirectionalAirResistanceModel(double s, double angle
 }
 
 // 计算俯仰角(两种模式)
-double SolveTrajectory::SolvePitch(double x, double y, double z)
+double TrajectorySolver::SolvePitch(double x, double y, double z)
 {
   // 计算水平距离
   double distance = std::sqrt(x * x + y * y);
@@ -238,7 +218,7 @@ double SolveTrajectory::SolvePitch(double x, double y, double z)
   return pitch;
 }
 
-double SolveTrajectory::SolveYaw(double x, double y) { return std::atan2(y, x); }
+double TrajectorySolver::SolveYaw(double x, double y) { return std::atan2(y, x); }
 
 double fast_atan(double x, double y)
 {
@@ -248,27 +228,26 @@ double fast_atan(double x, double y)
 }
 
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
-bool SolveTrajectory::CanFire(double tar_yaw,
-                              const auto_aim_interfaces::msg::Target::SharedPtr& msg,
-                              bool is_fast_fire = false)
+bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire = false)
 {
   double distance =
       std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
                 pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
       s_bias_;
-  double armor_half_length = msg->type == "small" ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
+  double armor_half_length =
+      target_.type == "small" ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
   double max_yaw_diff = SolveYaw(distance, armor_half_length);
 
-  if (!(fabs(msg->velocity.x - last_x_v_) < 0.4f &&
-        fabs(msg->velocity.y - last_y_v_) < 0.3f &&
-        fabs(msg->v_yaw - last_v_yaw_) < 0.3f) &&
+  if (!(fabs(target_.velocity.x - last_x_v_) < 0.4f &&
+        fabs(target_.velocity.y - last_y_v_) < 0.3f &&
+        fabs(target_.velocity.yaw - last_v_yaw_) < 0.3f) &&
       !is_fast_fire && !should_last_shot_)
   {
     return false;
   }
   else
   {
-    bool yaw_diff_exceeds = fabs(tar_yaw - msg->gimbal_yaw) > max_yaw_diff;
+    bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff;
     if (is_turn_)
     {
       if (yaw_diff_exceeds)
@@ -292,19 +271,17 @@ bool SolveTrajectory::CanFire(double tar_yaw,
   }
 }
 
-void SolveTrajectory::GlobalSelectArmor(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+void TrajectorySolver::GlobalSelectArmor(double time_delay)
 {
-  float min_aim_yaw = M_PI;
+  double min_aim_yaw = M_PI;
   int selected_idx;
-  PredictAllArmorPosition(msg, bias_time_ + fly_time_);
-  for (int i = 0; i < msg->armors_num; i++)
+  PredictAllArmorPosition(time_delay);
+  for (int i = 0; i < target_.num; i++)
   {
-    float toyaw =
-        fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - msg->gimbal_yaw);
-    float turn_time = 0.05f * toyaw;
-    PredictOneArmorPosition(msg, turn_time + bias_time_ + fly_time_, i);
-    float aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
+    double toyaw = fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - gimbal_yaw_);
+    double turn_time = 0.05f * toyaw;
+    PredictOneArmorPosition(time_delay + turn_time, i);
+    double aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
     if (aim_yaw < min_aim_yaw)
     {
       min_aim_yaw = aim_yaw;
@@ -315,43 +292,42 @@ void SolveTrajectory::GlobalSelectArmor(
   selected_idx_ = selected_idx;
 }
 
-void SolveTrajectory::LocalSelectArmor(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
-  if (std::fabs(msg->v_yaw) < 0.5f)
+  if (std::fabs(target_.velocity.yaw) < 0.3f)
   {
     selected_idx_ = 0;
-    PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
+    PredictOneArmorPosition(time_delay, 0);
     return;
   }
 
-  PredictOneArmorPosition(msg, bias_time_ + fly_time_, 0);
+  PredictOneArmorPosition(time_delay, 0);
   double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
   double s_0 =
       pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
 
-  PredictOneArmorPosition(msg, turn_s_ + bias_time_ + fly_time_, 1);
+  PredictOneArmorPosition(time_delay + turn_s_, 1);
   double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
   double s_1 =
       pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
   selected_idx_ =
       fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
+                  1.2 * fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) -
+                             center_yaw_0) &&
               s_1 <= s_0
           ? 1
           : 0;
 }
 
-void SolveTrajectory::PreSelectArmor(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+void TrajectorySolver::PreSelectArmor(double time_delay)
 {
-  double time_delay = bias_time_ + fly_time_;
-  PredictOneArmorPosition(msg, time_delay, 0);
+  double pre_time_delay = time_delay + 2* bias_time_;
+  PredictOneArmorPosition(pre_time_delay, 0);
   double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
   double s_0 =
       pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
 
-  PredictOneArmorPosition(msg, time_delay + turn_s_, 1);
+  PredictOneArmorPosition(pre_time_delay + turn_s_, 1);
   double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
   double s_1 =
       pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
@@ -372,21 +348,20 @@ void SolveTrajectory::PreSelectArmor(
   }
 }
 
-void SolveTrajectory::AutoSelectArmor(
-    const auto_aim_interfaces::msg::Target::SharedPtr& msg, bool is_pre_select = false)
+void TrajectorySolver::AutoSelectArmor(double time_delay, bool is_pre_select = false)
 {
   if (selected_idx_ == LOST)
   {
-    GlobalSelectArmor(msg);
+    GlobalSelectArmor(time_delay);
   }
   else
   {
-    LocalSelectArmor(msg);
+    LocalSelectArmor(time_delay);
   }
 
   if (is_pre_select)
   {
-    PreSelectArmor(msg);
+    PreSelectArmor(time_delay);
   }
   else
   {
@@ -394,7 +369,7 @@ void SolveTrajectory::AutoSelectArmor(
   }
 }
 
-void SolveTrajectory::UpdateFireLogicMode()
+void TrajectorySolver::UpdateFireLogicMode()
 {
   bool last_is_turn = is_turn_;
 
@@ -475,9 +450,9 @@ void SolveTrajectory::UpdateFireLogicMode()
   }
 }
 
-void SolveTrajectory::UpdateSolveState(
-    double& pitch, double& yaw, bool& is_fire, double& aim_x, double& aim_y,
-    double& aim_z, int& idx, const auto_aim_interfaces::msg::Target::SharedPtr& msg)
+void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fire,
+                                        double& aim_x, double& aim_y, double& aim_z,
+                                        int& idx)
 {
   idx = selected_idx_;
 
@@ -489,7 +464,7 @@ void SolveTrajectory::UpdateSolveState(
     aim_z = pre_position_[0].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(yaw, msg);
+    is_fire = CanFire(yaw, false);
   }
 
   // 英雄打击前哨站和步兵打击高速旋转
@@ -502,7 +477,7 @@ void SolveTrajectory::UpdateSolveState(
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(aim_yaw, msg);
+    is_fire = std::fabs(aim_yaw - yaw) > 0.02f && !is_turn_;
     if (is_fire)
     {
       yaw = aim_yaw;
@@ -516,37 +491,32 @@ void SolveTrajectory::UpdateSolveState(
     aim_z = pre_position_[selected_idx_].z;
     pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(yaw, msg);
+    is_fire = CanFire(yaw, false);
   }
 
   if (selected_idx_ != LOST || is_fire)
   {
     last_yaw_ = yaw;
   }
-  last_x_v_ = msg->velocity.x;
-  last_y_v_ = msg->velocity.y;
-  last_v_yaw_ = msg->v_yaw;
+  last_x_v_ = target_.velocity.x;
+  last_y_v_ = target_.velocity.y;
+  last_v_yaw_ = target_.velocity.yaw;
 }
 
-void SolveTrajectory::AutoSolveTrajectory(
-    double& pitch, double& yaw, bool& is_fire, double& aim_x, double& aim_y,
-    double& aim_z, int& idx, const auto_aim_interfaces::msg::Target::SharedPtr msg)
+void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire,
+                                           double& aim_x, double& aim_y, double& aim_z,
+                                           int& idx, const Target& target,
+                                           double gimbal_yaw, const double send_time)
 {
+  target_ = target;
+  gimbal_yaw_ = gimbal_yaw;
   auto start = std::chrono::high_resolution_clock::now();
 
-  if (!msg)
-  {
-    RCLCPP_ERROR(logger_, "Invalid target message");
-    return;
-  }
-
   fire_logic_mode_ = FireLogicMode::COMMON;
-  AutoSelectArmor(msg);
-  UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx, msg);
-  // if (fabs(msg->v_yaw) > 0.5f)
-  // {
-  //   UpdateFireLogicMode();
-  // }
+
+  double time_delay = fly_time_+bias_time_+send_time;
+  AutoSelectArmor(time_delay);
+  UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
