@@ -186,36 +186,6 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/tracker/send", rclcpp::SensorDataQoS());
-
-  // Visualization Marker Publisher
-  // See http://wiki.ros.org/rviz/DisplayTypes/Marker
-  position_marker_.ns = "position";
-  position_marker_.type = visualization_msgs::msg::Marker::SPHERE;
-  position_marker_.scale.x = position_marker_.scale.y = position_marker_.scale.z = 0.1;
-  position_marker_.color.a = 1.0;
-  position_marker_.color.g = 1.0;
-  linear_v_marker_.type = visualization_msgs::msg::Marker::ARROW;
-  linear_v_marker_.ns = "linear_v";
-  linear_v_marker_.scale.x = 0.03;
-  linear_v_marker_.scale.y = 0.05;
-  linear_v_marker_.color.a = 1.0;
-  linear_v_marker_.color.r = 1.0;
-  linear_v_marker_.color.g = 1.0;
-  angular_v_marker_.type = visualization_msgs::msg::Marker::ARROW;
-  angular_v_marker_.ns = "angular_v";
-  angular_v_marker_.scale.x = 0.03;
-  angular_v_marker_.scale.y = 0.05;
-  angular_v_marker_.color.a = 1.0;
-  angular_v_marker_.color.b = 1.0;
-  angular_v_marker_.color.g = 1.0;
-  armor_marker_.ns = "armors";
-  armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
-  armor_marker_.scale.x = 0.03;
-  armor_marker_.scale.z = 0.125;
-  armor_marker_.color.a = 1.0;
-  armor_marker_.color.r = 1.0;
-  marker_pub_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
 }
 
 void ArmorTrackerNode::InitParameters()
@@ -385,99 +355,7 @@ void ArmorTrackerNode::ArmorsCallback(
   info_msg.yaw = tracker_->measurement(3);
   info_msg.outpost_idx = Tracker::outpost_idx;
   info_pub_->publish(info_msg);
-
-  PublishMarkers(target_msg);
 }
-
-void ArmorTrackerNode::PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg){}
-// {
-//   position_marker_.header = target_msg.header;
-//   linear_v_marker_.header = target_msg.header;
-//   angular_v_marker_.header = target_msg.header;
-//   armor_marker_.header = target_msg.header;
-
-//   visualization_msgs::msg::MarkerArray marker_array;
-//   if (target_msg.tracking)
-//   {
-//     // double yaw = target_msg.yaw, r1 = target_msg.radius_1, r2 = target_msg.radius_2;
-//     double xc = target_msg.position.x, yc = target_msg.position.y,
-//            za = target_msg.position.z;
-//     double vx = target_msg.velocity.x, vy = target_msg.velocity.y,
-//            vz = target_msg.velocity.z;
-//     double dz = target_msg.dz;
-
-//     position_marker_.action = visualization_msgs::msg::Marker::ADD;
-//     position_marker_.pose.position.x = xc;
-//     position_marker_.pose.position.y = yc;
-//     position_marker_.pose.position.z = za + dz / 2;
-
-//     linear_v_marker_.action = visualization_msgs::msg::Marker::ADD;
-//     linear_v_marker_.points.clear();
-//     linear_v_marker_.points.emplace_back(position_marker_.pose.position);
-//     geometry_msgs::msg::Point arrow_end = position_marker_.pose.position;
-//     arrow_end.x += vx;
-//     arrow_end.y += vy;
-//     arrow_end.z += vz;
-//     linear_v_marker_.points.emplace_back(arrow_end);
-
-//     angular_v_marker_.action = visualization_msgs::msg::Marker::ADD;
-//     angular_v_marker_.points.clear();
-//     angular_v_marker_.points.emplace_back(position_marker_.pose.position);
-//     arrow_end = position_marker_.pose.position;
-//     arrow_end.z += target_msg.v_yaw / M_PI;
-//     angular_v_marker_.points.emplace_back(arrow_end);
-
-//     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-//     armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23;
-//     // bool is_current_pair = true;
-//     size_t a_n = target_msg.armors_num;
-//     geometry_msgs::msg::Point p_a;
-//     // double r = 0;
-//     SolveTrajectory::ArmorPostion center = gaf_solver_->SolveTrajectory::PredictCenter(
-//         std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0);
-//     for (size_t i = 0; i < a_n; i++)
-//     {
-//       SolveTrajectory::ArmorPostion armor_position =
-//           gaf_solver_->SolveTrajectory::PredictArmor(
-//               std::make_shared<auto_aim_interfaces::msg::Target>(target_msg), 0, i,
-//               center);
-
-//       p_a.x = armor_position.x;
-//       p_a.y = armor_position.y;
-//       p_a.z = armor_position.z;
-
-//       armor_marker_.id = static_cast<int>(i);
-//       armor_marker_.pose.position = p_a;
-//       tf2::Quaternion q;
-//       q.setRPY(0, target_msg.id == "outpost" ? -0.26 : 0.26, armor_position.yaw);
-//       armor_marker_.pose.orientation = tf2::toMsg(q);
-//       marker_array.markers.emplace_back(armor_marker_);
-//     }
-
-//     if (abs(target_msg.aiming_point.x) > 0.01)
-//     {
-//       aiming_point_marker_.action = visualization_msgs::msg::Marker::ADD;
-//       aiming_point_marker_.header = target_msg.header;
-//       aiming_point_marker_.pose.position = target_msg.aiming_point;
-//       marker_array.markers.emplace_back(aiming_point_marker_);
-//     }
-//   }
-//   else
-//   {
-//     position_marker_.action = visualization_msgs::msg::Marker::DELETE;
-//     linear_v_marker_.action = visualization_msgs::msg::Marker::DELETE;
-//     angular_v_marker_.action = visualization_msgs::msg::Marker::DELETE;
-//     aiming_point_marker_.action = visualization_msgs::msg::Marker::DELETE;
-//     armor_marker_.action = visualization_msgs::msg::Marker::DELETE;
-//     marker_array.markers.emplace_back(armor_marker_);
-//   }
-
-//   marker_array.markers.emplace_back(position_marker_);
-//   marker_array.markers.emplace_back(linear_v_marker_);
-//   marker_array.markers.emplace_back(angular_v_marker_);
-//   marker_pub_->publish(marker_array);
-// }
-
 }  // namespace rm_auto_aim
 
 #include "rclcpp_components/register_node_macro.hpp"

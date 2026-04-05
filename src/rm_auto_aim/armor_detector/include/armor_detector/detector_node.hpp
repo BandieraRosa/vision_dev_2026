@@ -8,8 +8,6 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/buffer.hpp>
 #include <tf2_ros/transform_listener.hpp>
-#include <visualization_msgs/msg/marker.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "armor_detector/armor.hpp"
 #include "armor_detector/armor_pose_optimizer.hpp"
@@ -41,8 +39,6 @@ class ArmorDetectorNode : public rclcpp::Node
   void CreateDebugPublishers();
   void DestroyDebugPublishers();
 
-  void PublishMarkers();
-
   // Armor Detector
   std::unique_ptr<Detector> detector_;
   std::unique_ptr<LightCornerCorrector> corner_corrector_;
@@ -58,12 +54,6 @@ class ArmorDetectorNode : public rclcpp::Node
   // Detected armors publisher
   auto_aim_interfaces::msg::Armors armors_msg_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr armors_pub_;
-
-  // Visualization marker publisher
-  visualization_msgs::msg::Marker armor_marker_;
-  visualization_msgs::msg::Marker text_marker_;
-  visualization_msgs::msg::MarkerArray marker_array_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
   // Camera info part
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_sub_;

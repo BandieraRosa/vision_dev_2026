@@ -85,35 +85,11 @@ def get_trajectory_node(robot_type="default"):
         ],
     )
 
-# def get_trajectory_node(robot_type="default"):
-#     """
-#     创建 PlanningTrajectoryNode 的 ComposableNodeContainer。
-#     trajectory_node 是通过 RCLCPP_COMPONENTS_REGISTER_NODE 注册的组件节点，
-#     订阅 /tracker/target 和 /current_velocity，
-#     发布 /trajectory/send 和 /trajectory/info。
-#     """
-#     trajectory_log_level = launch_params.get("trajectory_log_level", "info")
-
-#     return ComposableNodeContainer(
-#         name="trajectory_container",
-#         namespace="",
-#         package="rclcpp_components",
-#         executable="component_container",
-#         composable_node_descriptions=[
-#             ComposableNode(
-#                 package="planning_trajectory",
-#                 plugin="rm_auto_aim::PlanningTrajectoryNode",
-#                 name="planning_trajectory",
-#                 parameters=[node_params, {"robot_type": robot_type}],
-#                 extra_arguments=[{"use_intra_process_comms": True}],
-#             ),
-#         ],
-#         output="both",
-#         emulate_tty=True,
-#         ros_arguments=[
-#             "--ros-args",
-#             "--log-level",
-#             "planning_trajectory:=" + trajectory_log_level,
-#         ],
-#     )
-
+def get_marker_node(robot_type="default"):
+    return Node(
+        package="armor_marker",
+        executable="armor_marker_node",
+        output="both",
+        emulate_tty=True,
+        parameters=[node_params, {"robot_type": robot_type}],
+    )

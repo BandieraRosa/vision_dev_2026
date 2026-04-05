@@ -32,6 +32,7 @@ def _build_after_checkout(context, *args, **kwargs):
         robot_state_publisher,
         get_tracker_node,
         get_trajectory_node,
+        get_marker_node
     )
 
     robot_type = LaunchConfiguration("robot").perform(context)
@@ -102,17 +103,18 @@ def _build_after_checkout(context, *args, **kwargs):
 
     delay_serial_node = TimerAction(period=1.5, actions=[serial_driver_node])
     delay_tracker_node = TimerAction(period=2.0, actions=[get_tracker_node(robot_type)])
-    # trajectory 订阅 /tracker/target，需要在 tracker 之后启动
     delay_trajectory_node = TimerAction(
         period=2.5, actions=[get_trajectory_node(robot_type)]
     )
+    delay_marker_node = TimerAction(period=3.0, actions=[get_marker_node(robot_type)])
 
     return [
         robot_state_publisher,
-        # cam_detector,
-        # delay_serial_node,
+        cam_detector,
+        delay_serial_node,
         delay_tracker_node,
         delay_trajectory_node,
+        delay_marker_node
     ]
 
 
@@ -156,4 +158,3 @@ def generate_launch_description():
             ),
         ]
     )
-

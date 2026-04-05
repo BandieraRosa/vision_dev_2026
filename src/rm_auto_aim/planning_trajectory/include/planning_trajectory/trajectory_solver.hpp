@@ -118,6 +118,9 @@ class TrajectorySolver
                            double& aim_y, double& aim_z, int& idx, const Target& target,
                            double gimbal_yaw, const double send_time);
 
+  /// 供外部设置 target 状态（marker 节点等不走 AutoSolveTrajectory 的场景）
+  void SetTarget(const Target& t) { target_ = t; };
+
   bool SwitchTable()
   {
     if (!table_lob_)

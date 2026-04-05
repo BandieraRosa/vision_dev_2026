@@ -10,7 +10,6 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/int32.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "auto_aim_interfaces/msg/send.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
@@ -33,8 +32,6 @@ class ArmorTrackerNode : public rclcpp::Node
   void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
   void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
-
-  void PublishMarkers(const auto_aim_interfaces::msg::Target& target_msg);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
@@ -69,15 +66,6 @@ class ArmorTrackerNode : public rclcpp::Node
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
-
-  // Visualization marker publisher
-  visualization_msgs::msg::Marker position_marker_;
-  visualization_msgs::msg::Marker linear_v_marker_;
-  visualization_msgs::msg::Marker angular_v_marker_;
-  visualization_msgs::msg::Marker armor_marker_;
-  visualization_msgs::msg::Marker aiming_point_marker_;
-
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
   // Lob shot
   bool is_hero_{false};

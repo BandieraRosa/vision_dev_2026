@@ -33,31 +33,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
       "/detector/armors", rclcpp::SensorDataQoS());
 
-  // Visualization Marker Publisher
-  // See http://wiki.ros.org/rviz/DisplayTypes/Marker
-  armor_marker_.ns = "armors";
-  armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-  armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
-  armor_marker_.scale.x = 0.05;
-  armor_marker_.scale.z = 0.125;
-  armor_marker_.color.a = 1.0;
-  armor_marker_.color.g = 0.5;
-  armor_marker_.color.b = 1.0;
-  armor_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
-
-  text_marker_.ns = "classification";
-  text_marker_.action = visualization_msgs::msg::Marker::ADD;
-  text_marker_.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-  text_marker_.scale.z = 0.1;
-  text_marker_.color.a = 1.0;
-  text_marker_.color.r = 1.0;
-  text_marker_.color.g = 1.0;
-  text_marker_.color.b = 1.0;
-  text_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
-
-  marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-      "/detector/marker", 10);
-
   // Debug Publishers
   debug_ = this->declare_parameter("debug", false);
   if (debug_)
@@ -132,11 +107,8 @@ void ArmorDetectorNode::ImageCallback(
 
   if (pnp_solver_ != nullptr)
   {
-    armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
+    armors_msg_.header = img_msg->header;
     armors_msg_.armors.clear();
-    marker_array_.markers.clear();
-    armor_marker_.id = 0;
-    text_marker_.id = 0;
 
     auto_aim_interfaces::msg::Armor armor_msg;
     for (const auto& armor : armors)
@@ -207,18 +179,6 @@ void ArmorDetectorNode::ImageCallback(
         // Fill the distance to image center
         armor_msg.distance_to_image_center =
             pnp_solver_->CalculateDistanceToCenter(armor.center);
-
-        // Fill the markers
-        armor_marker_.id++;
-        armor_marker_.scale.y = armor.type == ArmorType::SMALL ? 0.135 : 0.23;
-        armor_marker_.pose = armor_msg.pose;
-        text_marker_.id++;
-        text_marker_.pose.position = armor_msg.pose.position;
-        text_marker_.pose.position.y -= 0.1;
-        text_marker_.text = armor.classfication_result;
-        armors_msg_.armors.emplace_back(armor_msg);
-        marker_array_.markers.emplace_back(armor_marker_);
-        marker_array_.markers.emplace_back(text_marker_);
       }
       else
       {
@@ -228,9 +188,6 @@ void ArmorDetectorNode::ImageCallback(
 
     // Publishing detected armors
     armors_pub_->publish(armors_msg_);
-
-    // Publishing marker
-    PublishMarkers();
   }
 }
 
@@ -455,15 +412,6 @@ void ArmorDetectorNode::DestroyDebugPublishers()
   number_img_pub_.shutdown();
   result_img_pub_.shutdown();
 }
-
-void ArmorDetectorNode::PublishMarkers()
-{
-  using Marker = visualization_msgs::msg::Marker;
-  armor_marker_.action = armors_msg_.armors.empty() ? Marker::DELETE : Marker::ADD;
-  marker_array_.markers.emplace_back(armor_marker_);
-  marker_pub_->publish(marker_array_);
-}
-
 }  // namespace rm_auto_aim
 
 #include "rclcpp_components/register_node_macro.hpp"
