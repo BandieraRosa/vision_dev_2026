@@ -239,7 +239,7 @@ void ArmorTrackerNode::InitParameters()
   Tracker::outpost_r =
       static_cast<double>(this->declare_parameter("tracker.outpost.outpost_r", 0.2765));
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
-
+  change_time_thres_ = this->declare_parameter("tracker.change_time_thres", 0.3);
   // EKF init parameters
   s2_q_x_armor_ = this->declare_parameter("ekf.sigma2_q_x", 0.1);
   s2_q_y_armor_ = this->declare_parameter("ekf.sigma2_q_y", 0.1);
@@ -342,6 +342,7 @@ void ArmorTrackerNode::ArmorsCallback(
     // 求时间差
     dt_ = (time - last_time_).seconds();
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
+    tracker_->change_thres = static_cast<int>(change_time_thres_ / dt_);
     tracker_->Update(armors_msg);
 
     if (tracker_->tracker_state == Tracker::State::DETECTING)

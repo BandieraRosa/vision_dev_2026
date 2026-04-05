@@ -31,7 +31,7 @@ class Tracker  // 整车观测
   using Armor = auto_aim_interfaces::msg::Armor;
 
   void Init(const Armors::SharedPtr& armors_msg);
-
+  void DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg);
   bool MatchArmor(const Armors::SharedPtr& armors_msg, Eigen::VectorXd& ekf_prediction,
                   int& same_id_armors_count, double& min_position_diff, double& yaw_diff);
   void ClampTargetRadius();
@@ -42,6 +42,8 @@ class Tracker  // 整车观测
 
   int tracking_thres;
   int lost_thres;
+  std::string last_closest_id;
+  int change_thres;
 
   enum class State : uint8_t
   {             // 四个状态
@@ -87,9 +89,8 @@ class Tracker  // 整车观测
   void UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw);
   void HandleArmorJump(const Armor& current_armor);
   void SoftBreakEKF(const double y_pri, const double y_mea);
-  void VelocityConstrain(double vx_max, double vy_max,
-                                    double vz_max, double vyaw_max,
-                                    double yaw_coupling);
+  void VelocityConstrain(double vx_max, double vy_max, double vz_max, double vyaw_max,
+                         double yaw_coupling);
 
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
 
@@ -102,6 +103,8 @@ class Tracker  // 整车观测
 
   int detect_count_;
   int lost_count_;
+  int change_count_;
+
   int y_diff_count_ = 0;
 
   double last_yaw_;

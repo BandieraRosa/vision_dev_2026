@@ -49,6 +49,7 @@ class ArmorTrackerNode : public rclcpp::Node
   double s2qxyz_outpost_, s2qyaw_outpost_, s2qr_outpost_;
   double r_xyz_factor_, r_yaw_;
   double lost_time_thres_;
+  double change_time_thres_;  
   std::unique_ptr<Tracker> tracker_;
 
   // Subscriber with tf2 message_filter

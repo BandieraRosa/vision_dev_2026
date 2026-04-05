@@ -53,48 +53,53 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   bool matched = false;  // 对预测的装甲板和观测的装甲板进行匹配
   target_state = ekf_prediction;  // 整车c的预测向量
 
-  if (!armors_msg->armors.empty())
+  if (armors_msg->armors.empty())
   {
-    int same_id_armors_count = 0;
-    predicted_position =
-        GetArmorPositionFromState(ekf_prediction);  // 计算,根据卡尔曼得到预测装甲板位置
-    double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值大幅
-    double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
+    return;
+  }
+  else if (armors_msg->armors.size() != 1)
+  {
+    DoYouWantToChangeTarget(armors_msg);
+    return;
+  }
 
-    MatchArmor(armors_msg, ekf_prediction, same_id_armors_count, min_position_diff,
-               yaw_diff);
+  int same_id_armors_count = 0;
+  predicted_position =
+      GetArmorPositionFromState(ekf_prediction);  // 计算,根据卡尔曼得到预测装甲板位置
+  double min_position_diff = DBL_MAX;  // 最小位置差值,最大初始值大幅
+  double yaw_diff = DBL_MAX;  // 定义yaw差值,预测装甲板和真实装甲板
 
-    // 存储tracker信息
-    info_position_diff = min_position_diff;
-    info_yaw_diff = yaw_diff;
+  // 检查最近装甲的距离和偏航角差是否在阈值范围内
+  // 最近装甲板距离与yaw差值比阈值小
+  // 找到匹配的装甲板
+  matched = MatchArmor(armors_msg, ekf_prediction, same_id_armors_count,
+                       min_position_diff, yaw_diff);  // 注意之前的 matched = false
 
-    // 检查最近装甲的距离和偏航角差是否在阈值范围内
-    // 最近装甲板距离与yaw差值比阈值小
-    // 找到匹配的装甲板
-    matched = MatchArmor(armors_msg, ekf_prediction, same_id_armors_count,
-                         min_position_diff, yaw_diff);  // 注意之前的 matched = false
-    if (!matched)
-    // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
+  // 存储tracker信息
+  info_position_diff = min_position_diff;
+  info_yaw_diff = yaw_diff;
+
+  if (!matched)
+  // 未找到匹配的装甲，但仅有一个具有相同 ID 的装甲
+  {
+    double health_rate = ekf.GetHealthRate();
+    if (same_id_armors_count == 1 &&
+        yaw_diff > (tracked_armor.number != "outpost" ? max_match_yaw_diff_
+                                                      : max_match_yaw_diff_ + 0.7))
+    // 偏航角差距大，将此情况视为目标正在旋转并且装甲发生了 **跳变**
     {
-      double health_rate = ekf.GetHealthRate();
-      if (same_id_armors_count == 1 &&
-          yaw_diff > (tracked_armor.number != "outpost" ? max_match_yaw_diff_
-                                                        : max_match_yaw_diff_ + 0.7))
-      // 偏航角差距大，将此情况视为目标正在旋转并且装甲发生了 **跳变**
-      {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
-        HandleArmorJump(tracked_armor);  // 跳变处理
-      }
-      else if (0.5 < health_rate && health_rate < 0.8)
-      {
-        SoftBreakEKF(ekf_prediction(2), tracked_armor.pose.position.y);
-      }
-      else if (health_rate < 0.5)
-      {
-        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
-                    health_rate);
-        // ResetState(ekf_prediction(6), predicted_position);
-      }
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
+      HandleArmorJump(tracked_armor);  // 跳变处理
+    }
+    else if (0.5 < health_rate && health_rate < 0.8)
+    {
+      SoftBreakEKF(ekf_prediction(2), tracked_armor.pose.position.y);
+    }
+    else if (health_rate < 0.5)
+    {
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
+                  health_rate);
+      // ResetState(ekf_prediction(6), predicted_position);
     }
   }
 
@@ -103,6 +108,45 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
 
   // 跟踪状态机制处理
   UpdateTrackerState(matched);
+}
+
+void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
+{
+  double min_distance = DBL_MAX;  // 定义最大初始值
+  auto closest_armor = armors_msg->armors[0];
+  for (const auto& armor : armors_msg->armors)
+  {
+    if (armor.distance_to_image_center < min_distance)
+    {
+      min_distance = armor.distance_to_image_center;
+      closest_armor = armor;
+    }  // 选择距离屏幕中心最近的装甲板
+  }
+  if (closest_armor.number != tracked_id && closest_armor.number == last_closest_id)
+  {
+    if (change_count_ < change_thres)
+    {
+      change_count_++;
+    }
+    else
+    {
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                  "Confirmed target change to armor ID: %s",
+                  closest_armor.number.c_str());
+      tracked_id = closest_armor.number;
+      tracked_armor = closest_armor;
+      InitEkf(tracked_armor);
+      UpdateArmorsNum(tracked_armor);
+      tracker_state = State::DETECTING;
+      change_count_ = 0;
+    }
+  }
+  else
+  {
+    change_count_ = 0;
+  }
+
+  last_closest_id = closest_armor.number;
 }
 
 bool Tracker::MatchArmor(const Armors::SharedPtr& armors_msg,
