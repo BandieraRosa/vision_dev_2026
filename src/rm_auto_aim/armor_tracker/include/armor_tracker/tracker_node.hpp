@@ -14,13 +14,11 @@
 #include "auto_aim_interfaces/msg/send.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
-#include "auto_aim_interfaces/msg/velocity.hpp"
 #include "tracker.hpp"
 
 namespace rm_auto_aim
 {
 using armors_tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Armors>;
-using velocity_tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Velocity>;
 class ArmorTrackerNode : public rclcpp::Node
 {
  public:
@@ -28,8 +26,6 @@ class ArmorTrackerNode : public rclcpp::Node
 
  private:
   void InitParameters();
-
-  void VelocityCallback(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
 
   void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
@@ -56,24 +52,16 @@ class ArmorTrackerNode : public rclcpp::Node
   message_filters::Subscriber<auto_aim_interfaces::msg::Armors> armors_sub_;
   std::shared_ptr<armors_tf2_filter> armors_filter_;
 
-  rclcpp::Subscription<auto_aim_interfaces::msg::Velocity>::SharedPtr velocity_sub_;
-  std::shared_ptr<velocity_tf2_filter> velocity_filter_;
-
   // Tracker info publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pose_pub_;
 
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
-  rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
 
   // Lob shot
   bool is_hero_{false};
   std::string last_frame_id_ = "camera_optical_frame";
-
-  // control
-  double k_yaw_;
-  double k_pitch_;
 };
 
 }  // namespace rm_auto_aim

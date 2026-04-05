@@ -177,15 +177,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   info_pub_ =
       this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
 
-  armor_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
-      "/tracker/armor_pose", rclcpp::SensorDataQoS());
-
   // Publisher
   target_pub_ = this->create_publisher<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS());
-
-  send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
-      "/tracker/send", rclcpp::SensorDataQoS());
 }
 
 void ArmorTrackerNode::InitParameters()
@@ -222,33 +216,6 @@ void ArmorTrackerNode::InitParameters()
 
   r_xyz_factor_ = this->declare_parameter("ekf.r_xyz_factor", 0.05);
   r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.02);
-
-  // SolveTarget init parameters
-  float k = static_cast<float>(this->declare_parameter("tracker.k", 0.092));
-  float bias_time =
-      static_cast<float>(this->declare_parameter("tracker.bias_time", 0.01));
-  float s_bias = static_cast<float>(this->declare_parameter("tracker.s_bias", 0.0));
-  float z_bias = static_cast<float>(this->declare_parameter("tracker.z_bias", 0.0));
-  float pitch_bias =
-      static_cast<float>(this->declare_parameter("tracker.pitch_bias", 0.0));
-
-  bool use_table = this->declare_parameter("tracker.calculate_mode", true);
-
-  double max_x = this->declare_parameter("tracker.table.max_x", 13.0);
-  double min_x = this->declare_parameter("tracker.table.min_x", 0.0);
-  double max_y = this->declare_parameter("tracker.table.max_y", 2.0);
-  double min_y = this->declare_parameter("tracker.table.min_y", -1.0);
-  double resolution = this->declare_parameter("tracker.table.resolution", 0.01);
-
-  double max_x_lob = this->declare_parameter("tracker.table.max_x_lob", 22.0);
-  double min_x_lob = this->declare_parameter("tracker.table.min_x_lob", 0.0);
-  double max_y_lob = this->declare_parameter("tracker.table.max_y_lob", 3.0);
-  double min_y_lob = this->declare_parameter("tracker.table.min_y_lob", -1.0);
-  double resolution_lob = this->declare_parameter("tracker.table.resolution_lob", 0.01);
-
-  k_yaw_ = this->declare_parameter("tracker.k_yaw", 0.0);
-  k_pitch_ = this->declare_parameter("tracker.k_pitch", 0.0);
-
 }
 
 void ArmorTrackerNode::ArmorsCallback(
