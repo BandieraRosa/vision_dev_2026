@@ -40,6 +40,8 @@ class PlanningTrajectoryNode : public rclcpp::Node
 
   std::unique_ptr<TrajectorySolver> gaf_solver_;
 
+  std::unique_ptr<Trajectory> trajectory_;
+
   rclcpp::Subscription<auto_aim_interfaces::msg::Velocity>::SharedPtr velocity_sub_;
 
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
@@ -76,8 +78,6 @@ class PlanningTrajectoryNode : public rclcpp::Node
   double q_ay_;
   double r_yaw_;
   double r_pitch_;
-
-  std::unique_ptr<Trajectory> trajectory_;
 };
 
 }  // namespace rm_auto_aim

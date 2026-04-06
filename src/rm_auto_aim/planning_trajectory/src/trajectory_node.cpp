@@ -209,7 +209,7 @@ void PlanningTrajectoryNode::Init()
   timer_ = this->create_wall_timer(
       std::chrono::duration<double, std::milli>(1000.0 / send_frequency_),
       std::bind(&PlanningTrajectoryNode::timer_callback, this));
-
+  trajectory_ = std::make_unique<Trajectory>();
   q_yaw_ = this->declare_parameter("planning_trajectory.ekf.q_yaw", 0.0);
   q_pitch_ = this->declare_parameter("planning_trajectory.ekf.q_pitch", 0.0);
   q_vy_ = this->declare_parameter("planning_trajectory.ekf.q_vy", 0.0);
@@ -219,7 +219,7 @@ void PlanningTrajectoryNode::Init()
   auto f = [this](const Eigen::VectorXd& x) -> Eigen::VectorXd
   {
     Eigen::VectorXd x_new(4);
-    x_new(0) = x(0) + x(1) * dt_ + 0.5 * dt_ * dt_;
+    x_new(0) = x(0) + x(1) * dt_ + 0.5 * x(2) * dt_ * dt_;
     x_new(1) = x(1) + x(2) * dt_;
     x_new(2) = x(2);
     x_new(3) = x(3);
