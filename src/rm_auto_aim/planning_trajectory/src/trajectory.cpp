@@ -23,7 +23,7 @@ double ConstrainedPlanner::update(double target_pos, double target_vel = 0.0,
   bool too_close = std::abs(e) <= d_brake;
 
   // 设置速度死区，防止不必要的抖动
-  double vel_thresh = std::abs(target_vel) * 0.001 + 1.0;
+  double vel_thresh = std::abs(target_vel) * 0.1 + 1.0;
   // 速度方向错了，全力制动归零
   bool wrong_direction =
       (e > 0.0 && v_s_ < -vel_thresh) || (e < 0.0 && v_s_ > vel_thresh);

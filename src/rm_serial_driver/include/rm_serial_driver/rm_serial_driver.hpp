@@ -35,6 +35,15 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
       {{"target_euler"}, {"fire_notify", "tracker"}});
 }
 
+#pragma pack(push, 1)
+struct HostEulerTarget
+{
+  float rol, pit, yaw;
+  float rol_dot, pit_dot, yaw_dot;
+  float rol_ddot, pit_ddot, yaw_ddot;
+};
+#pragma pack(pop)
+
 class RMSerialDriver : public rclcpp::Node
 {
  public:

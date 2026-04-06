@@ -77,7 +77,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
-      "/tracker/send", rclcpp::SensorDataQoS(),
+      "/trajectory/send", rclcpp::SensorDataQoS(),
       [this](const auto_aim_interfaces::msg::Send::SharedPtr msg) { SendCallBack(msg); });
 
   XRobotMain(peripherals);
@@ -153,12 +153,22 @@ RMSerialDriver::~RMSerialDriver() {}
 // Send消息回调
 void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
-  LibXR::EulerAngle<float> target_euler;
-  target_euler.Pitch() = static_cast<float>(msg->pitch);
-  target_euler.Yaw() = static_cast<float>(msg->yaw);
-  target_euler.Roll() = 0.0f;
+  HostEulerTarget target{};
+
+  target.rol = 0.0f;
+  target.pit = static_cast<float>(msg->pitch);
+  target.yaw = static_cast<float>(msg->yaw);
+
+  target.rol_dot = 0.0f;
+  target.pit_dot = 0.0f;
+  target.yaw_dot = static_cast<float>(msg->vel_yaw);
+
+  target.rol_ddot = 0.0f;
+  target.pit_ddot = 0.0f;
+  target.yaw_ddot = static_cast<float>(msg->acc_yaw);
+
   fire_notify_ = msg->is_fire;
-  target_euler_topic_.Publish(target_euler);
+  target_euler_topic_.Publish(target);
   fire_notify_topic_.Publish(fire_notify_);
 }
 

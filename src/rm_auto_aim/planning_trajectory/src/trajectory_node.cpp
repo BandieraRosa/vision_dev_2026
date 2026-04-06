@@ -278,7 +278,7 @@ void PlanningTrajectoryNode::Init()
   P0(3, 3) = 0;
 
   trajectory_->ekf_ = ExtendedKalmanFilter(f, h, j_f, j_h, u_q, u_r, P0);
-  trajectory_->planner_ = ConstrainedPlanner(25, 10, 10, dt_);
+  trajectory_->planner_ = ConstrainedPlanner(25, 4, 116, dt_);
 }
 }  // namespace rm_auto_aim
 
