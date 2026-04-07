@@ -42,7 +42,7 @@ class ArmorTrackerNode : public rclcpp::Node
   double s2qxyz_outpost_, s2qyaw_outpost_, s2qr_outpost_;
   double r_xyz_factor_, r_yaw_;
   double lost_time_thres_;
-  double change_time_thres_;  
+  double change_time_thres_;
   std::unique_ptr<Tracker> tracker_;
 
   // Subscriber with tf2 message_filter
@@ -54,7 +54,6 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Tracker info publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr armor_pose_pub_;
 
   // Publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
@@ -67,3 +66,4 @@ class ArmorTrackerNode : public rclcpp::Node
 }  // namespace rm_auto_aim
 
 #endif  // ARMOR_PROCESSOR__PROCESSOR_NODE_HPP_
+
