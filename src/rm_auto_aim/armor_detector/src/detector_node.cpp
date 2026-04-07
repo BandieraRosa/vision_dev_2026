@@ -217,6 +217,8 @@ void ArmorDetectorNode::ImageCallback(
         // Fill the distance to image center
         armor_msg.distance_to_image_center =
             pnp_solver_->CalculateDistanceToCenter(armor.center);
+
+        armors_msg_.armors.emplace_back(armor_msg);
       }
       else
       {
