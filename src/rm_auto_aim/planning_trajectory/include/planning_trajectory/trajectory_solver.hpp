@@ -1,12 +1,16 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <numbers>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
+#include <string>
 
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/velocity.hpp"
@@ -14,14 +18,14 @@
 
 namespace rm_auto_aim
 {
-using time_point = std::chrono::high_resolution_clock::time_point;
+using time_point = std::chrono::steady_clock::time_point;
 
 class TrajectorySolver
 {
  public:
-  static constexpr double GRAVITY = 9.78f;
-  static constexpr double SMALL_HALF_LENGTH = 135 / 2.0 / 1000.0;
-  static constexpr double LARGE_HALF_LENGTH = 230 / 2.0 / 1000.0;
+  static constexpr double GRAVITY = 9.78;
+  static constexpr double SMALL_HALF_LENGTH = 135.0 / 2.0 / 1000.0;
+  static constexpr double LARGE_HALF_LENGTH = 230.0 / 2.0 / 1000.0;
   static constexpr double outpost_dz = 0.1;
 
   enum CalculateMode : uint8_t
@@ -45,145 +49,135 @@ class TrajectorySolver
     CENTER = -1
   };
 
-  // 用于存储目标装甲板的信息
   struct TarPostion
   {
-    double x;    // 装甲板在世界坐标系下的x
-    double y;    // 装甲板在世界坐标系下的y
-    double z;    // 装甲板在世界坐标系下的z
-    double yaw;  // 装甲板坐标系相对于世界坐标系的yaw角
+    double x{0.0};
+    double y{0.0};
+    double z{0.0};
+    double yaw{0.0};
   };
 
   struct TarVelocity
   {
-    double x;
-    double y;
-    double z;
-    double yaw;
+    double x{0.0};
+    double y{0.0};
+    double z{0.0};
+    double yaw{0.0};
   };
 
   struct Target
   {
-    TarPostion position;
-    TarVelocity velocity;
-    int num;
-    std::string type;
-    double radius1;
-    double radius2;
-    int outpost_idx;
+    TarPostion position{};
+    TarVelocity velocity{};
+    int num{0};
+    std::string type{};
+    double radius1{0.0};
+    double radius2{0.0};
+    int outpost_idx{0};
   };
 
   struct control
   {
-    double yaw;
-    double pitch;
-    double vel_yaw;
-    double acc_yaw;
-    bool is_fire;
+    double yaw{0.0};
+    double pitch{0.0};
+    double vel_yaw{0.0};
+    double acc_yaw{0.0};
+    bool is_fire{false};
   };
 
-  // 构造函数
   TrajectorySolver(const double& k, const double& bias_time, const double& s_bias,
                    const double& z_bias, const double& pitch_bias,
                    CalculateMode calculate_mode, const Table::TableConfig& table_config,
-                   const Table::TableConfig& table_config_lob_);
+                   const Table::TableConfig& table_config_lob);
 
-  // 初始化弹速
   void Init(const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg);
-
   void ReBuild();
 
-  // 单方向空气阻力模型
-  double MonoDirectionalAirResistanceModel(double s, double v, double angle);
+  double MonoDirectionalAirResistanceModel(double s, double angle, double v);
   TarPostion PredictCenter(double time_delay);
-  TarPostion PredictArmor(double time_delay, int idx,
-                          TrajectorySolver::TarPostion& pre_center);
+  TarPostion PredictArmor(int idx, const TarPostion& pre_center);
   void PredictAllArmorPosition(double time_delay);
   void PredictOneArmorPosition(double time_delay, int idx);
 
   double SolvePitch(double x, double y, double z);
   double SolveYaw(double x, double y);
-  bool CanFire(double yaw, bool flag);
+
+  bool CanFire(double yaw, bool is_fast_fire = false);
   void GlobalSelectArmor(double time_delay);
   void LocalSelectArmor(double time_delay);
   void PreSelectArmor(double time_delay);
-  void AutoSelectArmor(double time_delay, bool is_pre_select);
+  void AutoSelectArmor(double time_delay, bool is_pre_select = false);
 
   void UpdateFireLogicMode();
   void UpdateSolveState(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                         double& aim_y, double& aim_z, int& idx);
 
-  // 根据最优决策得出被击打装甲板 自动解算弹道
   void AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                            double& aim_y, double& aim_z, int& idx, const Target& target,
                            double gimbal_yaw, const double send_time);
 
-  /// 供外部设置 target 状态（marker 节点等不走 AutoSolveTrajectory 的场景）
-  void SetTarget(const Target& t) { target_ = t; };
+  void SetTarget(const Target& t) { target_ = t; }
 
-  bool SwitchTable()
-  {
-    if (!table_lob_)
-    {
-      RCLCPP_WARN(logger_, "LOB table not initialized, cannot switch");
-      return false;
-    }
-    current_table_ = (current_table_ == table_) ? table_lob_ : table_;
-    if (current_table_->IsInit())
-    {
-      RCLCPP_INFO(logger_, "Switched trajectory table to: %s",
-                  current_table_->IsInit() ? "LOB" : "Normal");
-      return true;
-    }
-    else
-    {
-      RCLCPP_WARN(logger_,
-                  "Failed to switch trajectory table, current table is not initialized.");
-      return false;
-    }
-  }
+  bool SwitchTable();
 
  private:
-  // Logger
-  rclcpp::Logger logger_{rclcpp::get_logger("armor_tracker")};
+  static double NormalizeAngle(double a)
+  {
+    return std::remainder(a, 2.0 * std::numbers::pi_v<double>);
+  }
 
-  // 自身参数
-  double current_v_;  // 当前弹速
-  double fly_time_;   // 飞行时间
-  time_point start_turn_;
-  time_point end_turn_;
-  time_point last_start_turn_;
-  double turn_s_{0.0f};
-  double step_s_{0.0f};
+  static double AngleDiff(double a, double b) { return NormalizeAngle(a - b); }
 
-  TarPostion pre_center_;
-  TarPostion pre_position_[4];
-  Target target_;
-  double gimbal_yaw_;
+  bool HasValidSelection() const
+  {
+    return target_.num > 0 && selected_idx_ >= 0 && selected_idx_ < target_.num &&
+           selected_idx_ < static_cast<int>(pre_position_.size());
+  }
 
-  // 弹道查找表
+  void ResetFireState();
+
+  rclcpp::Logger logger_{rclcpp::get_logger("planning_trajectory")};
+
+  double current_v_{12.0};
+  double fly_time_{0.0};
+
+  time_point start_turn_{time_point::min()};
+  time_point end_turn_{time_point::min()};
+  time_point last_start_turn_{time_point::min()};
+
+  double turn_s_{0.0};
+  double step_s_{0.0};
+  double selected_time_delay_{0.0};
+
+  TarPostion pre_center_{};
+  std::array<TarPostion, 4> pre_position_{};
+  Target target_{};
+
+  double gimbal_yaw_{0.0};
+
   std::shared_ptr<Table> table_;
   std::shared_ptr<Table> table_lob_;
   std::shared_ptr<Table> current_table_;
-  CalculateMode calculate_mode_ = CalculateMode::TABLE_LOOKUP;  ///< 弹道计算模式
+  CalculateMode calculate_mode_{CalculateMode::TABLE_LOOKUP};
   FireLogicMode fire_logic_mode_{FireLogicMode::COMMON};
 
-  // 目标参数
-  double k_;  // 弹道系数
-  double pitch_bias_;
-  double bias_time_;  // 偏置时间
-  double s_bias_;     // 枪口前推的距离
-  double z_bias_;     // yaw轴电机到枪口水平面的垂直距离
+  double k_{0.0};
+  double pitch_bias_{0.0};
+  double bias_time_{0.0};
+  double s_bias_{0.0};
+  double z_bias_{0.0};
 
-  double last_pitch_;
-  double last_yaw_;
+  double last_pitch_{0.0};
+  double last_yaw_{0.0};
   int selected_idx_{SpecialArmor::LOST};
-  double last_x_v_{0.0f};
-  double last_y_v_{0.0f};
-  double last_v_yaw_{0.0f};
+  int last_selected_idx_for_turn_{LOST};
 
-  bool is_turn_ = false;
-  bool should_last_shot_ = false;
+  double last_x_v_{0.0};
+  double last_y_v_{0.0};
+  double last_v_yaw_{0.0};
+  bool last_choose_next_{false};
+
+  bool choose_next_{false};
+  bool should_last_shot_{false};
 };
-
 }  // namespace rm_auto_aim

@@ -18,62 +18,91 @@ PlanningTrajectoryNode::PlanningTrajectoryNode(const rclcpp::NodeOptions& option
 void PlanningTrajectoryNode::TargetCallback(
     const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
 {
-  if (target_msg->is_switchtable)
+  if (target_msg->is_switchtable && !last_switchtable_)
   {
-    gaf_solver_->SwitchTable();
+    trajectory_->SwitchTable();
   }
+  last_switchtable_ = target_msg->is_switchtable;
+
   tracking_ = target_msg->tracking;
+
   target_.position.x = target_msg->position.x;
   target_.position.y = target_msg->position.y;
   target_.position.z = target_msg->position.z;
   target_.position.yaw = target_msg->yaw;
+
   target_.velocity.x = target_msg->velocity.x;
   target_.velocity.y = target_msg->velocity.y;
   target_.velocity.z = target_msg->velocity.z;
   target_.velocity.yaw = target_msg->v_yaw;
+
   target_.num = target_msg->armors_num;
   target_.type = target_msg->type;
   target_.outpost_idx = target_msg->outpost_idx;
 
-  send_count_ = 0;
+  target_.radius1 = target_msg->radius_1;
+  target_.radius2 = target_msg->radius_2;
+
+  if (!tracking_)
+  {
+    trajectory_->Reset();
+  }
+}
+
+void PlanningTrajectoryNode::PublishStopCommand()
+{
+  auto_aim_interfaces::msg::Send send_msg;
+  send_msg.is_fire = false;
+  send_msg.pitch = 0.0;
+  send_msg.yaw = 0.0;
+  send_msg.vel_yaw = 0.0;
+  send_msg.acc_yaw = 0.0;
+  send_pub_->publish(send_msg);
 }
 
 void PlanningTrajectoryNode::timer_callback()
 {
+  auto start = std::chrono::high_resolution_clock::now();
   if (!tracking_)
   {
+    PublishStopCommand();
     return;
   }
 
+  double gimbal_yaw = 0.0;
+  double gimbal_pitch = 0.0;
+
+  try
+  {
+    const auto gimbal_yaw_pitch = GetGimbalYawAndPitch();
+    gimbal_yaw = gimbal_yaw_pitch.first;
+    gimbal_pitch = gimbal_yaw_pitch.second;
+  }
+  catch (const tf2::TransformException& ex)
+  {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500,
+                         "Get gimbal transform failed: %s", ex.what());
+    PublishStopCommand();
+    return;
+  }
+
+  double aim_x = 0.0, aim_y = 0.0, aim_z = 0.0;
+  int idx = TrajectorySolver::LOST;
+  TrajectorySolver::control cmd{};
+
+  trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
+                                            aim_z, idx, target_, gimbal_yaw, dt_);
+
+  trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
+
   auto_aim_interfaces::msg::Send send_msg;
-
-  double bc_yaw{0.0};
-  double bc_pitch{0.0};
-
-  // 获取当前云台在世界系下的 yaw
-  auto gimbal_yaw_pitch = GetGimbalYawAndPitch();
-  double gimbal_yaw = gimbal_yaw_pitch.first;
-  double gimbal_pitch = gimbal_yaw_pitch.second;
-
-  double aim_x = 0, aim_y = 0, aim_z = 0;
-  int idx{};
-  TrajectorySolver::control cmd;
-
-  // 自然系下pitch向下为正，而AutoSolveTrajectory中pitch向上为正
-  gaf_solver_->AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y, aim_z,
-                                   idx, target_, gimbal_yaw, dt_);
-  bc_yaw = cmd.yaw;
-  bc_pitch = cmd.pitch;
-
-  trajectory_->UpdatePlanTrajectory(cmd, send_count_);
-  send_count_++;
-
-  cmd.pitch = -cmd.pitch;
-
   send_msg.is_fire = cmd.is_fire;
+
+  // 只有当 Send.msg 的 pitch 定义是“向下为正”时，才取负号
   send_msg.pitch = cmd.pitch;
   send_msg.yaw = cmd.yaw;
-
+  send_msg.vel_yaw = cmd.vel_yaw;
+  send_msg.acc_yaw = cmd.acc_yaw;
   send_pub_->publish(send_msg);
 
   auto_aim_interfaces::msg::TrajectoryInfo info_msg;
@@ -83,20 +112,24 @@ void PlanningTrajectoryNode::timer_callback()
   info_msg.gimbal_yaw = gimbal_yaw;
   info_msg.gimbal_pitch = gimbal_pitch;
   info_msg.idx = idx;
-  info_msg.bc_yaw = bc_yaw;
-  info_msg.bc_pitch = bc_pitch;
+  info_msg.bc_yaw = cmd.yaw;
+  info_msg.bc_pitch = cmd.pitch;
   info_pub_->publish(info_msg);
+  
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  RCLCPP_DEBUG(this->get_logger(), "Trajectory time: %ld us", duration.count());
 }
 
 std::pair<double, double> PlanningTrajectoryNode::GetGimbalYawAndPitch()
 {
   std::pair<double, double> gimbal_yaw_pitch{0.0, 0.0};
-  auto transform_stamped_yaw =
+
+  const auto transform_stamped_yaw =
       tf2_buffer_->lookupTransform("gimbal_odom", "yaw_link", tf2::TimePointZero);
-  auto transform_stamped_pitch =
+  const auto transform_stamped_pitch =
       tf2_buffer_->lookupTransform("gimbal_odom", "pitch_link", tf2::TimePointZero);
 
-  // 从变换中提取四元数并转换为欧拉角
   tf2::Quaternion q_yaw(transform_stamped_yaw.transform.rotation.x,
                         transform_stamped_yaw.transform.rotation.y,
                         transform_stamped_yaw.transform.rotation.z,
@@ -106,11 +139,14 @@ std::pair<double, double> PlanningTrajectoryNode::GetGimbalYawAndPitch()
                           transform_stamped_pitch.transform.rotation.z,
                           transform_stamped_pitch.transform.rotation.w);
 
-  double gimbal_roll{}, gimbal_pitch{}, gimbal_yaw{};
-  tf2::Matrix3x3(q_yaw).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
-  gimbal_yaw_pitch.first = gimbal_yaw;
-  tf2::Matrix3x3(q_pitch).getRPY(gimbal_roll, gimbal_pitch, gimbal_yaw);
-  gimbal_yaw_pitch.second = gimbal_pitch;
+  double roll = 0.0, pitch = 0.0, yaw = 0.0;
+
+  tf2::Matrix3x3(q_yaw).getRPY(roll, pitch, yaw);
+  gimbal_yaw_pitch.first = yaw;
+
+  tf2::Matrix3x3(q_pitch).getRPY(roll, pitch, yaw);
+  gimbal_yaw_pitch.second = pitch;
+
   return gimbal_yaw_pitch;
 }
 
@@ -127,38 +163,35 @@ void PlanningTrajectoryNode::Init()
   tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
 
   // SolveTarget init parameters
-  double k = this->declare_parameter("planning_trajectory.k", 0.092);
-  double bias_time = this->declare_parameter("planning_trajectory.bias_time", 0.01);
-  double s_bias = this->declare_parameter("planning_trajectory.s_bias", 0.0);
-  double z_bias = this->declare_parameter("planning_trajectory.z_bias", 0.0);
-  double pitch_bias = this->declare_parameter("planning_trajectory.pitch_bias", 0.0);
-  send_frequency_ = this->declare_parameter("planning_trajectory.send_frequency", 200.0);
+  double k = this->declare_parameter("k", 0.092);
+  double bias_time = this->declare_parameter("bias_time", 0.01);
+  double s_bias = this->declare_parameter("s_bias", 0.0);
+  double z_bias = this->declare_parameter("z_bias", 0.0);
+  double pitch_bias = this->declare_parameter("pitch_bias", 0.0);
+  send_frequency_ = this->declare_parameter("send_frequency", 200.0);
   dt_ = 1.0 / send_frequency_;
 
-  bool use_table = this->declare_parameter("planning_trajectory.calculate_mode", true);
+  bool use_table = this->declare_parameter("calculate_mode", true);
 
-  double max_x = this->declare_parameter("planning_trajectory.table.max_x", 13.0);
-  double min_x = this->declare_parameter("planning_trajectory.table.min_x", 0.0);
-  double max_y = this->declare_parameter("planning_trajectory.table.max_y", 2.0);
-  double min_y = this->declare_parameter("planning_trajectory.table.min_y", -1.0);
-  double resolution =
-      this->declare_parameter("planning_trajectory.table.resolution", 0.01);
+  double max_x = this->declare_parameter("table.max_x", 13.0);
+  double min_x = this->declare_parameter("table.min_x", 0.0);
+  double max_y = this->declare_parameter("table.max_y", 2.0);
+  double min_y = this->declare_parameter("table.min_y", -1.0);
+  double resolution = this->declare_parameter("table.resolution", 0.01);
 
-  double max_x_lob = this->declare_parameter("planning_trajectory.table.max_x_lob", 22.0);
-  double min_x_lob = this->declare_parameter("planning_trajectory.table.min_x_lob", 0.0);
-  double max_y_lob = this->declare_parameter("planning_trajectory.table.max_y_lob", 3.0);
-  double min_y_lob = this->declare_parameter("planning_trajectory.table.min_y_lob", -1.0);
-  double resolution_lob =
-      this->declare_parameter("planning_trajectory.table.resolution_lob", 0.01);
+  double max_x_lob = this->declare_parameter("table.max_x_lob", 22.0);
+  double min_x_lob = this->declare_parameter("table.min_x_lob", 0.0);
+  double max_y_lob = this->declare_parameter("table.max_y_lob", 3.0);
+  double min_y_lob = this->declare_parameter("table.min_y_lob", -1.0);
+  double resolution_lob = this->declare_parameter("table.resolution_lob", 0.01);
 
-  k_yaw_ = this->declare_parameter("planning_trajectory.k_yaw", 0.0);
-  k_pitch_ = this->declare_parameter("planning_trajectory.k_pitch", 0.0);
+  k_yaw_ = this->declare_parameter("k_yaw", 0.0);
+  k_pitch_ = this->declare_parameter("k_pitch", 0.0);
 
   std::string package_prefix =
       ament_index_cpp::get_package_share_directory("rm_vision_bringup") + "/config/";
   table_filename_normal_ =
-      package_prefix +
-      this->declare_parameter("planning_trajectory.table.filename", "table.bin");
+      package_prefix + this->declare_parameter("table.filename", "table.bin");
   ;
   RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
                table_filename_normal_.c_str());
@@ -168,8 +201,7 @@ void PlanningTrajectoryNode::Init()
   if (is_hero_)
   {
     table_filename_lob_ =
-        package_prefix +
-        this->declare_parameter("planning_trajectory.table.filename_lob", "");
+        package_prefix + this->declare_parameter("table.filename_lob", "");
     RCLCPP_ERROR(this->get_logger(), "table_filename_lob_: %s",
                  table_filename_lob_.c_str());
   }
@@ -188,14 +220,12 @@ void PlanningTrajectoryNode::Init()
   {
     table_config_lob_ = table_config_;
   }
-  gaf_solver_ = std::make_unique<TrajectorySolver>(k, bias_time, s_bias, z_bias,
-                                                   pitch_bias, calculate_mode,
-                                                   table_config_, table_config_lob_);
   velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { gaf_solver_->Init(velocity_msg); });
+      { trajectory_->InitVelocity(velocity_msg); });
+
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(),
       [this](const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
@@ -209,13 +239,12 @@ void PlanningTrajectoryNode::Init()
   timer_ = this->create_wall_timer(
       std::chrono::duration<double, std::milli>(1000.0 / send_frequency_),
       std::bind(&PlanningTrajectoryNode::timer_callback, this));
-  trajectory_ = std::make_unique<Trajectory>();
-  q_yaw_ = this->declare_parameter("planning_trajectory.ekf.q_yaw", 0.0);
-  q_pitch_ = this->declare_parameter("planning_trajectory.ekf.q_pitch", 0.0);
-  q_vy_ = this->declare_parameter("planning_trajectory.ekf.q_vy", 0.0);
-  q_ay_ = this->declare_parameter("planning_trajectory.ekf.q_ay", 0.0);
-  r_yaw_ = this->declare_parameter("planning_trajectory.ekf.r_yaw", 0.0);
-  r_pitch_ = this->declare_parameter("planning_trajectory.ekf.r_pitch", 0.0);
+  q_yaw_ = this->declare_parameter("ekf.q_yaw", 0.0);
+  q_pitch_ = this->declare_parameter("ekf.q_pitch", 0.0);
+  q_vy_ = this->declare_parameter("ekf.q_vy", 0.0);
+  q_ay_ = this->declare_parameter("ekf.q_ay", 0.0);
+  r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.0);
+  r_pitch_ = this->declare_parameter("ekf.r_pitch", 0.0);
   auto f = [this](const Eigen::VectorXd& x) -> Eigen::VectorXd
   {
     Eigen::VectorXd x_new(4);
@@ -229,8 +258,8 @@ void PlanningTrajectoryNode::Init()
   auto h = [](const Eigen::VectorXd& x) -> Eigen::VectorXd
   {
     Eigen::VectorXd z(2);
-    z(0) = x(0);
-    z(1) = x(2);
+    z(0) = x(0);  // yaw
+    z(1) = x(3);  // pitch
     return z;
   };
 
@@ -249,16 +278,11 @@ void PlanningTrajectoryNode::Init()
 
   auto j_h = [](const Eigen::VectorXd&) -> Eigen::MatrixXd
   {
-    Eigen::MatrixXd H(2, 4);
-    // clang-format off
-    H << 1, 0, 
-         0, 0, 
-         0, 0,
-         0, 1;
-    // clang-format on
+    Eigen::MatrixXd H = Eigen::MatrixXd::Zero(2, 4);
+    H(0, 0) = 1.0;  // yaw
+    H(1, 3) = 1.0;  // pitch
     return H;
   };
-
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(4, 4);
   Q(0, 0) = q_yaw_;
   Q(1, 1) = q_vy_;
@@ -266,7 +290,7 @@ void PlanningTrajectoryNode::Init()
   Q(3, 3) = q_pitch_;
   auto u_q = [Q]() -> Eigen::MatrixXd { return Q; };
 
-  Eigen::MatrixXd R(2, 2);
+  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2, 2);
   R(0, 0) = r_yaw_;
   R(1, 1) = r_pitch_;
   auto u_r = [R](const Eigen::VectorXd&) -> Eigen::MatrixXd { return R; };
@@ -277,8 +301,12 @@ void PlanningTrajectoryNode::Init()
   P0(2, 2) = 1000.0;
   P0(3, 3) = 0;
 
-  trajectory_->ekf_ = ExtendedKalmanFilter(f, h, j_f, j_h, u_q, u_r, P0);
-  trajectory_->planner_ = ConstrainedPlanner(25, 4, 116, dt_);
+  TrajectorySolver solver(k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode,
+                          table_config_, table_config_lob_);
+  ExtendedKalmanFilter ekf(f, h, j_f, j_h, u_q, u_r, P0);
+  ConstrainedPlanner planner(25, 4, 116, dt_);
+
+  trajectory_ = std::make_unique<Trajectory>(solver, std::move(ekf), std::move(planner));
 }
 }  // namespace rm_auto_aim
 

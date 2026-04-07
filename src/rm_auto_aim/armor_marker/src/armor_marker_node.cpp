@@ -215,7 +215,7 @@ void ArmorMarkerNode::TrackerTargetCallback(
 
     for (int i = 0; i < a_n; i++)
     {
-      TrajectorySolver::TarPostion armor_pos = solver_->PredictArmor(0, i, pre_center);
+      TrajectorySolver::TarPostion armor_pos = solver_->PredictArmor(i, pre_center);
 
       geometry_msgs::msg::Point p_a;
       p_a.x = armor_pos.x;

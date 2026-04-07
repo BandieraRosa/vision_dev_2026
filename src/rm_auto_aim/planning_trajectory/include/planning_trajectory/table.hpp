@@ -7,6 +7,7 @@
 #include <memory>
 #include <rclcpp/logger.hpp>
 #include <rclcpp/logging.hpp>
+#include <vector>
 
 class Table
 {

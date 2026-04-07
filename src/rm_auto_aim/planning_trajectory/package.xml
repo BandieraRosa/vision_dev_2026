@@ -9,6 +9,8 @@
   <url type="website">https://github.com/MzKyle/CV_detector.git</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
 
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
@@ -20,6 +22,8 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>armor_tracker</depend>
+
+  <exec_depend>rm_vision_bringup</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

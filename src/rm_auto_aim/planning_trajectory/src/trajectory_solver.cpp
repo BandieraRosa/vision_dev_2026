@@ -59,10 +59,23 @@ void TrajectorySolver::Init(
 
 void TrajectorySolver::ReBuild()
 {
-  selected_idx_ = SpecialArmor::LOST;
-  last_x_v_ = 0.0f;
-  last_y_v_ = 0.0f;
-  last_v_yaw_ = 0.0f;
+  selected_idx_ = LOST;
+  choose_next_ = false;
+  should_last_shot_ = false;
+  turn_s_ = 0.0;
+  step_s_ = 0.0;
+  selected_time_delay_ = 0.0;
+  start_turn_ = time_point::min();
+  end_turn_ = time_point::min();
+  last_start_turn_ = time_point::min();
+  pre_center_ = {};
+  pre_position_.fill({});
+  last_x_v_ = 0.0;
+  last_y_v_ = 0.0;
+  last_v_yaw_ = 0.0;
+  last_pitch_ = 0.0;
+  last_yaw_ = 0.0;
+  fly_time_ = 0.0;
 }
 
 TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
@@ -73,50 +86,45 @@ TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
     center.x = target_.position.x + target_.velocity.x * time_delay;
     center.y = target_.position.y + target_.velocity.y * time_delay;
     center.z = target_.position.z;
-    center.yaw = target_.position.yaw + target_.velocity.yaw * time_delay;
+    center.yaw = NormalizeAngle(target_.position.yaw + target_.velocity.yaw * time_delay);
   }
   else
   {
     center.x = target_.position.x;
     center.y = target_.position.y;
     center.z = target_.position.z;
-    center.yaw = target_.position.yaw + target_.velocity.yaw * time_delay;
+    center.yaw = NormalizeAngle(target_.position.yaw + target_.velocity.yaw * time_delay);
   }
   return center;
 }
 
 TrajectorySolver::TarPostion TrajectorySolver::PredictArmor(
-    double time_delay, int idx, TrajectorySolver::TarPostion& pre_center)
+    int idx, const TrajectorySolver::TarPostion& pre_center)
 {
   TarPostion pre_pos;
+  const double sign = target_.velocity.yaw >= 0.0 ? 1.0 : -1.0;
+  const double delta = sign * idx * 2.0 * std::numbers::pi_v<double> / target_.num;
+  const double tmp_yaw = NormalizeAngle(pre_center.yaw - delta);
 
   if (target_.num == 4)
   {
-    double sign = target_.velocity.yaw > 0 ? 1.0f : -1.0f;
-
-    double radius = idx % 2 ? target_.radius2 : target_.radius1;
-
-    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / target_.num;
-
+    const double radius = (idx % 2 == 0) ? target_.radius1 : target_.radius2;
     pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
     pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
     pre_pos.z = pre_center.z;
-    pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+    pre_pos.yaw = tmp_yaw;
   }
-  else  // 3个装甲板,是前哨站
+  else
   {
-    double radius = target_.radius1;
-    double sign = target_.velocity.yaw > 0 ? 1.0f : -1.0f;
-    double tmp_yaw = pre_center.yaw - sign * idx * 2.0f * M_PI / target_.num;
-
+    const double radius = target_.radius1;
     pre_pos.x = pre_center.x - radius * std::cos(tmp_yaw);
     pre_pos.y = pre_center.y - radius * std::sin(tmp_yaw);
 
-    int id =
-        target_.outpost_idx + (sign == 1.0f ? idx : (target_.num - idx)) % target_.num;
-    pre_pos.z = pre_center.z + outpost_dz * (id - 1);
+    const int offset = (sign > 0.0) ? idx : ((target_.num - idx) % target_.num);
+    const int id = (target_.outpost_idx + offset) % target_.num;
 
-    pre_pos.yaw = std::fmod(tmp_yaw + M_PI, 2.0f * M_PI) - M_PI;
+    pre_pos.z = pre_center.z + outpost_dz * (id - 1);
+    pre_pos.yaw = tmp_yaw;
   }
 
   return pre_pos;
@@ -126,17 +134,19 @@ TrajectorySolver::TarPostion TrajectorySolver::PredictArmor(
 // msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
 void TrajectorySolver::PredictAllArmorPosition(double time_delay)
 {
-  TarPostion pre_center = PredictCenter(time_delay);
-  for (int i = 0; i < target_.num; i++)
+  pre_center_ = PredictCenter(time_delay);
+  pre_position_.fill({});
+
+  for (int i = 0; i < target_.num; ++i)
   {
-    pre_position_[i] = PredictArmor(time_delay, i, pre_center);
+    pre_position_[i] = PredictArmor(i, pre_center_);
   }
 }
 
 void TrajectorySolver::PredictOneArmorPosition(double time_delay, int idx)
 {
-  TarPostion pre_center = PredictCenter(time_delay);
-  pre_position_[idx] = PredictArmor(time_delay, idx, pre_center);
+  pre_center_ = PredictCenter(time_delay);
+  pre_position_[idx] = PredictArmor(idx, pre_center_);
 }
 
 // 计算简化单向空气阻力模型下的弹道高度，用于正常模式
@@ -228,27 +238,36 @@ double fast_atan(double x, double y)
 }
 
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
-bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire = false)
+bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire)
 {
-  double distance =
-      std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
-                pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
-      s_bias_;
-  double armor_half_length =
-      target_.type == "small" ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
-  double max_yaw_diff = SolveYaw(distance, armor_half_length);
-
-  if (!(fabs(target_.velocity.x - last_x_v_) < 0.4f &&
-        fabs(target_.velocity.y - last_y_v_) < 0.3f &&
-        fabs(target_.velocity.yaw - last_v_yaw_) < 0.3f) &&
-      !is_fast_fire && !should_last_shot_)
+  if (!HasValidSelection())
   {
     return false;
   }
+
+  const double distance =
+      std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
+                pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
+      s_bias_;
+
+  const double armor_half_length =
+      (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
+
+  const double max_yaw_diff = SolveYaw(distance, armor_half_length);
+
+  const bool stable_tracking = std::fabs(target_.velocity.x - last_x_v_) < 0.4 &&
+                               std::fabs(target_.velocity.y - last_y_v_) < 0.3 &&
+                               std::fabs(target_.velocity.yaw - last_v_yaw_) < 0.3;
+
+  if (!stable_tracking && !is_fast_fire && !should_last_shot_)
+  {
+    return false;
+  }
+
   else
   {
     bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff;
-    if (is_turn_)
+    if (choose_next_)
     {
       if (yaw_diff_exceeds)
       {
@@ -273,82 +292,98 @@ bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire = false)
 
 void TrajectorySolver::GlobalSelectArmor(double time_delay)
 {
-  double min_aim_yaw = M_PI;
-  int selected_idx;
+  double best_cost = std::numeric_limits<double>::infinity();
+  int best_idx = 0;
+  double best_time = time_delay;
+
   PredictAllArmorPosition(time_delay);
-  for (int i = 0; i < target_.num; i++)
+
+  for (int i = 0; i < target_.num; ++i)
   {
-    double toyaw = fabs(SolveYaw(pre_position_[i].x, pre_position_[i].y) - gimbal_yaw_);
-    double turn_time = 0.05f * toyaw;
-    PredictOneArmorPosition(time_delay + turn_time, i);
-    double aim_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
-    if (aim_yaw < min_aim_yaw)
+    const double base_yaw = SolveYaw(pre_position_[i].x, pre_position_[i].y);
+    const double turn_time = 0.05 * std::fabs(AngleDiff(base_yaw, gimbal_yaw_));
+
+    const TarPostion center = PredictCenter(time_delay + turn_time);
+    const TarPostion armor = PredictArmor(i, center);
+
+    const double aim_yaw = SolveYaw(armor.x, armor.y);
+    const double cost = std::fabs(AngleDiff(aim_yaw, gimbal_yaw_));
+
+    if (cost < best_cost)
     {
-      min_aim_yaw = aim_yaw;
-      selected_idx = i;
+      best_cost = cost;
+      best_idx = i;
+      best_time = time_delay + turn_time;
     }
   }
-  RCLCPP_ERROR(logger_, "Global Select idx: %d", selected_idx);
-  selected_idx_ = selected_idx;
+
+  selected_idx_ = best_idx;
+  selected_time_delay_ = best_time;
+  PredictOneArmorPosition(best_time, best_idx);
 }
 
 void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
-  if (std::fabs(target_.velocity.yaw) < 0.3f)
+  if (std::fabs(target_.velocity.yaw) < 0.3)
   {
     selected_idx_ = 0;
-    PredictOneArmorPosition(time_delay, 0);
+    selected_time_delay_ = time_delay;
+    PredictOneArmorPosition(time_delay, selected_idx_);
     return;
   }
 
-  PredictOneArmorPosition(time_delay, 0);
-  double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
-  double s_0 =
-      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
+  const int current_idx = selected_idx_;
+  const int next_idx = (current_idx + 1) % target_.num;
 
-  PredictOneArmorPosition(time_delay + turn_s_, 1);
-  double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
-  double s_1 =
-      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
-  selected_idx_ =
-      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
-                  1.2 * fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) -
-                             center_yaw_0) &&
-              s_1 <= s_0
-          ? 1
-          : 0;
+  const TarPostion center0 = PredictCenter(time_delay);
+  const TarPostion armor0 = PredictArmor(current_idx, center0);
+  const double center_yaw_0 = SolveYaw(center0.x, center0.y);
+  const double armor_yaw_err_0 =
+      std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
+  const double s_0 = armor0.x * armor0.x + armor0.y * armor0.y;
+
+  const double t1 = time_delay + turn_s_;
+  const TarPostion center1 = PredictCenter(t1);
+  const TarPostion armor1 = PredictArmor(next_idx, center1);
+  const double center_yaw_1 = SolveYaw(center1.x, center1.y);
+  const double armor_yaw_err_1 =
+      std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
+  const double s_1 = armor1.x * armor1.x + armor1.y * armor1.y;
+
+  choose_next_ = (armor_yaw_err_1 <= armor_yaw_err_0) && (s_1 <= s_0);
+
+  selected_idx_ = choose_next_ ? next_idx : current_idx;
+  selected_time_delay_ = choose_next_ ? t1 : time_delay;
+  PredictOneArmorPosition(selected_time_delay_, selected_idx_);
 }
 
 void TrajectorySolver::PreSelectArmor(double time_delay)
 {
-  double pre_time_delay = time_delay + 2* bias_time_;
-  PredictOneArmorPosition(pre_time_delay, 0);
-  double center_yaw_0 = SolveYaw(pre_position_[0].x, pre_position_[0].y);
-  double s_0 =
-      pre_position_[0].x * pre_position_[0].x + pre_position_[0].y * pre_position_[0].y;
+  const int current_idx = selected_idx_;
+  const int next_idx = (current_idx + 1) % target_.num;
 
-  PredictOneArmorPosition(pre_time_delay + turn_s_, 1);
-  double center_yaw_1 = SolveYaw(pre_position_[1].x, pre_position_[1].y);
-  double s_1 =
-      pre_position_[1].x * pre_position_[1].x + pre_position_[1].y * pre_position_[1].y;
+  const double pre_time_delay = time_delay + 2.0 * bias_time_;
 
-  bool pre_turn =
-      fabs(SolveYaw(pre_position_[1].x, pre_position_[1].y) - center_yaw_1) <=
-                  fabs(SolveYaw(pre_position_[0].x, pre_position_[0].y) - center_yaw_0) &&
-              s_1 <= s_0
-          ? 1
-          : 0;
-  if (!is_turn_ && pre_turn)
-  {
-    should_last_shot_ = false;
-  }
-  else
-  {
-    should_last_shot_ = true;
-  }
+  const TarPostion center0 = PredictCenter(pre_time_delay);
+  const TarPostion armor0 = PredictArmor(current_idx, center0);
+  const double center_yaw_0 = SolveYaw(center0.x, center0.y);
+  const double armor_yaw_err_0 =
+      std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
+  const double s_0 = armor0.x * armor0.x + armor0.y * armor0.y;
+
+  const TarPostion center1 = PredictCenter(pre_time_delay + turn_s_);
+  const TarPostion armor1 = PredictArmor(next_idx, center1);
+  const double center_yaw_1 = SolveYaw(center1.x, center1.y);
+  const double armor_yaw_err_1 =
+      std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
+  const double s_1 = armor1.x * armor1.x + armor1.y * armor1.y;
+
+  const bool pre_turn = (armor_yaw_err_1 <= armor_yaw_err_0) && (s_1 <= s_0);
+
+  should_last_shot_ = !(!choose_next_ && pre_turn);
 }
 
-void TrajectorySolver::AutoSelectArmor(double time_delay, bool is_pre_select = false)
+void TrajectorySolver::AutoSelectArmor(double time_delay, bool is_pre_select)
 {
   if (selected_idx_ == LOST)
   {
@@ -371,82 +406,67 @@ void TrajectorySolver::AutoSelectArmor(double time_delay, bool is_pre_select = f
 
 void TrajectorySolver::UpdateFireLogicMode()
 {
-  bool last_is_turn = is_turn_;
-
-  if (selected_idx_ == 0)
+  if (choose_next_ && !last_choose_next_)
   {
-    if (is_turn_)
-    {
-      end_turn_ = std::chrono::high_resolution_clock::now();
-    }
-    is_turn_ = false;
+    start_turn_ = std::chrono::steady_clock::now();
   }
-  else if (selected_idx_ == 1)
+  else if (!choose_next_ && last_choose_next_)
   {
-    if (!is_turn_)
-    {
-      start_turn_ = std::chrono::high_resolution_clock::now();
-    }
-    is_turn_ = true;
+    end_turn_ = std::chrono::steady_clock::now();
   }
 
-  bool has_complete_cycle =
-      (end_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
-       start_turn_ != std::chrono::high_resolution_clock::time_point::min() &&
-       last_start_turn_ != std::chrono::high_resolution_clock::time_point::min());
+  const bool has_complete_cycle =
+      (end_turn_ != time_point::min() && start_turn_ != time_point::min() &&
+       last_start_turn_ != time_point::min());
 
   if (has_complete_cycle)
   {
-    turn_s_ = std::chrono::duration<double, std::milli>(end_turn_ - start_turn_).count();
-    step_s_ =
-        std::chrono::duration<double, std::milli>(start_turn_ - last_start_turn_).count();
-    if (step_s_ > 0.0)
-    {
-      double ratio = turn_s_ / step_s_;
+    turn_s_ = std::chrono::duration<double>(end_turn_ - start_turn_).count();
+    step_s_ = std::chrono::duration<double>(start_turn_ - last_start_turn_).count();
 
-      // 随便给的阈值
-      static constexpr double SPIN_THRESHOLD = 0.99;
-      static constexpr double HYSTERESIS = 0.05;
+    if (step_s_ > 1e-6)
+    {
+      const double ratio = turn_s_ / step_s_;
 
       if (fire_logic_mode_ == FireLogicMode::COMMON)
       {
-        if (ratio >= SPIN_THRESHOLD)
+        if (ratio >= 0.99)
         {
           fire_logic_mode_ = FireLogicMode::SPIN_TEMP;
-          RCLCPP_INFO(logger_, "进入SPIN_TEMP模式, ratio: %.3f", ratio);
         }
       }
       else if (fire_logic_mode_ == FireLogicMode::SPIN_TEMP)
       {
-        if (ratio < SPIN_THRESHOLD - HYSTERESIS)
+        if (ratio < 0.99 - 0.05)
         {
           fire_logic_mode_ = FireLogicMode::COMMON;
-          RCLCPP_INFO(logger_, "返回COMMON模式, ratio: %.3f", ratio);
         }
-        else if (ratio >= SPIN_THRESHOLD)
+        else if (ratio >= 0.99)
         {
           fire_logic_mode_ = FireLogicMode::SPIN;
-          RCLCPP_INFO(logger_, "稳定进入SPIN模式, ratio: %.3f", ratio);
         }
       }
-
       else if (fire_logic_mode_ == FireLogicMode::SPIN)
       {
-        if (ratio < SPIN_THRESHOLD - HYSTERESIS)
+        if (ratio < 0.99 - 0.05)
         {
           fire_logic_mode_ = FireLogicMode::COMMON;
-          RCLCPP_INFO(logger_, "退出SPIN模式, ratio: %.3f", ratio);
         }
       }
     }
 
     last_start_turn_ = start_turn_;
-    end_turn_ = std::chrono::high_resolution_clock::time_point::min();
-    start_turn_ = std::chrono::high_resolution_clock::time_point::min();
+    start_turn_ = time_point::min();
+    end_turn_ = time_point::min();
   }
-  else if (is_turn_ && !last_is_turn)
+  else if (choose_next_ && !last_choose_next_)
   {
     last_start_turn_ = start_turn_;
+  }
+
+  if (HasValidSelection())
+  {
+    last_selected_idx_for_turn_ = selected_idx_;
   }
 }
 
@@ -456,48 +476,43 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
 {
   idx = selected_idx_;
 
-  // 理论上没有LOST
-  if (selected_idx_ == LOST)
+  if (!HasValidSelection())
   {
-    aim_x = pre_position_[0].x;
-    aim_y = pre_position_[0].y;
-    aim_z = pre_position_[0].z;
-    pitch = SolvePitch(aim_x, aim_y, aim_z);
-    yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(yaw, false);
+    aim_x = 0.0;
+    aim_y = 0.0;
+    aim_z = 0.0;
+    pitch = last_pitch_;
+    yaw = last_yaw_;
+    is_fire = false;
+    idx = LOST;
+    return;
   }
 
-  // 英雄打击前哨站和步兵打击高速旋转
-  else if (fire_logic_mode_ == FireLogicMode::SPIN)
+  aim_x = pre_position_[selected_idx_].x;
+  aim_y = pre_position_[selected_idx_].y;
+  aim_z = pre_position_[selected_idx_].z;
+
+  pitch = SolvePitch(aim_x, aim_y, aim_z);
+
+  if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
-    aim_x = pre_position_[selected_idx_].x;
-    aim_y = pre_position_[selected_idx_].y;
-    aim_z = pre_position_[selected_idx_].z;
-    pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
-    double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(aim_yaw - yaw) > 0.02f && !is_turn_;
+    const double aim_yaw = SolveYaw(aim_x, aim_y);
+    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) > 0.02 && !choose_next_;
     if (is_fire)
     {
       yaw = aim_yaw;
     }
   }
-
-  else  // COMMON和SPIN_TEMP模式
+  else
   {
-    aim_x = pre_position_[selected_idx_].x;
-    aim_y = pre_position_[selected_idx_].y;
-    aim_z = pre_position_[selected_idx_].z;
-    pitch = SolvePitch(aim_x, aim_y, aim_z);
     yaw = SolveYaw(aim_x, aim_y);
     is_fire = CanFire(yaw, false);
   }
 
-  if (selected_idx_ != LOST || is_fire)
-  {
-    last_yaw_ = yaw;
-  }
+  last_pitch_ = pitch;
+  last_yaw_ = yaw;
   last_x_v_ = target_.velocity.x;
   last_y_v_ = target_.velocity.y;
   last_v_yaw_ = target_.velocity.yaw;
@@ -510,17 +525,12 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
 {
   target_ = target;
   gimbal_yaw_ = gimbal_yaw;
-  auto start = std::chrono::high_resolution_clock::now();
 
   fire_logic_mode_ = FireLogicMode::COMMON;
 
-  double time_delay = fly_time_+bias_time_+send_time;
+  double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
-
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  RCLCPP_DEBUG(logger_, "Trajectory solve time: %ld us", duration.count());
 }
 
 }  // namespace rm_auto_aim
