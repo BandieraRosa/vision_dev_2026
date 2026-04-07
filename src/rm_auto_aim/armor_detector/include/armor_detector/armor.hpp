@@ -14,6 +14,7 @@ enum class ArmorType : uint8_t
   LARGE,
   INVALID
 };
+
 constexpr std::array<std::string_view, 3> ARMOR_TYPE_STR = {"small", "large", "invalid"};
 struct Light : public cv::RotatedRect
 {
@@ -44,8 +45,27 @@ struct Light : public cv::RotatedRect
     tilt_angle = static_cast<float>(tilt_angle / CV_PI * 180);
   }
 
+  explicit Light(const cv::Point2f& top, const cv::Point2f& bottom, int color)
+      : color(color),
+        top(top),
+        bottom(bottom),
+        length(cv::norm(top - bottom)),
+        width(0),
+        tilt_angle(static_cast<float>(
+            std::atan2(std::abs(top.x - bottom.x), std::abs(top.y - bottom.y)) / CV_PI *
+            180.0))
+  {
+    center = (top + bottom) / 2.f;
+    auto diff = top - bottom;
+    auto norm = cv::norm(diff);
+    axis = (norm > 1e-6) ? cv::Point2f(diff.x / static_cast<float>(norm),
+                                       diff.y / static_cast<float>(norm))
+                         : cv::Point2f(0, -1);
+  }
+
   int color;
-  cv::Point2f top, bottom;
+  cv::Point2f top;
+  cv::Point2f bottom;
   cv::Point2f axis;
   double length;
   double width;
@@ -69,7 +89,8 @@ struct Armor
   }
 
   // Light pairs part
-  Light left_light, right_light;
+  Light left_light;
+  Light right_light;
   cv::Point2f center;
   ArmorType type;
 

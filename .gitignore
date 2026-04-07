@@ -6,3 +6,5 @@
 .git/
 .cache/
 .marscode/
+AGENTS.md
+.sisyphus/

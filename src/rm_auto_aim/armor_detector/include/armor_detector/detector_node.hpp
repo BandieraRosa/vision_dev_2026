@@ -12,6 +12,10 @@
 #include "armor_detector/armor.hpp"
 #include "armor_detector/armor_pose_optimizer.hpp"
 #include "armor_detector/detector.hpp"
+#if ARMOR_DETECTOR_HAS_OPENVINO
+#include "armor_detector/yolo_detector.hpp"
+#endif
+
 #include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
@@ -44,6 +48,15 @@ class ArmorDetectorNode : public rclcpp::Node
   std::unique_ptr<LightCornerCorrector> corner_corrector_;
   std::unique_ptr<PnPSolver> pnp_solver_;
   std::unique_ptr<ArmorPoseOptimizer> pose_optimizer_;
+
+  // Detector type
+  std::string detector_type_;
+
+  // YOLO Detector
+#if ARMOR_DETECTOR_HAS_OPENVINO
+  std::unique_ptr<YoloDetector> yolo_detector_;
+  std::unique_ptr<YoloDetector> InitYoloDetector();
+#endif
 
   // tf2
   std::string odom_frame_;

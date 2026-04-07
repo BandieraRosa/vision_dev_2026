@@ -4,6 +4,7 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <filesystem>
 #include <image_transport/image_transport.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/create_timer_ros.hpp>
@@ -16,7 +17,44 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   RCLCPP_INFO(this->get_logger(), "Starting DetectorNode!");
 
   // Detector
+  detector_type_ = this->declare_parameter("detector_type", std::string("traditional"));
+  this->declare_parameter("yolo.model_path", std::string("model/yolo11.xml"));
+  this->declare_parameter("yolo.device", std::string("CPU"));
+  this->declare_parameter("yolo.score_threshold", 0.7);
+  this->declare_parameter("yolo.min_confidence", 0.8);
+  this->declare_parameter("yolo.nms_threshold", 0.3);
+
   detector_ = InitDetector();
+
+  // YOLO detector initialization
+#if ARMOR_DETECTOR_HAS_OPENVINO
+  if (detector_type_ == "yolo")
+  {
+    yolo_detector_ = InitYoloDetector();
+  }
+  else if (detector_type_ != "traditional")
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
+                 detector_type_.c_str());
+    throw std::runtime_error("Invalid detector_type: " + detector_type_);
+  }
+#else
+  if (detector_type_ == "yolo")
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "detector_type is 'yolo' but OpenVINO support was not compiled. "
+                 "Build with OpenVINO to enable YOLO detection.");
+    throw std::runtime_error("YOLO requested but OpenVINO not available");
+  }
+  else if (detector_type_ != "traditional")
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
+                 detector_type_.c_str());
+    throw std::runtime_error("Invalid detector_type: " + detector_type_);
+  }
+#endif
 
   // Light corner corrector
   corner_corrector_ = InitLightCornerCorrector();
@@ -225,6 +263,15 @@ std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
           declare_parameter("armor.max_large_center_distance", 5.5),
       .max_angle = declare_parameter("armor.max_angle", 35.0)};
 
+  double threshold = this->declare_parameter("classifier_threshold", 0.7);
+  std::vector<std::string> ignore_classes =
+      this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
+
+  if (detector_type_ != "traditional")
+  {
+    return nullptr;
+  }
+
   auto detector = std::make_unique<Detector>(binary_lower_thres, binary_upper_thres,
                                              detect_color, l_params, a_params);
 
@@ -232,14 +279,64 @@ std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
   auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
   auto model_path = pkg_path + "/model/mlp.onnx";
   auto label_path = pkg_path + "/model/label.txt";
-  double threshold = this->declare_parameter("classifier_threshold", 0.7);
-  std::vector<std::string> ignore_classes =
-      this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
   detector->classifier = std::make_unique<NumberClassifier>(model_path, label_path,
                                                             threshold, ignore_classes);
 
   return detector;
 }
+
+#if ARMOR_DETECTOR_HAS_OPENVINO
+std::unique_ptr<YoloDetector> ArmorDetectorNode::InitYoloDetector()
+{
+  if (detector_type_ == "traditional")
+  {
+    return nullptr;
+  }
+
+  if (detector_type_ != "yolo")
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
+                 detector_type_.c_str());
+    throw std::runtime_error("Invalid detector_type: " + detector_type_);
+  }
+
+  auto model_name = this->get_parameter("yolo.model_path").as_string();
+  if (model_name.empty())
+  {
+    RCLCPP_ERROR(
+        this->get_logger(),
+        "Parameter 'yolo.model_path' must not be empty when detector_type is 'yolo'.");
+    throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
+  }
+
+  // Resolve model path
+  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+  auto model_path = pkg_path + "/model/" + model_name;
+
+  // Check model file exists
+  if (!std::filesystem::exists(model_path))
+  {
+    RCLCPP_ERROR(this->get_logger(), "YOLO model file not found: %s", model_path.c_str());
+    throw std::runtime_error("YOLO model file not found: " + model_path);
+  }
+
+  YoloDetector::YoloParams config;
+  config.model_path = model_path;
+  config.device = this->get_parameter("yolo.device").as_string();
+  config.score_threshold =
+      static_cast<float>(this->get_parameter("yolo.score_threshold").as_double());
+  config.min_confidence =
+      static_cast<float>(this->get_parameter("yolo.min_confidence").as_double());
+  config.nms_threshold =
+      static_cast<float>(this->get_parameter("yolo.nms_threshold").as_double());
+
+  RCLCPP_INFO(this->get_logger(), "Initializing YOLO detector: model=%s, device=%s",
+              config.model_path.c_str(), config.device.c_str());
+
+  return std::make_unique<YoloDetector>(config);
+}
+#endif
 
 std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
 {
@@ -328,25 +425,58 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
 {
   // Convert ROS img to cv::Mat
   auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
+  auto detect_color = static_cast<int>(get_parameter("detect_color").as_int());
+  bool use_traditional_detector = detector_type_ == "traditional";
+  bool use_yolo_detector = detector_type_ == "yolo";
+  std::vector<Armor> armors;
 
   // Update params
   // detector_->binary_thres = static_cast<int>(get_parameter("binary_thres").as_int());
-  detector_->binary_upper_thres_ =
-      static_cast<int>(get_parameter("binary_upper_thres").as_int());
-  detector_->binary_lower_thres_ =
-      static_cast<int>(get_parameter("binary_lower_thres").as_int());
-  detector_->detect_color = static_cast<int>(get_parameter("detect_color").as_int());
-  detector_->classifier->SetThreshold(get_parameter("classifier_threshold").as_double());
-
-  auto armors = detector_->Detect(img);
-
-  // Correct the corners of the detected armors
-  if (corner_corrector_ != nullptr)
+  if (use_traditional_detector)
   {
-    for (auto& armor : armors)
+    detector_->binary_upper_thres_ =
+        static_cast<int>(get_parameter("binary_upper_thres").as_int());
+    detector_->binary_lower_thres_ =
+        static_cast<int>(get_parameter("binary_lower_thres").as_int());
+    detector_->detect_color = detect_color;
+    detector_->classifier->SetThreshold(
+        get_parameter("classifier_threshold").as_double());
+
+    armors = detector_->Detect(img);
+
+    // Correct the corners of the detected armors
+    if (corner_corrector_ != nullptr)
     {
-      corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+      for (auto& armor : armors)
+      {
+        corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+      }
     }
+  }
+  else if (use_yolo_detector)
+  {
+#if ARMOR_DETECTOR_HAS_OPENVINO
+    if (yolo_detector_ == nullptr)
+    {
+      RCLCPP_ERROR(this->get_logger(),
+                   "detector_type is 'yolo' but yolo_detector_ was not initialized.");
+      throw std::runtime_error("YOLO detector is not initialized");
+    }
+
+    armors = yolo_detector_->Detect(img, detect_color,
+                                    get_parameter("ignore_classes").as_string_array());
+#else
+    RCLCPP_ERROR(this->get_logger(),
+                 "detector_type is 'yolo' but OpenVINO support was not compiled.");
+    throw std::runtime_error("YOLO requested but OpenVINO not available");
+#endif
+  }
+  else
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
+                 detector_type_.c_str());
+    throw std::runtime_error("Invalid detector_type: " + detector_type_);
   }
 
   auto final_time = this->now();
@@ -356,26 +486,38 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   // Publish debug info
   if (debug_)
   {
-    binary_img_pub_.publish(
-        cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
-
-    // Sort lights and armors data by x coordinate
-    std::sort(detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
-              [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
-    std::sort(detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
-              [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
-
-    lights_data_pub_->publish(detector_->debug_lights);
-    armors_data_pub_->publish(detector_->debug_armors);
-
-    if (!armors.empty())
+    if (use_traditional_detector)
     {
-      auto all_num_img = detector_->GetAllNumbersImage();
-      number_img_pub_.publish(
-          *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
+      binary_img_pub_.publish(
+          cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img)
+              .toImageMsg());
+
+      // Sort lights and armors data by x coordinate
+      std::sort(detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
+                [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
+      std::sort(detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
+                [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
+
+      lights_data_pub_->publish(detector_->debug_lights);
+      armors_data_pub_->publish(detector_->debug_armors);
+
+      if (!armors.empty())
+      {
+        auto all_num_img = detector_->GetAllNumbersImage();
+        number_img_pub_.publish(
+            *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
+      }
+
+      detector_->DrawResults(img);
+    }
+    else if (use_yolo_detector)
+    {
+#if ARMOR_DETECTOR_HAS_OPENVINO
+      // YOLO 路径只发布最终 result_img，显式跳过传统链路的中间态调试 topic。
+      yolo_detector_->DrawResults(img);
+#endif
     }
 
-    detector_->DrawResults(img);
     // Draw camera center
     cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
     // Draw latency

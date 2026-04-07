@@ -73,6 +73,7 @@ def get_tracker_node(robot_type="default"):
     )
 
 def get_trajectory_node(robot_type="default"):
+    trajectory_log_level = launch_params.get("trajectory_log_level", "INFO")
     return Node(
         package="planning_trajectory",
         executable="planning_trajectory_node",
@@ -81,7 +82,7 @@ def get_trajectory_node(robot_type="default"):
         parameters=[node_params, {"robot_type": robot_type}],
         ros_arguments=[
             "--log-level",
-            "planning_trajectory:=" + launch_params["trajectory_log_level"],
+            "planning_trajectory:=" + trajectory_log_level,
         ],
     )
 

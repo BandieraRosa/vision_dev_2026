@@ -25,11 +25,31 @@ ament_auto_find_build_dependencies()
 ###########
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  DIRECTORY src
+  src/armor_pose_optimizer.cpp
+  src/detector.cpp
+  src/detector_node.cpp
+  src/light_corner_corrector.cpp
+  src/number_classifier.cpp
+  src/pnp_solver.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+
+# --- Optional OpenVINO support ---
+set(OpenVINO_DIR "/opt/intel/openvino_2024.6/runtime/cmake")
+find_package(OpenVINO REQUIRED CONFIG)
+if(OpenVINO_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_detector.cpp")
+  target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
+  target_link_libraries(${PROJECT_NAME} openvino::runtime)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=1)
+elseif(NOT OpenVINO_FOUND)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=0)
+  message(STATUS "OpenVINO not found — YOLO detector disabled")
+else()
+  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=0)
+  message(STATUS "OpenVINO found but src/yolo_detector.cpp missing — YOLO detector disabled")
+endif()
 
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN rm_auto_aim::ArmorDetectorNode
@@ -39,7 +59,7 @@ rclcpp_components_register_node(${PROJECT_NAME}
 #############
 ## Testing ##
 #############
-
+set(BUILD_TESTING ON)
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   list(APPEND AMENT_LINT_AUTO_EXCLUDE
@@ -53,7 +73,7 @@ if(BUILD_TESTING)
 
   file(GLOB TEST_SOURCES test/*.cpp)
   foreach(TEST_SOURCE ${TEST_SOURCES})
-    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)  
+    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
     ament_add_gtest(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
   endforeach()
