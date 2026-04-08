@@ -24,7 +24,7 @@ namespace rm_auto_aim
 namespace
 {
 
-static const std::array<std::string, 38> YOLO11_MODEL_LABELS = {
+static constexpr std::array<std::string, 38> YOLO11_MODEL_LABELS = {
     "Bsentry",       "Rsentry",       "Esentry",      "Bone",         "Rone",
     "Eone",          "Btwo",          "Rtwo",         "Etwo",         "Bthree",
     "Rthree",        "Ethree",        "Bfour",        "Rfour",        "Efour",
@@ -34,7 +34,7 @@ static const std::array<std::string, 38> YOLO11_MODEL_LABELS = {
     "Rbalancethree", "Ebalancethree", "Bbalancefour", "Rbalancefour", "Ebalancefour",
     "Bbalancefive",  "Rbalancefive",  "Ebalancefive"};
 
-std::string map_label(const std::string& raw_label)
+static std::string map_label(const std::string& raw_label)
 {
   auto strip_prefix = [](const std::string& s) -> std::string
   {
@@ -89,10 +89,10 @@ std::string map_label(const std::string& raw_label)
 
 }  // namespace
 
-YoloDetector::YoloDetector(const YoloParams& config)
-    : config_(config), class_num_(static_cast<int>(YOLO11_MODEL_LABELS.size()))
+YoloDetector::YoloDetector(const YoloParams& params)
+    : params_(params), class_num_(static_cast<int>(YOLO11_MODEL_LABELS.size()))
 {
-  auto model = core_.read_model(config_.model_path);
+  auto model = core_.read_model(params_.model_path);
 
   // 预处理
   ov::preprocess::PrePostProcessor ppp(model);
@@ -100,7 +100,7 @@ YoloDetector::YoloDetector(const YoloParams& config)
 
   input.tensor()
       .set_element_type(ov::element::u8)
-      .set_shape({1, INPUT_SIZE, INPUT_SIZE, 3})
+      .set_shape({1, params_.input_size, params_.input_size, 3})
       .set_layout("NHWC")
       .set_color_format(ov::preprocess::ColorFormat::RGB);
 
@@ -110,30 +110,31 @@ YoloDetector::YoloDetector(const YoloParams& config)
 
   model = ppp.build();
   compiled_model_ =
-      core_.compile_model(model, config_.device,
+      core_.compile_model(model, params_.device,
                           ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY));
 }
 
-std::vector<Armor> YoloDetector::Detect(const cv::Mat& rgb_img, int detect_color,
-                                        const std::vector<std::string>& ignore_classes)
+std::vector<Armor> YoloDetector::Detect(const cv::Mat& rgb_img)
 {
   if (rgb_img.empty())
   {
     return {};
   }
 
-  auto x_scale = static_cast<double>(INPUT_SIZE) / rgb_img.rows;
-  auto y_scale = static_cast<double>(INPUT_SIZE) / rgb_img.cols;
+  auto x_scale = static_cast<double>(params_.input_size) / rgb_img.rows;
+  auto y_scale = static_cast<double>(params_.input_size) / rgb_img.cols;
   auto scale = std::min(x_scale, y_scale);
   auto h = static_cast<int>(rgb_img.rows * scale);
   auto w = static_cast<int>(rgb_img.cols * scale);
 
-  cv::Mat input_mat(INPUT_SIZE, INPUT_SIZE, CV_8UC3, cv::Scalar(0, 0, 0));
+  cv::Mat input_mat(params_.input_size, params_.input_size, CV_8UC3, cv::Scalar(0, 0, 0));
   cv::Rect roi(0, 0, w, h);
   cv::resize(rgb_img, input_mat(roi), {w, h});
 
   // 推理
-  ov::Tensor input_tensor(ov::element::u8, {1, INPUT_SIZE, INPUT_SIZE, 3},
+  ov::Tensor input_tensor(ov::element::u8,
+                          {1, static_cast<uint64_t>(params_.input_size),
+                           static_cast<uint64_t>(params_.input_size), 3},
                           input_mat.data);
   auto infer_request = compiled_model_.create_infer_request();
   infer_request.set_input_tensor(input_tensor);
@@ -146,13 +147,12 @@ std::vector<Armor> YoloDetector::Detect(const cv::Mat& rgb_img, int detect_color
                  CV_32F, output_tensor.data());
 
   // 后处理
-  last_armors_ = Parse(scale, output, detect_color, ignore_classes);
+  last_armors_ = Parse(scale, output);
   return last_armors_;
 }
 
 // 输出张量布局: [x, y, w, h, cls_0, ..., cls_N, kp0_x, kp0_y, ...]
-std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect_color,
-                                       const std::vector<std::string>& ignore_classes)
+std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output)
 {
   // 转置：[features, num_detections] → [num_detections, features]
   cv::transpose(output, output);
@@ -160,7 +160,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
   int kp_start = 4 + class_num_;
   int total_cols = output.cols;
   int kp_cols = total_cols - kp_start;
-  int kp_stride = (kp_cols >= NUM_KEYPOINTS * 3) ? 3 : 2;
+  int kp_stride = (kp_cols >= params_.num_keypoints * 3) ? 3 : 2;
 
   std::vector<int> class_ids;
   std::vector<float> confidences;
@@ -176,7 +176,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
     cv::Point max_point;
     cv::minMaxLoc(scores, nullptr, &score, nullptr, &max_point);
 
-    if (score < config_.score_threshold)
+    if (score < params_.score_threshold)
     {
       continue;
     }
@@ -193,7 +193,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
 
     // 关键点
     std::vector<cv::Point2f> keypoints;
-    for (int i = 0; i < NUM_KEYPOINTS; i++)
+    for (int i = 0; i < params_.num_keypoints; i++)
     {
       float kx =
           output.row(r).at<float>(kp_start + i * kp_stride) / static_cast<float>(scale);
@@ -210,7 +210,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
 
   // NMS
   std::vector<int> indices;
-  cv::dnn::NMSBoxes(boxes, confidences, config_.score_threshold, config_.nms_threshold,
+  cv::dnn::NMSBoxes(boxes, confidences, params_.score_threshold, params_.nms_threshold,
                     indices);
 
   std::vector<Armor> armors;
@@ -227,14 +227,14 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
     std::string label = map_label(raw_label);
 
     // 跳过忽略类别
-    if (std::find(ignore_classes.begin(), ignore_classes.end(), label) !=
-        ignore_classes.end())
+    if (std::find(params_.ignore_classes.begin(), params_.ignore_classes.end(), label) !=
+        params_.ignore_classes.end())
     {
       continue;
     }
 
     // 置信度过滤
-    if (confidences[i] < config_.min_confidence)
+    if (confidences[i] < params_.min_confidence)
     {
       continue;
     }
@@ -243,9 +243,10 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output, int detect
     auto& kps = all_keypoints[i];
     SortKeypoints(kps);
 
-    int color =
-        (raw_label[0] == 'R') ? RED : ((raw_label[0] == 'B') ? BLUE : detect_color);
-    if (color != detect_color)
+    int color = (raw_label[0] == 'R')
+                    ? RED
+                    : ((raw_label[0] == 'B') ? BLUE : params_.detect_color);
+    if (color != params_.detect_color)
     {
       continue;
     }
@@ -312,7 +313,8 @@ ArmorType YoloDetector::DetermineArmorType(const Light& light_1, const Light& li
   }
 
   double ratio = center_distance / avg_length;
-  return ratio > LARGE_ARMOR_RATIO_THRESHOLD ? ArmorType::LARGE : ArmorType::SMALL;
+  return ratio > params_.large_armor_ratio_threshold ? ArmorType::LARGE
+                                                     : ArmorType::SMALL;
 }
 
 void YoloDetector::DrawResults(cv::Mat& img)

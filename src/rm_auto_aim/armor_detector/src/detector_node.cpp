@@ -9,6 +9,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/create_timer_ros.hpp>
 
+#include "armor_detector/armor.hpp"
+
 namespace rm_auto_aim
 {
 ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
@@ -16,56 +18,18 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 {
   RCLCPP_INFO(this->get_logger(), "Starting DetectorNode!");
 
-  // Detector
-  detector_type_ = this->declare_parameter("detector_type", std::string("traditional"));
-  this->declare_parameter("yolo.model_path", std::string("model/yolo11.xml"));
-  this->declare_parameter("yolo.device", std::string("CPU"));
-  this->declare_parameter("yolo.score_threshold", 0.7);
-  this->declare_parameter("yolo.min_confidence", 0.8);
-  this->declare_parameter("yolo.nms_threshold", 0.3);
+  DetectorParams detector_params = {
+      .type = this->declare_parameter("detector_type", std::string("traditional")),
+      .params = UploadDetectorParams(),
+      .yolo_params = UploadYoloDetectorParams()};
 
-  detector_ = InitDetector();
-
-  // YOLO detector initialization
-#if ARMOR_DETECTOR_HAS_OPENVINO
-  if (detector_type_ == "yolo")
-  {
-    yolo_detector_ = InitYoloDetector();
-  }
-  else if (detector_type_ != "traditional")
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
-                 detector_type_.c_str());
-    throw std::runtime_error("Invalid detector_type: " + detector_type_);
-  }
-#else
-  if (detector_type_ == "yolo")
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "detector_type is 'yolo' but OpenVINO support was not compiled. "
-                 "Build with OpenVINO to enable YOLO detection.");
-    throw std::runtime_error("YOLO requested but OpenVINO not available");
-  }
-  else if (detector_type_ != "traditional")
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
-                 detector_type_.c_str());
-    throw std::runtime_error("Invalid detector_type: " + detector_type_);
-  }
-#endif
+  detector_ = detector_factory->Create(detector_params);
 
   // Light corner corrector
   corner_corrector_ = InitLightCornerCorrector();
 
   // Pose optimizer
   pose_optimizer_ = InitPoseOptimizer();
-  if (pose_optimizer_)
-  {
-    RCLCPP_INFO(this->get_logger(), "Pose optimizer enabled.");
-    InitTransformListener();
-  }
 
   // Armors Publisher
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -75,6 +39,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   debug_ = this->declare_parameter("debug", false);
   if (debug_)
   {
+    detector_->debug_enabled = detector_params.type == "traditional";
     CreateDebugPublishers();
   }
 
@@ -192,6 +157,7 @@ void ArmorDetectorNode::ImageCallback(
             RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
           }
         }
+
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];
         armor_msg.number = armor.number;
@@ -231,254 +197,25 @@ void ArmorDetectorNode::ImageCallback(
   }
 }
 
-std::unique_ptr<Detector> ArmorDetectorNode::InitDetector()
-{
-  rcl_interfaces::msg::ParameterDescriptor param_desc;
-  param_desc.integer_range.resize(1);
-  param_desc.integer_range[0].step = 1;
-  param_desc.integer_range[0].from_value = 0;
-  param_desc.integer_range[0].to_value = 255;
-  int binary_lower_thres =
-      static_cast<int>(declare_parameter("binary_lower_thres", 160, param_desc));
-  int binary_upper_thres =
-      static_cast<int>(declare_parameter("binary_upper_thres", 255, param_desc));
-
-  param_desc.description = "0-RED, 1-BLUE";
-  param_desc.integer_range[0].from_value = 0;
-  param_desc.integer_range[0].to_value = 1;
-  auto detect_color = declare_parameter("detect_color", RED, param_desc);
-
-  Detector::LightParams l_params = {
-      .min_ratio = declare_parameter("light.min_ratio", 0.1),
-      .max_ratio = declare_parameter("light.max_ratio", 0.4),
-      .max_angle = declare_parameter("light.max_angle", 40.0)};
-
-  Detector::ArmorParams a_params = {
-      .min_light_ratio = declare_parameter("armor.min_light_ratio", 0.7),
-      .min_small_center_distance =
-          declare_parameter("armor.min_small_center_distance", 0.8),
-      .max_small_center_distance =
-          declare_parameter("armor.max_small_center_distance", 3.2),
-      .min_large_center_distance =
-          declare_parameter("armor.min_large_center_distance", 3.2),
-      .max_large_center_distance =
-          declare_parameter("armor.max_large_center_distance", 5.5),
-      .max_angle = declare_parameter("armor.max_angle", 35.0)};
-
-  double threshold = this->declare_parameter("classifier_threshold", 0.7);
-  std::vector<std::string> ignore_classes =
-      this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
-
-  if (detector_type_ != "traditional")
-  {
-    return nullptr;
-  }
-
-  auto detector = std::make_unique<Detector>(binary_lower_thres, binary_upper_thres,
-                                             detect_color, l_params, a_params);
-
-  // Init classifier
-  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-  auto model_path = pkg_path + "/model/mlp.onnx";
-  auto label_path = pkg_path + "/model/label.txt";
-  detector->classifier = std::make_unique<NumberClassifier>(model_path, label_path,
-                                                            threshold, ignore_classes);
-
-  return detector;
-}
-
-#if ARMOR_DETECTOR_HAS_OPENVINO
-std::unique_ptr<YoloDetector> ArmorDetectorNode::InitYoloDetector()
-{
-  if (detector_type_ == "traditional")
-  {
-    return nullptr;
-  }
-
-  if (detector_type_ != "yolo")
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
-                 detector_type_.c_str());
-    throw std::runtime_error("Invalid detector_type: " + detector_type_);
-  }
-
-  auto model_name = this->get_parameter("yolo.model_path").as_string();
-  if (model_name.empty())
-  {
-    RCLCPP_ERROR(
-        this->get_logger(),
-        "Parameter 'yolo.model_path' must not be empty when detector_type is 'yolo'.");
-    throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
-  }
-
-  // Resolve model path
-  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-  auto model_path = pkg_path + "/model/" + model_name;
-
-  // Check model file exists
-  if (!std::filesystem::exists(model_path))
-  {
-    RCLCPP_ERROR(this->get_logger(), "YOLO model file not found: %s", model_path.c_str());
-    throw std::runtime_error("YOLO model file not found: " + model_path);
-  }
-
-  YoloDetector::YoloParams config;
-  config.model_path = model_path;
-  config.device = this->get_parameter("yolo.device").as_string();
-  config.score_threshold =
-      static_cast<float>(this->get_parameter("yolo.score_threshold").as_double());
-  config.min_confidence =
-      static_cast<float>(this->get_parameter("yolo.min_confidence").as_double());
-  config.nms_threshold =
-      static_cast<float>(this->get_parameter("yolo.nms_threshold").as_double());
-
-  RCLCPP_INFO(this->get_logger(), "Initializing YOLO detector: model=%s, device=%s",
-              config.model_path.c_str(), config.device.c_str());
-
-  return std::make_unique<YoloDetector>(config);
-}
-#endif
-
-std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
-{
-  bool use_corner_corrector =
-      static_cast<bool>(this->declare_parameter("use_corner_corrector", false));
-  if (use_corner_corrector)
-  {
-    // Light corner corrector
-    return std::make_unique<LightCornerCorrector>();
-  }
-  return nullptr;
-}
-
-std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
-{
-  bool use_new_pnp_filter_method =
-      this->declare_parameter("pnp_filter.use_new_pnp_filter_method", false);
-  PnPSolver::PnpFilterParams pnp_filter_params;
-  pnp_filter_params.new_pnp_filter_method = use_new_pnp_filter_method;
-  pnp_filter_params.max_normal_dot =
-      this->declare_parameter("pnp_filter.max_normal_dot", 0.0);
-  pnp_filter_params.reproj_weight =
-      this->declare_parameter("pnp_filter.reproj_weight", 1.0);
-  pnp_filter_params.normal_weight =
-      this->declare_parameter("pnp_filter.normal_weight", 0.5);
-  return std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d, pnp_filter_params);
-}
-
-std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
-{
-  bool use_pose_optimize = this->declare_parameter("use_pose_optimizer", false);
-  if (!use_pose_optimize)
-  {
-    return nullptr;
-  }
-  ArmorPoseOptimizer::Params opt_params;
-  opt_params.standard_pitch_deg =
-      this->declare_parameter("optimizer.standard_pitch_deg", 15.0);
-  opt_params.outpost_pitch_deg =
-      this->declare_parameter("optimizer.outpost_pitch_deg", -15.0);
-  opt_params.max_pitch_deviation =
-      this->declare_parameter("optimizer.max_pitch_deviation", 15.0);
-  opt_params.max_roll_deviation =
-      this->declare_parameter("optimizer.max_roll_deviation", 15.0);
-  opt_params.max_iterations =
-      static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20));
-
-  std::string optimize_method_str =
-      this->declare_parameter("optimizer.optimize_method", std::string("RANGE_SHORT_LM"));
-  if (optimize_method_str == "LM")
-  {
-    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::LM;
-  }
-  else if (optimize_method_str == "RANGE")
-  {
-    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE;
-  }
-  else if (optimize_method_str == "RANGE_SHORT_LM")
-  {
-    opt_params.optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE_LM;
-  }
-  opt_params.range_search_half_range_deg =
-      this->declare_parameter("optimizer.range_search_half_range_deg", 70.0);
-  opt_params.range_search_coarse_step_deg =
-      this->declare_parameter("optimizer.range_search_coarse_step_deg", 1.0);
-  opt_params.range_search_fine_range_deg =
-      this->declare_parameter("optimizer.range_search_fine_range_deg", 2.0);
-  opt_params.range_search_fine_step_deg =
-      this->declare_parameter("optimizer.range_search_fine_step_deg", 0.1);
-
-  return std::make_unique<ArmorPoseOptimizer>(opt_params);
-}
-
-void ArmorDetectorNode::InitTransformListener()
-{
-  odom_frame_ = this->declare_parameter("target_frame", "gimbal_odom");
-  tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
-      this->get_node_base_interface(), this->get_node_timers_interface());
-  tf2_buffer_->setCreateTimerInterface(timer_interface);
-  tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
-}
-
 std::vector<Armor> ArmorDetectorNode::DetectArmors(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
   // Convert ROS img to cv::Mat
   auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-  auto detect_color = static_cast<int>(get_parameter("detect_color").as_int());
-  bool use_traditional_detector = detector_type_ == "traditional";
-  bool use_yolo_detector = detector_type_ == "yolo";
   std::vector<Armor> armors;
 
-  // Update params
-  // detector_->binary_thres = static_cast<int>(get_parameter("binary_thres").as_int());
-  if (use_traditional_detector)
+  armors = detector_->Detect(img);
+
+  if (1)
   {
-    detector_->binary_upper_thres_ =
-        static_cast<int>(get_parameter("binary_upper_thres").as_int());
-    detector_->binary_lower_thres_ =
-        static_cast<int>(get_parameter("binary_lower_thres").as_int());
-    detector_->detect_color = detect_color;
-    detector_->classifier->SetThreshold(
-        get_parameter("classifier_threshold").as_double());
-
-    armors = detector_->Detect(img);
-
     // Correct the corners of the detected armors
     if (corner_corrector_ != nullptr)
     {
       for (auto& armor : armors)
       {
-        corner_corrector_->CorrectCorners(armor, detector_->binary_img);
+        corner_corrector_->CorrectCorners(armor, detector_->GetBinaryImage());
       }
     }
-  }
-  else if (use_yolo_detector)
-  {
-#if ARMOR_DETECTOR_HAS_OPENVINO
-    if (yolo_detector_ == nullptr)
-    {
-      RCLCPP_ERROR(this->get_logger(),
-                   "detector_type is 'yolo' but yolo_detector_ was not initialized.");
-      throw std::runtime_error("YOLO detector is not initialized");
-    }
-
-    armors = yolo_detector_->Detect(img, detect_color,
-                                    get_parameter("ignore_classes").as_string_array());
-#else
-    RCLCPP_ERROR(this->get_logger(),
-                 "detector_type is 'yolo' but OpenVINO support was not compiled.");
-    throw std::runtime_error("YOLO requested but OpenVINO not available");
-#endif
-  }
-  else
-  {
-    RCLCPP_ERROR(this->get_logger(),
-                 "Invalid detector_type '%s'. Allowed values: 'traditional', 'yolo'",
-                 detector_type_.c_str());
-    throw std::runtime_error("Invalid detector_type: " + detector_type_);
   }
 
   auto final_time = this->now();
@@ -488,37 +225,24 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   // Publish debug info
   if (debug_)
   {
-    if (use_traditional_detector)
+    if (detector_->debug_enabled)
     {
       binary_img_pub_.publish(
-          cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img)
+          cv_bridge::CvImage(img_msg->header, "mono8", detector_->GetBinaryImage())
               .toImageMsg());
-
-      // Sort lights and armors data by x coordinate
-      std::sort(detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
-                [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
-      std::sort(detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
-                [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
-
-      lights_data_pub_->publish(detector_->debug_lights);
-      armors_data_pub_->publish(detector_->debug_armors);
+      const auto& debug_data = detector_->GetDebugData();
+      lights_data_pub_->publish(debug_data.lights);
+      armors_data_pub_->publish(debug_data.armors);
 
       if (!armors.empty())
       {
-        auto all_num_img = detector_->GetAllNumbersImage();
+        auto all_num_img = detector_->GetNumbersImage();
         number_img_pub_.publish(
             *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
       }
+    }
 
-      detector_->DrawResults(img);
-    }
-    else if (use_yolo_detector)
-    {
-#if ARMOR_DETECTOR_HAS_OPENVINO
-      // YOLO 路径只发布最终 result_img，显式跳过传统链路的中间态调试 topic。
-      yolo_detector_->DrawResults(img);
-#endif
-    }
+    detector_->DrawResults(img);
 
     // Draw camera center
     cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
@@ -533,6 +257,83 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   }
 
   return armors;
+}
+
+std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
+{
+  return static_cast<bool>(this->declare_parameter("use_corner_corrector", false))
+             ? std::make_unique<LightCornerCorrector>()
+             : nullptr;
+}
+
+std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
+{
+  PnPSolver::PnpFilterParams pnp_filter_params{
+      .new_pnp_filter_method =
+          this->declare_parameter("pnp_filter.use_new_pnp_filter_method", false),
+      .max_normal_dot = this->declare_parameter("pnp_filter.max_normal_dot", 0.0),
+      .reproj_weight = this->declare_parameter("pnp_filter.reproj_weight", 1.0),
+      .normal_weight = this->declare_parameter("pnp_filter.normal_weight", 0.5)};
+  return std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d, pnp_filter_params);
+}
+
+std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
+{
+  if (!this->declare_parameter("use_pose_optimizer", false))
+  {
+    return nullptr;
+  }
+
+  // Determine optimization method from parameter
+  std::string optimize_method_str =
+      this->declare_parameter("optimizer.optimize_method", std::string("RANGE_SHORT_LM"));
+  ArmorPoseOptimizer::Params::OptimizeMethod optimize_method =
+      ArmorPoseOptimizer::Params::OptimizeMethod::RANGE_LM;  // default
+  if (optimize_method_str == "LM")
+  {
+    optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::LM;
+  }
+  else if (optimize_method_str == "RANGE")
+  {
+    optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE;
+  }
+  else if (optimize_method_str == "RANGE_SHORT_LM")
+  {
+    optimize_method = ArmorPoseOptimizer::Params::OptimizeMethod::RANGE_LM;
+  }
+
+  // Initialize optimizer parameters using designated initializers
+  ArmorPoseOptimizer::Params opt_params{
+      .optimize_method = optimize_method,
+      .standard_pitch_deg = this->declare_parameter("optimizer.standard_pitch_deg", 15.0),
+      .outpost_pitch_deg = this->declare_parameter("optimizer.outpost_pitch_deg", -15.0),
+      .max_pitch_deviation =
+          this->declare_parameter("optimizer.max_pitch_deviation", 15.0),
+      .max_roll_deviation = this->declare_parameter("optimizer.max_roll_deviation", 15.0),
+      .max_iterations =
+          static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20)),
+      .range_search_half_range_deg =
+          this->declare_parameter("optimizer.range_search_half_range_deg", 70.0),
+      .range_search_coarse_step_deg =
+          this->declare_parameter("optimizer.range_search_coarse_step_deg", 1.0),
+      .range_search_fine_range_deg =
+          this->declare_parameter("optimizer.range_search_fine_range_deg", 2.0),
+      .range_search_fine_step_deg =
+          this->declare_parameter("optimizer.range_search_fine_step_deg", 0.1)};
+
+  InitTransformListener();
+
+  return std::make_unique<ArmorPoseOptimizer>(opt_params);
+}
+
+void ArmorDetectorNode::InitTransformListener()
+{
+  odom_frame_ = this->declare_parameter("target_frame", "gimbal_odom");
+  tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
+      this->get_node_base_interface(), this->get_node_timers_interface());
+  tf2_buffer_->setCreateTimerInterface(timer_interface);
+  tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
 }
 
 void ArmorDetectorNode::CreateDebugPublishers()
@@ -556,6 +357,77 @@ void ArmorDetectorNode::DestroyDebugPublishers()
   number_img_pub_.shutdown();
   result_img_pub_.shutdown();
 }
+
+Detector::DetectorParams ArmorDetectorNode::UploadDetectorParams()
+{
+  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+
+  this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
+
+  Detector::DetectorParams detector_params = {
+      .binary_lower_thres =
+          static_cast<int>(declare_parameter("binary_lower_thres", 160)),
+      .binary_upper_thres =
+          static_cast<int>(declare_parameter("binary_upper_thres", 255)),
+      .detect_color = static_cast<int>(declare_parameter("detect_color", RED)),
+      .l = {.min_ratio = declare_parameter("light.min_ratio", 0.1),
+            .max_ratio = declare_parameter("light.max_ratio", 0.4),
+            .max_angle = declare_parameter("light.max_angle", 40.0)},
+      .a = {.min_light_ratio = declare_parameter("armor.min_light_ratio", 0.7),
+            .min_small_center_distance =
+                declare_parameter("armor.min_small_center_distance", 0.8),
+            .max_small_center_distance =
+                declare_parameter("armor.max_small_center_distance", 3.2),
+            .min_large_center_distance =
+                declare_parameter("armor.min_large_center_distance", 3.2),
+            .max_large_center_distance =
+                declare_parameter("armor.max_large_center_distance", 5.5),
+            .max_angle = declare_parameter("armor.max_angle", 35.0)},
+      .c = {.model_path = pkg_path + "/model/mlp.onnx",
+            .label_path = pkg_path + "/model/label.txt",
+            .threshold = this->declare_parameter("classifier_threshold", 0.7),
+            .ignore_classes = this->get_parameter("ignore_classes").as_string_array()}};
+
+  return detector_params;
+}
+
+YoloDetector::YoloParams ArmorDetectorNode::UploadYoloDetectorParams()
+{
+  auto model_name = this->declare_parameter("yolo.model_path", std::string(""));
+  if (model_name.empty())
+  {
+    RCLCPP_ERROR(
+        this->get_logger(),
+        "Parameter 'yolo.model_path' must not be empty when detector_type is 'yolo'.");
+    throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
+  }
+
+  // Resolve model path
+  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+  auto model_path = pkg_path + "/model/" + model_name;
+
+  // Check model file exists
+  if (!std::filesystem::exists(model_path))
+  {
+    RCLCPP_ERROR(this->get_logger(), "YOLO model file not found: %s", model_path.c_str());
+    throw std::runtime_error("YOLO model file not found: " + model_path);
+  }
+
+  YoloDetector::YoloParams yolo_params = {
+      .model_path = model_path,
+      .device = this->declare_parameter("yolo.device", std::string("CPU")),
+      .score_threshold =
+          static_cast<float>(this->declare_parameter("yolo.score_threshold", 0.7)),
+      .min_confidence =
+          static_cast<float>(this->declare_parameter("yolo.min_confidence", 0.8)),
+      .nms_threshold =
+          static_cast<float>(this->declare_parameter("yolo.nms_threshold", 0.3)),
+      .ignore_classes = this->get_parameter("ignore_classes").as_string_array(),
+      .detect_color = static_cast<int>(this->get_parameter("detect_color").as_int())};
+
+  return yolo_params;
+}
+
 }  // namespace rm_auto_aim
 
 #include "rclcpp_components/register_node_macro.hpp"

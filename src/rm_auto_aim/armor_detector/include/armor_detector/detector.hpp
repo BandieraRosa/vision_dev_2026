@@ -5,17 +5,23 @@
 #include <opencv2/core.hpp>
 
 // STD
-#include <cmath>
 #include <vector>
 
 #include "armor_detector/armor.hpp"
+#include "armor_detector/detector_base.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "auto_aim_interfaces/msg/debug_armors.hpp"
 #include "auto_aim_interfaces/msg/debug_lights.hpp"
 
 namespace rm_auto_aim
 {
-class Detector
+struct DebugData
+{
+  auto_aim_interfaces::msg::DebugLights lights;
+  auto_aim_interfaces::msg::DebugArmors armors;
+};
+
+class Detector : public DetectorBase
 {
  public:
   struct LightParams
@@ -39,32 +45,39 @@ class Detector
     double max_angle;
   };
 
-  Detector(const int& binary_lower_thres, const int& binary_upper_thres, const int& color,
-           const LightParams& l, const ArmorParams& a);
+  struct ClassifierParams
+  {
+    std::string model_path;
+    std::string label_path;
+    double threshold;
+    std::vector<std::string> ignore_classes;
+  };
 
-  std::vector<Armor> Detect(const cv::Mat& input);
+  struct DetectorParams
+  {
+    int binary_lower_thres;
+    int binary_upper_thres;
+    int detect_color;
+    LightParams l;
+    ArmorParams a;
+    ClassifierParams c;
+  };
+
+  Detector(DetectorParams& params);
+
+  std::vector<Armor> Detect(const cv::Mat& input) override;
 
   cv::Mat PreprocessImage(const cv::Mat& input);
   std::vector<Light> FindLights(const cv::Mat& rbg_img, const cv::Mat& binary_img);
   std::vector<Armor> MatchLights(const std::vector<Light>& lights);
 
   // For debug usage
-  cv::Mat GetAllNumbersImage();
-  void DrawResults(cv::Mat& img);
+  const cv::Mat& GetNumbersImage() override;
+  void DrawResults(cv::Mat& img) override;
 
-  // int binary_thres;
-  int binary_lower_thres_;
-  int binary_upper_thres_;
-  int detect_color;
-  LightParams l;
-  ArmorParams a;
+  const DebugData& GetDebugData() override;
 
-  std::unique_ptr<NumberClassifier> classifier;
-
-  // Debug msgs
-  cv::Mat binary_img;
-  auto_aim_interfaces::msg::DebugLights debug_lights;
-  auto_aim_interfaces::msg::DebugArmors debug_armors;
+  const cv::Mat& GetBinaryImage() override;
 
  private:
   bool IsLight(const Light& possible_light);
@@ -72,8 +85,15 @@ class Detector
                     const std::vector<Light>& lights);
   ArmorType IsArmor(const Light& light_1, const Light& light_2);
 
+  DetectorParams params_;
+  std::unique_ptr<NumberClassifier> classifier_;
   std::vector<Light> lights_;
   std::vector<Armor> armors_;
+
+  // Debug msgs
+  cv::Mat binary_img_;
+  cv::Mat all_num_img_;
+  DebugData debug_data_;
 };
 
 }  // namespace rm_auto_aim

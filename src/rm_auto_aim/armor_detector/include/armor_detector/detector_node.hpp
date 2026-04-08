@@ -2,6 +2,7 @@
 #define ARMOR_DETECTOR__DETECTOR_NODE_HPP_
 
 #include <image_transport/publisher.hpp>
+#include <memory>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -12,13 +13,12 @@
 #include "armor_detector/armor.hpp"
 #include "armor_detector/armor_pose_optimizer.hpp"
 #include "armor_detector/detector.hpp"
-#if ARMOR_DETECTOR_HAS_OPENVINO
-#include "armor_detector/yolo_detector.hpp"
-#endif
-
+#include "armor_detector/detector_base.hpp"
+#include "armor_detector/detector_factory.hpp"
 #include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
+#include "armor_detector/yolo_detector.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 
 namespace rm_auto_aim
@@ -38,25 +38,19 @@ class ArmorDetectorNode : public rclcpp::Node
   std::unique_ptr<ArmorPoseOptimizer> InitPoseOptimizer();
   void InitTransformListener();
 
+  Detector::DetectorParams UploadDetectorParams();
+  YoloDetector::YoloParams UploadYoloDetectorParams();
+
   std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
 
   void CreateDebugPublishers();
   void DestroyDebugPublishers();
 
   // Armor Detector
-  std::unique_ptr<Detector> detector_;
+  std::unique_ptr<DetectorBase> detector_;
   std::unique_ptr<LightCornerCorrector> corner_corrector_;
   std::unique_ptr<PnPSolver> pnp_solver_;
   std::unique_ptr<ArmorPoseOptimizer> pose_optimizer_;
-
-  // Detector type
-  std::string detector_type_;
-
-  // YOLO Detector
-#if ARMOR_DETECTOR_HAS_OPENVINO
-  std::unique_ptr<YoloDetector> yolo_detector_;
-  std::unique_ptr<YoloDetector> InitYoloDetector();
-#endif
 
   // tf2
   std::string odom_frame_;

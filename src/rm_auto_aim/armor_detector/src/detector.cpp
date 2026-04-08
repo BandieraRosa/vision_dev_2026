@@ -1,4 +1,5 @@
 // OpenCV
+#include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -10,26 +11,24 @@
 
 namespace rm_auto_aim
 {
-Detector::Detector(const int& binary_lower_thres, const int& binary_upper_thres,
-                   const int& color, const LightParams& l, const ArmorParams& a)
-    : binary_lower_thres_(binary_lower_thres),
-      binary_upper_thres_(binary_upper_thres),
-      detect_color(color),
-      l(l),
-      a(a)
+
+Detector::Detector(DetectorParams& params) : params_(params)
 {
+  classifier_ =
+      std::make_unique<NumberClassifier>(params.c.model_path, params.c.label_path,
+                                         params.c.threshold, params.c.ignore_classes);
 }
 
 std::vector<Armor> Detector::Detect(const cv::Mat& input)
 {
-  binary_img = PreprocessImage(input);
-  lights_ = FindLights(input, binary_img);
+  binary_img_ = PreprocessImage(input);
+  lights_ = FindLights(input, binary_img_);
   armors_ = MatchLights(lights_);
 
   if (!armors_.empty())
   {
-    classifier->ExtractNumbers(input, armors_);
-    classifier->Classify(armors_);
+    classifier_->ExtractNumbers(input, armors_);
+    classifier_->Classify(armors_);
   }
 
   return armors_;
@@ -39,12 +38,10 @@ cv::Mat Detector::PreprocessImage(const cv::Mat& rgb_img)  // 图像预处理
 {
   cv::Mat gray_img;
   cv::cvtColor(rgb_img, gray_img, cv::COLOR_RGB2GRAY);
-  // cv::Mat bgray_img;
-  // cv::bilateralFilter(gray_img, bgray_img, 9, 50, 50);
 
   cv::Mat binary_img;
-  cv::inRange(gray_img, cv::Scalar(binary_lower_thres_), cv::Scalar(binary_upper_thres_),
-              binary_img);
+  cv::inRange(gray_img, cv::Scalar(params_.binary_lower_thres),
+              cv::Scalar(params_.binary_upper_thres), binary_img);
   return binary_img;
 }
 
@@ -58,7 +55,7 @@ std::vector<Light> Detector::FindLights(const cv::Mat& rbg_img, const cv::Mat& b
       cv::CHAIN_APPROX_SIMPLE);  // 仅检索最外层轮廓（忽略嵌套轮廓），仅保留水平、垂直和对角方向的端点（矩形仅需4个点）
 
   vector<Light> lights;
-  this->debug_lights.data.clear();
+  this->debug_data_.lights.data.clear();
 
   for (const auto& contour : contours)
   {
@@ -109,9 +106,9 @@ bool Detector::IsLight(const Light& light)
 {
   // The ratio of light (short side / long side) 通关宽高比判断是否是灯条
   double ratio = light.width / light.length;
-  bool ratio_ok = l.min_ratio < ratio && ratio < l.max_ratio;
+  bool ratio_ok = params_.l.min_ratio < ratio && ratio < params_.l.max_ratio;
 
-  bool angle_ok = light.tilt_angle < l.max_angle;
+  bool angle_ok = light.tilt_angle < params_.l.max_angle;
 
   bool is_light = ratio_ok && angle_ok;
 
@@ -121,7 +118,7 @@ bool Detector::IsLight(const Light& light)
   light_data.ratio = static_cast<float>(ratio);
   light_data.angle = light.tilt_angle;
   light_data.is_light = is_light;
-  this->debug_lights.data.emplace_back(light_data);
+  this->debug_data_.lights.data.emplace_back(light_data);
 
   return is_light;
 }
@@ -129,14 +126,15 @@ bool Detector::IsLight(const Light& light)
 std::vector<Armor> Detector::MatchLights(const std::vector<Light>& lights)
 {
   std::vector<Armor> armors;
-  this->debug_armors.data.clear();
+  this->debug_data_.armors.data.clear();
 
   // Loop all the pairing of lights
   for (auto light_1 = lights.begin(); light_1 != lights.end(); light_1++)
   {
     for (auto light_2 = light_1 + 1; light_2 != lights.end(); light_2++)
     {
-      if (light_1->color != detect_color || light_2->color != detect_color)
+      if (light_1->color != params_.detect_color ||
+          light_2->color != params_.detect_color)
       {
         continue;
       }
@@ -196,20 +194,20 @@ ArmorType Detector::IsArmor(const Light& light_1, const Light& light_2)
   double light_length_ratio = light_1.length < light_2.length
                                   ? light_1.length / light_2.length
                                   : light_2.length / light_1.length;
-  bool light_ratio_ok = light_length_ratio > a.min_light_ratio;
+  bool light_ratio_ok = light_length_ratio > params_.a.min_light_ratio;
 
   // Distance between the center of 2 lights (unit : light length) 灯条中心距离检查
   double avg_light_length = (light_1.length + light_2.length) / 2;
   double center_distance = cv::norm(light_1.center - light_2.center) / avg_light_length;
-  bool center_distance_ok = (a.min_small_center_distance <= center_distance &&
-                             center_distance < a.max_small_center_distance) ||
-                            (a.min_large_center_distance <= center_distance &&
-                             center_distance < a.max_large_center_distance);
+  bool center_distance_ok = (params_.a.min_small_center_distance <= center_distance &&
+                             center_distance < params_.a.max_small_center_distance) ||
+                            (params_.a.min_large_center_distance <= center_distance &&
+                             center_distance < params_.a.max_large_center_distance);
 
   // Angle of light center connection  灯条中心连线角度检查
   cv::Point2f diff = light_1.center - light_2.center;
   double angle = std::abs(std::atan(diff.y / diff.x)) / CV_PI * 180;
-  bool angle_ok = angle < a.max_angle;
+  bool angle_ok = angle < params_.a.max_angle;
 
   bool is_armor = light_ratio_ok && center_distance_ok && angle_ok;
 
@@ -217,8 +215,8 @@ ArmorType Detector::IsArmor(const Light& light_1, const Light& light_2)
   ArmorType type{};
   if (is_armor)
   {
-    type = center_distance > a.min_large_center_distance ? ArmorType::LARGE
-                                                         : ArmorType::SMALL;
+    type = center_distance > params_.a.min_large_center_distance ? ArmorType::LARGE
+                                                                 : ArmorType::SMALL;
   }
   else
   {
@@ -232,30 +230,22 @@ ArmorType Detector::IsArmor(const Light& light_1, const Light& light_2)
   armor_data.light_ratio = static_cast<float>(light_length_ratio);
   armor_data.center_distance = static_cast<float>(center_distance);
   armor_data.angle = static_cast<float>(angle);
-  this->debug_armors.data.emplace_back(armor_data);
+  this->debug_data_.armors.data.emplace_back(armor_data);
 
   return type;
 }
 
-cv::Mat Detector::
-    GetAllNumbersImage()  // 将检测到的所有装甲板上的数字图像垂直拼接成一个单独的图像并返回
+const cv::Mat& Detector::
+    GetNumbersImage()  // 将检测到的所有装甲板上的数字图像垂直拼接成一个单独的图像并返回
 {
-  if (armors_.empty())
+  std::vector<cv::Mat> number_imgs;
+  number_imgs.reserve(armors_.size());
+  for (auto& armor : armors_)
   {
-    return cv::Mat(cv::Size(20, 28), CV_8UC1);
+    number_imgs.emplace_back(armor.number_img);
   }
-  else
-  {
-    std::vector<cv::Mat> number_imgs;
-    number_imgs.reserve(armors_.size());
-    for (auto& armor : armors_)
-    {
-      number_imgs.emplace_back(armor.number_img);
-    }
-    cv::Mat all_num_img;
-    cv::vconcat(number_imgs, all_num_img);
-    return all_num_img;
-  }
+  cv::vconcat(number_imgs, all_num_img_);
+  return all_num_img_;
 }
 
 void Detector::DrawResults(cv::Mat& img)
@@ -286,5 +276,17 @@ void Detector::DrawResults(cv::Mat& img)
                 cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 255), 2);
   }
 }
+
+const DebugData& Detector::GetDebugData()
+{
+  // Sort lights and armors data by x coordinate
+  std::sort(debug_data_.lights.data.begin(), debug_data_.lights.data.end(),
+            [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
+  std::sort(debug_data_.armors.data.begin(), debug_data_.armors.data.end(),
+            [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
+  return debug_data_;
+}
+
+const cv::Mat& Detector::GetBinaryImage() { return binary_img_; }
 
 }  // namespace rm_auto_aim

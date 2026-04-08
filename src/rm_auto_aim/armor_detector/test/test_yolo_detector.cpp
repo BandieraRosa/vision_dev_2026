@@ -27,18 +27,17 @@ int main(int argc, char* argv[])
   cv::imshow("Input Image", bgr_img);
 
   // 初始化检测器
-  rm_auto_aim::YoloDetector::YoloParams config;
-  config.model_path = model_path;
-  config.device = "CPU";
-  config.score_threshold = 0.7f;
-  config.min_confidence = 0.8f;
-  config.nms_threshold = 0.3f;
+  rm_auto_aim::YoloDetector::YoloParams config = {.model_path = model_path,
+                                                  .device = "CPU",
+                                                  .score_threshold = 0.7f,
+                                                  .min_confidence = 0.8f,
+                                                  .nms_threshold = 0.3f,
+                                                  .ignore_classes = {"negative"},
+                                                  .detect_color = detect_color};
 
   rm_auto_aim::YoloDetector detector(config);
 
-  // 检测
-  std::vector<std::string> ignore_classes = {"negative"};
-  auto armors = detector.Detect(bgr_img, detect_color, ignore_classes);
+  auto armors = detector.Detect(bgr_img);
 
   std::cout << "Detected " << armors.size() << " armor(s):" << '\n';
   for (const auto& armor : armors)

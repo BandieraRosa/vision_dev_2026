@@ -17,6 +17,14 @@ class ArmorPoseOptimizer
  public:
   struct Params
   {
+    enum class OptimizeMethod : uint8_t
+    {
+      LM = 0,
+      RANGE = 1,
+      RANGE_LM = 2,  // 在范围搜索基础上以最优解为起点再迭代
+    };
+    OptimizeMethod optimize_method = OptimizeMethod::RANGE_LM;
+    
     // 地面兵种装甲板安装 pitch
     double standard_pitch_deg = 15.0;
     // 前哨站装甲板安装 pitch
@@ -27,13 +35,6 @@ class ArmorPoseOptimizer
     double max_roll_deviation = 10.0;
 
     // 优化方法选择
-    enum class OptimizeMethod : uint8_t
-    {
-      LM = 0,
-      RANGE = 1,
-      RANGE_LM = 2,  // 在范围搜索基础上以最优解为起点再迭代
-    };
-    OptimizeMethod optimize_method = OptimizeMethod::RANGE_LM;
 
     // LM 优化参数
     int max_iterations = 20;             // 最大迭代次数
