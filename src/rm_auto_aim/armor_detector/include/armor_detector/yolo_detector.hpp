@@ -1,15 +1,24 @@
 #ifndef ARMOR_DETECTOR__YOLO_DETECTOR_HPP_
 #define ARMOR_DETECTOR__YOLO_DETECTOR_HPP_
 
-#if ARMOR_DETECTOR_HAS_OPENVINO
+#ifdef ARMOR_DETECTOR_HAS_OPENVINO
 
-#include <opencv2/opencv.hpp>
-#include <openvino/openvino.hpp>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include <openvino/openvino.hpp>
+#include <opencv2/core.hpp>
+
 #include "armor_detector/armor.hpp"
+#include "armor_detector/detection_result.hpp"
 #include "armor_detector/detector_base.hpp"
+
+namespace rclcpp
+{
+class Node;
+}
+
 namespace rm_auto_aim
 {
 
@@ -27,24 +36,20 @@ class YoloDetector : public DetectorBase
     std::vector<std::string> ignore_classes;
     int detect_color;
     int num_keypoints = 4;
-    float large_armor_ratio_threshold = 3.2f;  // 灯条中心距离 / 平均灯条长度
+    float large_armor_ratio_threshold = 3.2f;
   };
+
+  static std::unique_ptr<YoloDetector> Create(rclcpp::Node& node);
 
   explicit YoloDetector(const YoloParams& params);
 
-  // 检测入口
-  std::vector<Armor> Detect(const cv::Mat& rgb_img);
+  DetectionResult Detect(const cv::Mat& rgb_img) override;
 
-  // 在图像上绘制检测结果
-  void DrawResults(cv::Mat& img);
+  void DrawResults(cv::Mat& img) override;
 
  private:
-  // 解析模型输出张量
   std::vector<Armor> Parse(double scale, cv::Mat& output);
-
   void SortKeypoints(std::vector<cv::Point2f>& keypoints);
-
-  // 判断装甲板类型
   ArmorType DetermineArmorType(const Light& light_1, const Light& light_2);
 
   YoloParams params_;
@@ -52,6 +57,7 @@ class YoloDetector : public DetectorBase
 
   ov::Core core_;
   ov::CompiledModel compiled_model_;
+  ov::InferRequest infer_request_;
 
   std::vector<Armor> last_armors_;
 };

@@ -37,10 +37,10 @@ int main(int argc, char* argv[])
 
   rm_auto_aim::YoloDetector detector(config);
 
-  auto armors = detector.Detect(bgr_img);
+  auto detect_result = detector.Detect(bgr_img);
 
-  std::cout << "Detected " << armors.size() << " armor(s):" << '\n';
-  for (const auto& armor : armors)
+  std::cout << "Detected " << detect_result.armors.size() << " armor(s):" << '\n';
+  for (const auto& armor : detect_result.armors)
   {
     std::cout << "  " << armor.classfication_result
               << "  type=" << rm_auto_aim::ARMOR_TYPE_STR[static_cast<int>(armor.type)]

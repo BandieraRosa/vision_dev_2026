@@ -1,16 +1,60 @@
-// OpenCV
+#include "armor_detector/detector.hpp"
+
+#include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cmath>
 #include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-
-// STD
-#include <cmath>
+#include <rclcpp/rclcpp.hpp>
 #include <vector>
-
-#include "armor_detector/detector.hpp"
 
 namespace rm_auto_aim
 {
+namespace
+{
+
+template <typename T>
+T get_parameter(rclcpp::Node& node, const std::string& name, const T& default_value)
+{
+  if (!node.has_parameter(name))
+  {
+    return node.declare_parameter<T>(name, default_value);
+  }
+  return node.get_parameter(name).get_value<T>();
+}
+
+}  // namespace
+
+std::unique_ptr<Detector> Detector::Create(rclcpp::Node& node)
+{
+  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+
+  DetectorParams detector_params = {
+      .binary_lower_thres = get_parameter<int>(node, "binary_lower_thres", 160),
+      .binary_upper_thres = get_parameter<int>(node, "binary_upper_thres", 255),
+      .detect_color = get_parameter<int>(node, "detect_color", RED),
+      .l = {.min_ratio = get_parameter<double>(node, "light.min_ratio", 0.1),
+            .max_ratio = get_parameter<double>(node, "light.max_ratio", 0.4),
+            .max_angle = get_parameter<double>(node, "light.max_angle", 40.0)},
+      .a = {.min_light_ratio = get_parameter<double>(node, "armor.min_light_ratio", 0.7),
+            .min_small_center_distance =
+                get_parameter<double>(node, "armor.min_small_center_distance", 0.8),
+            .max_small_center_distance =
+                get_parameter<double>(node, "armor.max_small_center_distance", 3.2),
+            .min_large_center_distance =
+                get_parameter<double>(node, "armor.min_large_center_distance", 3.2),
+            .max_large_center_distance =
+                get_parameter<double>(node, "armor.max_large_center_distance", 5.5),
+            .max_angle = get_parameter<double>(node, "armor.max_angle", 35.0)},
+      .c = {.model_path = pkg_path + "/model/mlp.onnx",
+            .label_path = pkg_path + "/model/label.txt",
+            .threshold = get_parameter<double>(node, "classifier_threshold", 0.7),
+            .ignore_classes = get_parameter<std::vector<std::string>>(
+                node, "ignore_classes", {"negative"})}};
+
+  return std::make_unique<Detector>(detector_params);
+}
 
 Detector::Detector(DetectorParams& params) : params_(params)
 {
@@ -19,8 +63,10 @@ Detector::Detector(DetectorParams& params) : params_(params)
                                          params.c.threshold, params.c.ignore_classes);
 }
 
-std::vector<Armor> Detector::Detect(const cv::Mat& input)
+DetectionResult Detector::Detect(const cv::Mat& input)
 {
+  DetectionResult result;
+
   binary_img_ = PreprocessImage(input);
   lights_ = FindLights(input, binary_img_);
   armors_ = MatchLights(lights_);
@@ -31,7 +77,17 @@ std::vector<Armor> Detector::Detect(const cv::Mat& input)
     classifier_->Classify(armors_);
   }
 
-  return armors_;
+  result.armors = armors_;
+  result.binary_image = binary_img_;
+  result.debug_data = GetDebugData();
+
+  const auto& numbers_image = GetNumbersImage();
+  if (!numbers_image.empty())
+  {
+    result.numbers_image = numbers_image;
+  }
+
+  return result;
 }
 
 cv::Mat Detector::PreprocessImage(const cv::Mat& rgb_img)  // 图像预处理
@@ -55,7 +111,7 @@ std::vector<Light> Detector::FindLights(const cv::Mat& rbg_img, const cv::Mat& b
       cv::CHAIN_APPROX_SIMPLE);  // 仅检索最外层轮廓（忽略嵌套轮廓），仅保留水平、垂直和对角方向的端点（矩形仅需4个点）
 
   vector<Light> lights;
-  this->debug_data_.lights.data.clear();
+  debug_data_.lights.data.clear();
 
   for (const auto& contour : contours)
   {
@@ -74,7 +130,8 @@ std::vector<Light> Detector::FindLights(const cv::Mat& rbg_img, const cv::Mat& b
           0 <= rect.x && 0 <= rect.width && rect.x + rect.width <= rbg_img.cols &&
           0 <= rect.y && 0 <= rect.height && rect.y + rect.height <= rbg_img.rows)
       {
-        int sum_r = 0, sum_b = 0;
+        int sum_r = 0;
+        int sum_b = 0;
         auto roi = rbg_img(rect);  // 创建一个指向rbg_img图像rect区域的一张新图ROI
         // Iterate through the ROI
         for (int i = 0; i < roi.rows; i++)
@@ -118,7 +175,7 @@ bool Detector::IsLight(const Light& light)
   light_data.ratio = static_cast<float>(ratio);
   light_data.angle = light.tilt_angle;
   light_data.is_light = is_light;
-  this->debug_data_.lights.data.emplace_back(light_data);
+  debug_data_.lights.data.emplace_back(light_data);
 
   return is_light;
 }
@@ -126,7 +183,7 @@ bool Detector::IsLight(const Light& light)
 std::vector<Armor> Detector::MatchLights(const std::vector<Light>& lights)
 {
   std::vector<Armor> armors;
-  this->debug_data_.armors.data.clear();
+  debug_data_.armors.data.clear();
 
   // Loop all the pairing of lights
   for (auto light_1 = lights.begin(); light_1 != lights.end(); light_1++)
@@ -230,19 +287,22 @@ ArmorType Detector::IsArmor(const Light& light_1, const Light& light_2)
   armor_data.light_ratio = static_cast<float>(light_length_ratio);
   armor_data.center_distance = static_cast<float>(center_distance);
   armor_data.angle = static_cast<float>(angle);
-  this->debug_data_.armors.data.emplace_back(armor_data);
+  debug_data_.armors.data.emplace_back(armor_data);
 
   return type;
 }
 
-const cv::Mat& Detector::
-    GetNumbersImage()  // 将检测到的所有装甲板上的数字图像垂直拼接成一个单独的图像并返回
+// 将检测到的所有装甲板上的数字图像垂直拼接成一个单独的图像并返回
+const cv::Mat& Detector::GetNumbersImage() const
 {
   std::vector<cv::Mat> number_imgs;
   number_imgs.reserve(armors_.size());
-  for (auto& armor : armors_)
+  for (const auto& armor : armors_)
   {
-    number_imgs.emplace_back(armor.number_img);
+    if (!armor.number_img.empty())
+    {
+      number_imgs.emplace_back(armor.number_img);
+    }
   }
   cv::vconcat(number_imgs, all_num_img_);
   return all_num_img_;
@@ -286,7 +346,5 @@ const DebugData& Detector::GetDebugData()
             [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
   return debug_data_;
 }
-
-const cv::Mat& Detector::GetBinaryImage() { return binary_img_; }
 
 }  // namespace rm_auto_aim

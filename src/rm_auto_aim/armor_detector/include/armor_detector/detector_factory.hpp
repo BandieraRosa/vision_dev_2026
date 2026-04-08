@@ -1,47 +1,47 @@
+#ifndef ARMOR_DETECTOR__DETECTOR_FACTORY_HPP_
+#define ARMOR_DETECTOR__DETECTOR_FACTORY_HPP_
+
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 #include "armor_detector/detector.hpp"
 #include "armor_detector/detector_base.hpp"
 #include "armor_detector/yolo_detector.hpp"
 
+namespace rclcpp
+{
+class Node;
+}
+
 namespace rm_auto_aim
 {
 
-struct DetectorParams
+inline std::unique_ptr<DetectorBase> create_detector(const std::string& type,
+                                                     rclcpp::Node& node)
 {
-  std::string type;
-  Detector::DetectorParams params;
-  YoloDetector::YoloParams yolo_params;
-};
-
-class DetectorFactory
-{
- public:
-  std::unique_ptr<DetectorBase> Create(DetectorParams params)
+  if (type == "traditional")
   {
-    if (params.type == "traditional")
-    {
-      return std::make_unique<Detector>(params.params);
-    }
+    return Detector::Create(node);
+  }
 
 #ifdef ARMOR_DETECTOR_HAS_OPENVINO
-    if (params.type == "yolo")
-    {
-      return std::make_unique<YoloDetector>(params.yolo_params);
-    }
+  if (type == "yolo")
+  {
+    return YoloDetector::Create(node);
+  }
 #else
-    if (params.type == "yolo")
-    {
-      throw std::runtime_error(
-          "yolo detector is requested, but this package was built without OpenVINO "
-          "support");
-    }
+  if (type == "yolo")
+  {
+    throw std::runtime_error(
+        "yolo detector is requested, but this package was built without OpenVINO "
+        "support");
+  }
 #endif
 
-    throw std::runtime_error("unknown detector type: " + params.type);
-  }
-};
-
-inline std::unique_ptr<DetectorFactory> detector_factory;
+  throw std::runtime_error("unknown detector type: " + type);
+}
 
 }  // namespace rm_auto_aim
+
+#endif  // ARMOR_DETECTOR__DETECTOR_FACTORY_HPP_

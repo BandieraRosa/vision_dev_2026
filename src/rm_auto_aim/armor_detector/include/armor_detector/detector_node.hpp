@@ -12,13 +12,10 @@
 
 #include "armor_detector/armor.hpp"
 #include "armor_detector/armor_pose_optimizer.hpp"
-#include "armor_detector/detector.hpp"
 #include "armor_detector/detector_base.hpp"
 #include "armor_detector/detector_factory.hpp"
 #include "armor_detector/light_corner_corrector.hpp"
-#include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
-#include "armor_detector/yolo_detector.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 
 namespace rm_auto_aim
@@ -32,14 +29,10 @@ class ArmorDetectorNode : public rclcpp::Node
  private:
   void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG);
 
-  std::unique_ptr<Detector> InitDetector();
   std::unique_ptr<LightCornerCorrector> InitLightCornerCorrector();
   std::unique_ptr<PnPSolver> InitPnPSolver();
   std::unique_ptr<ArmorPoseOptimizer> InitPoseOptimizer();
   void InitTransformListener();
-
-  Detector::DetectorParams UploadDetectorParams();
-  YoloDetector::YoloParams UploadYoloDetectorParams();
 
   std::vector<Armor> DetectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
 

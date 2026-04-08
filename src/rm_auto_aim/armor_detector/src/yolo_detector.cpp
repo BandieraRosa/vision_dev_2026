@@ -1,26 +1,20 @@
-// OpenVINO
-#include <openvino/openvino.hpp>
+#include "armor_detector/yolo_detector.hpp"
 
-// OpenCV
-#include <opencv2/core.hpp>
-#include <opencv2/dnn.hpp>
-#include <opencv2/imgproc.hpp>
-
-// STD
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <iomanip>
-#include <iostream>
+#include <opencv2/dnn.hpp>
+#include <opencv2/imgproc.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "armor_detector/yolo_detector.hpp"
-
 namespace rm_auto_aim
 {
-
 namespace
 {
 
@@ -34,7 +28,17 @@ static constexpr std::array<std::string, 38> YOLO11_MODEL_LABELS = {
     "Rbalancethree", "Ebalancethree", "Bbalancefour", "Rbalancefour", "Ebalancefour",
     "Bbalancefive",  "Rbalancefive",  "Ebalancefive"};
 
-static std::string map_label(const std::string& raw_label)
+template <typename T>
+T get_parameter(rclcpp::Node& node, const std::string& name, const T& default_value)
+{
+  if (!node.has_parameter(name))
+  {
+    return node.declare_parameter<T>(name, default_value);
+  }
+  return node.get_parameter(name).get_value<T>();
+}
+
+std::string map_label(const std::string& raw_label)
 {
   auto strip_prefix = [](const std::string& s) -> std::string
   {
@@ -89,6 +93,48 @@ static std::string map_label(const std::string& raw_label)
 
 }  // namespace
 
+std::unique_ptr<YoloDetector> YoloDetector::Create(rclcpp::Node& node)
+{
+  const auto ignore_classes =
+      get_parameter<std::vector<std::string>>(node, "ignore_classes", {"negative"});
+  const auto detect_color = get_parameter<int>(node, "detect_color", RED);
+
+  const auto model_name = get_parameter<std::string>(node, "yolo.model_path", "");
+  if (model_name.empty())
+  {
+    RCLCPP_ERROR(
+        node.get_logger(),
+        "Parameter 'yolo.model_path' must not be empty when detector_type is 'yolo'.");
+    throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
+  }
+
+  const auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+  const auto model_path = pkg_path + "/model/" + model_name;
+  if (!std::filesystem::exists(model_path))
+  {
+    RCLCPP_ERROR(node.get_logger(), "YOLO model file not found: %s", model_path.c_str());
+    throw std::runtime_error("YOLO model file not found: " + model_path);
+  }
+
+  YoloParams yolo_params = {
+      .model_path = model_path,
+      .device = get_parameter<std::string>(node, "yolo.device", "CPU"),
+      .input_size = get_parameter<int>(node, "yolo.input_size", 640),
+      .score_threshold =
+          static_cast<float>(get_parameter<double>(node, "yolo.score_threshold", 0.7)),
+      .min_confidence =
+          static_cast<float>(get_parameter<double>(node, "yolo.min_confidence", 0.8)),
+      .nms_threshold =
+          static_cast<float>(get_parameter<double>(node, "yolo.nms_threshold", 0.3)),
+      .ignore_classes = ignore_classes,
+      .detect_color = detect_color,
+      .num_keypoints = get_parameter<int>(node, "yolo.num_keypoints", 4),
+      .large_armor_ratio_threshold = static_cast<float>(
+          get_parameter<double>(node, "yolo.large_armor_ratio_threshold", 3.2))};
+
+  return std::make_unique<YoloDetector>(yolo_params);
+}
+
 YoloDetector::YoloDetector(const YoloParams& params)
     : params_(params), class_num_(static_cast<int>(YOLO11_MODEL_LABELS.size()))
 {
@@ -112,13 +158,15 @@ YoloDetector::YoloDetector(const YoloParams& params)
   compiled_model_ =
       core_.compile_model(model, params_.device,
                           ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY));
+  infer_request_ = compiled_model_.create_infer_request();
 }
 
-std::vector<Armor> YoloDetector::Detect(const cv::Mat& rgb_img)
+DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
 {
+  DetectionResult result;
   if (rgb_img.empty())
   {
-    return {};
+    return result;
   }
 
   auto x_scale = static_cast<double>(params_.input_size) / rgb_img.rows;
@@ -131,24 +179,23 @@ std::vector<Armor> YoloDetector::Detect(const cv::Mat& rgb_img)
   cv::Rect roi(0, 0, w, h);
   cv::resize(rgb_img, input_mat(roi), {w, h});
 
-  // 推理
   ov::Tensor input_tensor(ov::element::u8,
                           {1, static_cast<uint64_t>(params_.input_size),
                            static_cast<uint64_t>(params_.input_size), 3},
                           input_mat.data);
-  auto infer_request = compiled_model_.create_infer_request();
-  infer_request.set_input_tensor(input_tensor);
-  infer_request.infer();
+  infer_request_.set_input_tensor(input_tensor);
+  infer_request_.infer();
 
   // 输出
-  auto output_tensor = infer_request.get_output_tensor();
+  auto output_tensor = infer_request_.get_output_tensor();
   const auto& output_shape = output_tensor.get_shape();
   cv::Mat output(static_cast<int>(output_shape[1]), static_cast<int>(output_shape[2]),
                  CV_32F, output_tensor.data());
 
   // 后处理
   last_armors_ = Parse(scale, output);
-  return last_armors_;
+  result.armors = last_armors_;
+  return result;
 }
 
 // 输出张量布局: [x, y, w, h, cls_0, ..., cls_N, kp0_x, kp0_y, ...]
@@ -193,6 +240,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output)
 
     // 关键点
     std::vector<cv::Point2f> keypoints;
+    keypoints.reserve(params_.num_keypoints);
     for (int i = 0; i < params_.num_keypoints; i++)
     {
       float kx =
@@ -214,6 +262,7 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output)
                     indices);
 
   std::vector<Armor> armors;
+  armors.reserve(indices.size());
 
   for (const auto& i : indices)
   {
@@ -251,8 +300,8 @@ std::vector<Armor> YoloDetector::Parse(double scale, cv::Mat& output)
       continue;
     }
 
-    Light left_light = Light(kps[0], kps[1], color);
-    Light right_light = Light(kps[2], kps[3], color);
+    Light left_light(kps[0], kps[1], color);
+    Light right_light(kps[2], kps[3], color);
 
     // 构造 Armor
     Armor armor(left_light, right_light);

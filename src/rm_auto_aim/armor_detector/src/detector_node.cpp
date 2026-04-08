@@ -3,9 +3,9 @@
 
 #include <cv_bridge/cv_bridge.h>
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
-#include <filesystem>
 #include <image_transport/image_transport.hpp>
+#include <iomanip>
+#include <sstream>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/create_timer_ros.hpp>
 
@@ -18,12 +18,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 {
   RCLCPP_INFO(this->get_logger(), "Starting DetectorNode!");
 
-  DetectorParams detector_params = {
-      .type = this->declare_parameter("detector_type", std::string("traditional")),
-      .params = UploadDetectorParams(),
-      .yolo_params = UploadYoloDetectorParams()};
-
-  detector_ = detector_factory->Create(detector_params);
+  const auto detector_type =
+      this->declare_parameter("detector_type", std::string("traditional"));
+  detector_ = create_detector(detector_type, *this);
 
   // Light corner corrector
   corner_corrector_ = InitLightCornerCorrector();
@@ -39,7 +36,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   debug_ = this->declare_parameter("debug", false);
   if (debug_)
   {
-    detector_->debug_enabled = detector_params.type == "traditional";
     CreateDebugPublishers();
   }
 
@@ -202,19 +198,13 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
 {
   // Convert ROS img to cv::Mat
   auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-  std::vector<Armor> armors;
+  auto result = detector_->Detect(img);
 
-  armors = detector_->Detect(img);
-
-  if (1)
+  if (corner_corrector_ != nullptr && result.binary_image)
   {
-    // Correct the corners of the detected armors
-    if (corner_corrector_ != nullptr)
+    for (auto& armor : result.armors)
     {
-      for (auto& armor : armors)
-      {
-        corner_corrector_->CorrectCorners(armor, detector_->GetBinaryImage());
-      }
+      corner_corrector_->CorrectCorners(armor, *result.binary_image);
     }
   }
 
@@ -222,24 +212,26 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
   RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
 
-  // Publish debug info
   if (debug_)
   {
-    if (detector_->debug_enabled)
+    if (result.binary_image)
     {
       binary_img_pub_.publish(
-          cv_bridge::CvImage(img_msg->header, "mono8", detector_->GetBinaryImage())
+          cv_bridge::CvImage(img_msg->header, "mono8", *result.binary_image)
               .toImageMsg());
-      const auto& debug_data = detector_->GetDebugData();
-      lights_data_pub_->publish(debug_data.lights);
-      armors_data_pub_->publish(debug_data.armors);
+    }
 
-      if (!armors.empty())
-      {
-        auto all_num_img = detector_->GetNumbersImage();
-        number_img_pub_.publish(
-            *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
-      }
+    if (result.debug_data)
+    {
+      lights_data_pub_->publish(result.debug_data->lights);
+      armors_data_pub_->publish(result.debug_data->armors);
+    }
+
+    if (result.numbers_image && !result.numbers_image->empty())
+    {
+      number_img_pub_.publish(
+          *cv_bridge::CvImage(img_msg->header, "mono8", *result.numbers_image)
+               .toImageMsg());
     }
 
     detector_->DrawResults(img);
@@ -256,7 +248,7 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
         cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
   }
 
-  return armors;
+  return std::move(result.armors);
 }
 
 std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
@@ -356,76 +348,6 @@ void ArmorDetectorNode::DestroyDebugPublishers()
   binary_img_pub_.shutdown();  // 关闭调试发布者，使其不再发布任何消息
   number_img_pub_.shutdown();
   result_img_pub_.shutdown();
-}
-
-Detector::DetectorParams ArmorDetectorNode::UploadDetectorParams()
-{
-  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-
-  this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
-
-  Detector::DetectorParams detector_params = {
-      .binary_lower_thres =
-          static_cast<int>(declare_parameter("binary_lower_thres", 160)),
-      .binary_upper_thres =
-          static_cast<int>(declare_parameter("binary_upper_thres", 255)),
-      .detect_color = static_cast<int>(declare_parameter("detect_color", RED)),
-      .l = {.min_ratio = declare_parameter("light.min_ratio", 0.1),
-            .max_ratio = declare_parameter("light.max_ratio", 0.4),
-            .max_angle = declare_parameter("light.max_angle", 40.0)},
-      .a = {.min_light_ratio = declare_parameter("armor.min_light_ratio", 0.7),
-            .min_small_center_distance =
-                declare_parameter("armor.min_small_center_distance", 0.8),
-            .max_small_center_distance =
-                declare_parameter("armor.max_small_center_distance", 3.2),
-            .min_large_center_distance =
-                declare_parameter("armor.min_large_center_distance", 3.2),
-            .max_large_center_distance =
-                declare_parameter("armor.max_large_center_distance", 5.5),
-            .max_angle = declare_parameter("armor.max_angle", 35.0)},
-      .c = {.model_path = pkg_path + "/model/mlp.onnx",
-            .label_path = pkg_path + "/model/label.txt",
-            .threshold = this->declare_parameter("classifier_threshold", 0.7),
-            .ignore_classes = this->get_parameter("ignore_classes").as_string_array()}};
-
-  return detector_params;
-}
-
-YoloDetector::YoloParams ArmorDetectorNode::UploadYoloDetectorParams()
-{
-  auto model_name = this->declare_parameter("yolo.model_path", std::string(""));
-  if (model_name.empty())
-  {
-    RCLCPP_ERROR(
-        this->get_logger(),
-        "Parameter 'yolo.model_path' must not be empty when detector_type is 'yolo'.");
-    throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
-  }
-
-  // Resolve model path
-  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-  auto model_path = pkg_path + "/model/" + model_name;
-
-  // Check model file exists
-  if (!std::filesystem::exists(model_path))
-  {
-    RCLCPP_ERROR(this->get_logger(), "YOLO model file not found: %s", model_path.c_str());
-    throw std::runtime_error("YOLO model file not found: " + model_path);
-  }
-
-  YoloDetector::YoloParams yolo_params = {
-      .model_path = model_path,
-      .device = this->declare_parameter("yolo.device", std::string("CPU")),
-      .score_threshold =
-          static_cast<float>(this->declare_parameter("yolo.score_threshold", 0.7)),
-      .min_confidence =
-          static_cast<float>(this->declare_parameter("yolo.min_confidence", 0.8)),
-      .nms_threshold =
-          static_cast<float>(this->declare_parameter("yolo.nms_threshold", 0.3)),
-      .ignore_classes = this->get_parameter("ignore_classes").as_string_array(),
-      .detect_color = static_cast<int>(this->get_parameter("detect_color").as_int())};
-
-  return yolo_params;
 }
 
 }  // namespace rm_auto_aim
