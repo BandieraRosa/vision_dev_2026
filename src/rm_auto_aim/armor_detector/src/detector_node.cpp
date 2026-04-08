@@ -271,7 +271,7 @@ std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
 
 std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
 {
-  if (!this->declare_parameter("use_pose_optimizer", false))
+  if (!this->declare_parameter("optimizer.use_pose_optimizer", false))
   {
     return nullptr;
   }
