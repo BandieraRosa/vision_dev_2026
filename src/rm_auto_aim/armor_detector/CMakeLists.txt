@@ -24,21 +24,19 @@ ament_auto_find_build_dependencies()
 ## Build ##
 ###########
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/armor_pose_optimizer.cpp
-  src/detector.cpp
-  src/detector_node.cpp
-  src/detector_base.cpp
-  src/light_corner_corrector.cpp
-  src/number_classifier.cpp
-  src/pnp_solver.cpp
+# 创建列表，内容为 src 目录下的所有 .cpp 文件
+file(GLOB_RECURSE SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
+list(REMOVE_ITEM SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_detector.cpp
+)
+
+ament_auto_add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
-# --- Optional OpenVINO support ---
-# set(OpenVINO_DIR "/opt/intel/openvino_2024.6/runtime/cmake")
 find_package(OpenVINO REQUIRED CONFIG)
 if(OpenVINO_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_detector.cpp")
   target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
