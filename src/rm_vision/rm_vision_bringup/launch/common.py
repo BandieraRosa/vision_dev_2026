@@ -74,13 +74,24 @@ def get_tracker_node(robot_type="default"):
 
 def get_trajectory_node(robot_type="default"):
     trajectory_log_level = launch_params.get("trajectory_log_level", "INFO")
-    return Node(
-        package="planning_trajectory",
-        executable="planning_trajectory_node",
+    return ComposableNodeContainer(
+        name="trajectory_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        composable_node_descriptions=[
+            ComposableNode(
+                package="planning_trajectory",
+                plugin="rm_auto_aim::PlanningTrajectoryNode",
+                name="planning_trajectory",
+                parameters=[node_params, {"robot_type": robot_type}],
+                extra_arguments=[{"use_intra_process_comms": True}],
+            ),
+        ],
         output="both",
         emulate_tty=True,
-        parameters=[node_params, {"robot_type": robot_type}],
         ros_arguments=[
+            "--ros-args",
             "--log-level",
             "planning_trajectory:=" + trajectory_log_level,
         ],

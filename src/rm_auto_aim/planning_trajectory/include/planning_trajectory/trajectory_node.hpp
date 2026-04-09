@@ -1,17 +1,17 @@
 #ifndef ARMOR_PROCESSOR__PROCESSOR_NODE_HPP_
 #define ARMOR_PROCESSOR__PROCESSOR_NODE_HPP_
 
-#include <memory>
-#include <string>
-#include <tf2_ros/buffer.hpp>
-#include <utility>
-
-#include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/exceptions.h>
 #include <tf2_ros/create_timer_ros.h>
 #include <tf2_ros/transform_listener.h>
+
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <string>
+#include <tf2_ros/buffer.hpp>
+#include <utility>
 
 #include "auto_aim_interfaces/msg/send.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
@@ -36,6 +36,10 @@ class PlanningTrajectoryNode : public rclcpp::Node
   void PublishStopCommand();
 
   std::unique_ptr<Trajectory> trajectory_;
+
+  rclcpp::CallbackGroup::SharedPtr timer_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr sub_cb_group_;
+  std::mutex target_mutex_;
 
   rclcpp::Subscription<auto_aim_interfaces::msg::Velocity>::SharedPtr velocity_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
@@ -66,8 +70,7 @@ class PlanningTrajectoryNode : public rclcpp::Node
 
   double q_yaw_{0.0};
   double q_pitch_{0.0};
-  double q_vy_{0.0};
-  double q_ay_{0.0};
+  double q_jerk_{0.0};
   double r_yaw_{0.0};
   double r_pitch_{0.0};
 };

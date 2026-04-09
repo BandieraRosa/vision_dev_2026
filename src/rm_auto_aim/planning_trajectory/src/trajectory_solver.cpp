@@ -332,11 +332,8 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
     return;
   }
 
-  const int current_idx = selected_idx_;
-  const int next_idx = (current_idx + 1) % target_.num;
-
   const TarPostion center0 = PredictCenter(time_delay);
-  const TarPostion armor0 = PredictArmor(current_idx, center0);
+  const TarPostion armor0 = PredictArmor(0, center0);
   const double center_yaw_0 = SolveYaw(center0.x, center0.y);
   const double armor_yaw_err_0 =
       std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
@@ -344,7 +341,7 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
 
   const double t1 = time_delay + turn_s_;
   const TarPostion center1 = PredictCenter(t1);
-  const TarPostion armor1 = PredictArmor(next_idx, center1);
+  const TarPostion armor1 = PredictArmor(1, center1);
   const double center_yaw_1 = SolveYaw(center1.x, center1.y);
   const double armor_yaw_err_1 =
       std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
@@ -352,10 +349,39 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
 
   choose_next_ = (armor_yaw_err_1 <= armor_yaw_err_0) && (s_1 <= s_0);
 
-  selected_idx_ = choose_next_ ? next_idx : current_idx;
+  selected_idx_ = choose_next_ ? 1 : 0;
   selected_time_delay_ = choose_next_ ? t1 : time_delay;
   PredictOneArmorPosition(selected_time_delay_, selected_idx_);
 }
+
+// // 在一个合理的时间窗口内用二分法/牛顿法求 f(t)=0
+// double TrajectorySolver::FindSwitchTime(double t_lo, double t_hi, double tol = 1e-4)
+// {
+//   auto f = [&](double t) -> double {
+//     const auto c0 = PredictCenter(t);
+//     const auto a0 = PredictArmor(0, c0);
+//     double cy0 = SolveYaw(c0.x, c0.y);
+//     double err0 = std::fabs(AngleDiff(SolveYaw(a0.x, a0.y), cy0));
+
+//     const auto c1 = PredictCenter(t + turn_s_);
+//     const auto a1 = PredictArmor(1, c1);
+//     double cy1 = SolveYaw(c1.x, c1.y);
+//     double err1 = std::fabs(AngleDiff(SolveYaw(a1.x, a1.y), cy1));
+
+//     return err1 - err0;  // < 0 时 choose_next_ 为 true
+//   };
+
+//   // 二分法
+//   double lo = t_lo, hi = t_hi;
+//   while (hi - lo > tol) {
+//     double mid = (lo + hi) / 2.0;
+//     if (f(mid) > 0.0)
+//       lo = mid;
+//     else
+//       hi = mid;
+//   }
+//   return (lo + hi) / 2.0;
+// }
 
 void TrajectorySolver::PreSelectArmor(double time_delay)
 {

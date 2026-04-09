@@ -18,6 +18,8 @@ PlanningTrajectoryNode::PlanningTrajectoryNode(const rclcpp::NodeOptions& option
 void PlanningTrajectoryNode::TargetCallback(
     const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
 {
+  std::lock_guard<std::mutex> lk(target_mutex_);
+
   if (target_msg->is_switchtable && !last_switchtable_)
   {
     trajectory_->SwitchTable();
@@ -63,7 +65,17 @@ void PlanningTrajectoryNode::PublishStopCommand()
 void PlanningTrajectoryNode::timer_callback()
 {
   auto start = std::chrono::high_resolution_clock::now();
-  if (!tracking_)
+
+  // 先把需要的状态在锁内拷贝出来，尽快释放锁
+  bool tracking_local;
+  TrajectorySolver::Target target_local;
+  {
+    std::lock_guard<std::mutex> lk(target_mutex_);
+    tracking_local = tracking_;
+    target_local = target_;
+  }
+
+  if (!tracking_local)
   {
     PublishStopCommand();
     return;
@@ -90,15 +102,18 @@ void PlanningTrajectoryNode::timer_callback()
   int idx = TrajectorySolver::LOST;
   TrajectorySolver::control cmd{};
 
-  trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
-                                            aim_z, idx, target_, gimbal_yaw, dt_);
+  // 调用 solver 也要加锁，因为 trajectory_ 内部状态会被 Reset() / SwitchTable() 修改
+  {
+    std::lock_guard<std::mutex> lk(target_mutex_);
+    trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x,
+                                              aim_y, aim_z, idx, target_local, gimbal_yaw,
+                                              dt_);
+    trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
+  }
 
-  trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
-
+  // publish 放在锁外，避免阻塞 sub 线程
   auto_aim_interfaces::msg::Send send_msg;
   send_msg.is_fire = cmd.is_fire;
-
-  // 只有当 Send.msg 的 pitch 定义是“向下为正”时，才取负号
   send_msg.pitch = cmd.pitch;
   send_msg.yaw = cmd.yaw;
   send_msg.vel_yaw = cmd.vel_yaw;
@@ -115,7 +130,7 @@ void PlanningTrajectoryNode::timer_callback()
   info_msg.bc_yaw = cmd.yaw;
   info_msg.bc_pitch = cmd.pitch;
   info_pub_->publish(info_msg);
-  
+
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   RCLCPP_DEBUG(this->get_logger(), "Trajectory time: %ld us", duration.count());
@@ -220,29 +235,43 @@ void PlanningTrajectoryNode::Init()
   {
     table_config_lob_ = table_config_;
   }
+  // ====== 新增：创建两个互斥型 callback group ======
+  timer_cb_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  sub_cb_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  // ====== 订阅：放进 sub_cb_group_ ======
+  rclcpp::SubscriptionOptions sub_options;
+  sub_options.callback_group = sub_cb_group_;
+
   velocity_sub_ = this->create_subscription<auto_aim_interfaces::msg::Velocity>(
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { trajectory_->InitVelocity(velocity_msg); });
+      { trajectory_->InitVelocity(velocity_msg); },
+      sub_options);
 
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(),
       [this](const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
-      { TargetCallback(target_msg); });
+      { TargetCallback(target_msg); },
+      sub_options);
 
+  // ====== 发布器（无 group 概念，发布是同步调用） ======
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/trajectory/send", rclcpp::SensorDataQoS());
   info_pub_ = this->create_publisher<auto_aim_interfaces::msg::TrajectoryInfo>(
       "/trajectory/info", rclcpp::SensorDataQoS());
 
+  // ====== Timer：放进 timer_cb_group_ ======
   timer_ = this->create_wall_timer(
       std::chrono::duration<double, std::milli>(1000.0 / send_frequency_),
-      std::bind(&PlanningTrajectoryNode::timer_callback, this));
+      std::bind(&PlanningTrajectoryNode::timer_callback, this),
+      timer_cb_group_); 
   q_yaw_ = this->declare_parameter("ekf.q_yaw", 0.0);
   q_pitch_ = this->declare_parameter("ekf.q_pitch", 0.0);
-  q_vy_ = this->declare_parameter("ekf.q_vy", 0.0);
-  q_ay_ = this->declare_parameter("ekf.q_ay", 0.0);
+  q_jerk_ = this->declare_parameter("ekf.q_jerk", 0.0);
   r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.0);
   r_pitch_ = this->declare_parameter("ekf.r_pitch", 0.0);
   auto f = [this](const Eigen::VectorXd& x) -> Eigen::VectorXd
@@ -284,10 +313,21 @@ void PlanningTrajectoryNode::Init()
     return H;
   };
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(4, 4);
+
+  // yaw: 独立噪声
   Q(0, 0) = q_yaw_;
-  Q(1, 1) = q_vy_;
-  Q(2, 2) = q_ay_;
+  double T = dt_;  // 采样周期
+  double T2 = T * T;
+  double T3 = T2 * T;
+
+  Q(1, 1) = q_jerk_ * T3 / 3.0;  // vy-vy
+  Q(1, 2) = q_jerk_ * T2 / 2.0;  // vy-ay
+  Q(2, 1) = q_jerk_ * T2 / 2.0;  // ay-vy
+  Q(2, 2) = q_jerk_ * T;         // ay-ay
+
+  // pitch: 独立噪声
   Q(3, 3) = q_pitch_;
+
   auto u_q = [Q]() -> Eigen::MatrixXd { return Q; };
 
   Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2, 2);
