@@ -78,7 +78,7 @@ class Detector : public DetectorBase
                     const std::vector<Light>& lights);
   ArmorType IsArmor(const Light& light_1, const Light& light_2);
   const DebugData& GetDebugData();
-  const cv::Mat& GetNumbersImage() const;
+  const cv::Mat& GetNumbersImage();
 
   DetectorParams params_;
   std::unique_ptr<NumberClassifier> classifier_;

@@ -304,7 +304,14 @@ const cv::Mat& Detector::GetNumbersImage() const
       number_imgs.emplace_back(armor.number_img);
     }
   }
-  cv::vconcat(number_imgs, all_num_img_);
+  if (number_imgs.empty())
+  {
+    all_num_img_.release();
+  }
+  else
+  {
+    cv::vconcat(number_imgs, all_num_img_);
+  }
   return all_num_img_;
 }
 
