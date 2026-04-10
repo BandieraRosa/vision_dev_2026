@@ -18,7 +18,7 @@ namespace rm_auto_aim
 namespace
 {
 
-static constexpr std::array<std::string, 38> YOLO11_MODEL_LABELS = {
+static const std::array<std::string, 38> YOLO11_MODEL_LABELS = {
     "Bsentry",       "Rsentry",       "Esentry",      "Bone",         "Rone",
     "Eone",          "Btwo",          "Rtwo",         "Etwo",         "Bthree",
     "Rthree",        "Ethree",        "Bfour",        "Rfour",        "Efour",

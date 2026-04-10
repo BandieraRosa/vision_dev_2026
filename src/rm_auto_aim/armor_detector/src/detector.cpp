@@ -293,7 +293,7 @@ ArmorType Detector::IsArmor(const Light& light_1, const Light& light_2)
 }
 
 // 将检测到的所有装甲板上的数字图像垂直拼接成一个单独的图像并返回
-const cv::Mat& Detector::GetNumbersImage() const
+const cv::Mat& Detector::GetNumbersImage()
 {
   std::vector<cv::Mat> number_imgs;
   number_imgs.reserve(armors_.size());
