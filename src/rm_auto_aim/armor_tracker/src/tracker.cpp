@@ -58,7 +58,6 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     UpdateTrackerState(matched);
     return;
   }
-
   int same_id_armors_count = 0;
   predicted_position = GetArmorPositionFromState(ekf_prediction);
   double min_position_diff = DBL_MAX;

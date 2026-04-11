@@ -3,6 +3,6 @@
 	url = https://github.com/QDU-VRobot/config.git
 	branch = main
 	ignore = all
-[submodule "/home/bandiera/Desktop/vision_dev/src/rm_vision/rm_vision_bringup/test_assets"]
-	path = /home/bandiera/Desktop/vision_dev/src/rm_vision/rm_vision_bringup/test_assets
+[submodule "src/rm_vision/rm_vision_bringup/test_assets"]
+	path = src/rm_vision/rm_vision_bringup/test_assets
 	url = https://github.com/QDU-VRobot/test_assets.git

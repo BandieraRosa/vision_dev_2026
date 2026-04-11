@@ -75,47 +75,109 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   s2_q_r_ = s2_q_r_armor_;
   auto u_q = [this]()
   {
-    Eigen::MatrixXd q(9, 9);
-    double t = dt_, x = s2_q_x_, y = s2_q_y_, z = s2_q_z_, yaw = s2_q_yaw_, r = s2_q_r_;
-    double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
-    double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y, q_vy_vy = pow(t, 2) * y;
-    double q_z_z = pow(t, 4) / 4 * z, q_z_vz = pow(t, 3) / 2 * z, q_vz_vz = pow(t, 2) * z;
-    double q_yaw_yaw = pow(t, 4) / 4 * yaw, q_yaw_vyaw = pow(t, 3) / 2 * yaw,
-           q_vyaw_vyaw = pow(t, 2) * yaw;
-    double q_r_r = pow(t, 4) / 4 * r;
-    // clang-format off
-    q <<  q_x_x,  q_x_vx,  0,      0,       0,      0,       0,          0,           0,
-          q_x_vx, q_vx_vx, 0,      0,       0,      0,       0,          0,           0,
-          0,      0,       q_y_y,  q_y_vy,  0,      0,       0,          0,           0,
-          0,      0,       q_y_vy, q_vy_vy, 0,      0,       0,          0,           0,
-          0,      0,       0,      0,       q_z_z,  q_z_vz,  0,          0,           0,
-          0,      0,       0,      0,       q_z_vz, q_vz_vz, 0,          0,           0,
-          0,      0,       0,      0,       0,      0,       q_yaw_yaw,  q_yaw_vyaw,  0,
-          0,      0,       0,      0,       0,      0,       q_yaw_vyaw, q_vyaw_vyaw, 0,
-          0,      0,       0,      0,       0,      0,       0,          0,           q_r_r;
-    // clang-format on
+    Eigen::MatrixXd q = Eigen::MatrixXd::Zero(9, 9);
+    const double t = dt_;
+
+    auto add_cv_block = [&](int idx_pos, int idx_vel, double sigma2)
+    {
+      const double a = std::pow(t, 4) / 4.0 * sigma2;
+      const double b = std::pow(t, 3) / 2.0 * sigma2;
+      const double c = std::pow(t, 2) * sigma2;
+      q(idx_pos, idx_pos) = a;
+      q(idx_pos, idx_vel) = b;
+      q(idx_vel, idx_pos) = b;
+      q(idx_vel, idx_vel) = c;
+    };
+
+    add_cv_block(0, 1, s2_q_x_);
+    add_cv_block(2, 3, s2_q_y_);
+    add_cv_block(4, 5, s2_q_z_);
+    add_cv_block(6, 7, s2_q_yaw_);
+
+    q(8, 8) = std::max(1e-8, t * s2_q_r_);
     return q;
+
+    // Eigen::MatrixXd q(9, 9);
+    // double t = dt_, x = s2_q_x_, y = s2_q_y_, z = s2_q_z_, yaw = s2_q_yaw_, r =
+    // s2_q_r_; double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx =
+    // pow(t, 2) * x; double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y,
+    // q_vy_vy = pow(t, 2) * y; double q_z_z = pow(t, 4) / 4 * z, q_z_vz = pow(t, 3) / 2 *
+    // z, q_vz_vz = pow(t, 2) * z; double q_yaw_yaw = pow(t, 4) / 4 * yaw, q_yaw_vyaw =
+    // pow(t, 3) / 2 * yaw,
+    //        q_vyaw_vyaw = pow(t, 2) * yaw;
+    // double q_r_r = pow(t, 4) / 4 * r;
+    // // clang-format off
+    // q <<  q_x_x,  q_x_vx,  0,      0,       0,      0,       0,          0, 0,
+    //       q_x_vx, q_vx_vx, 0,      0,       0,      0,       0,          0, 0, 0, 0,
+    //       q_y_y,  q_y_vy,  0,      0,       0,          0,           0, 0,      0,
+    //       q_y_vy, q_vy_vy, 0,      0,       0,          0,           0, 0,      0, 0,
+    //       0,       q_z_z,  q_z_vz,  0,          0,           0, 0,      0,       0, 0,
+    //       q_z_vz, q_vz_vz, 0,          0,           0, 0,      0,       0,      0, 0,
+    //       0,       q_yaw_yaw,  q_yaw_vyaw,  0, 0,      0,       0,      0,       0, 0,
+    //       q_yaw_vyaw, q_vyaw_vyaw, 0, 0,      0,       0,      0,       0,      0, 0,
+    //       0,           q_r_r;
+    // // clang-format on
+    // return q;
   };
   // update_R - measurement noise covariance matrix
   auto u_r = [this](const Eigen::VectorXd& x)
   {
+    // Eigen::DiagonalMatrix<double, 4> r;
+    // double factor = r_xyz_factor_;
+    // r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
+    // return r;
+
+    // Eigen::DiagonalMatrix<double, 4> r;
+
+    // constexpr double d2_min = 0.25;
+    // constexpr double d2_max = 25.0;
+
+    // double min_xyz_var = r_xyz_factor_ * d2_min;
+    // double max_xyz_var = r_xyz_factor_ * d2_max;
+    // double d2 = x[0] * x[0] + x[2] * x[2] + x[4] * x[4];
+    // d2 = std::clamp(d2, d2_min, d2_max);
+    // double r_xyz_var =
+    //     min_xyz_var + (max_xyz_var - min_xyz_var) * (d2 - d2_min) / (d2_max - d2_min);
+    // double r_x_var = r_xyz_var, r_y_var = r_xyz_var / 2, r_z_var = r_xyz_var / 2;
+    // double max_yaw_var = r_yaw_ * 10;
+    // double r_yaw_var = r_yaw_ * 1 / std::fabs(std::cos(x[6]));
+    // r_yaw_var = std::min(r_yaw_var, max_yaw_var);
+
+    // r.diagonal() << r_x_var, r_y_var, r_z_var, r_yaw_var;
+    // return r;
+
     Eigen::DiagonalMatrix<double, 4> r;
 
-    constexpr double d2_min = 0.25;
-    constexpr double d2_max = 25.0;
+    auto wrap_to_pi = [](double a) { return std::atan2(std::sin(a), std::cos(a)); };
 
-    double min_xyz_var = r_xyz_factor_ * d2_min;
-    double max_xyz_var = r_xyz_factor_ * d2_max;
-    double d2 = x[0] * x[0] + x[2] * x[2] + x[4] * x[4];
-    d2 = std::clamp(d2, d2_min, d2_max);
-    double r_xyz_var =
-        min_xyz_var + (max_xyz_var - min_xyz_var) * (d2 - d2_min) / (d2_max - d2_min);
-    double r_x_var = r_xyz_var, r_y_var = r_xyz_var / 2, r_z_var = r_xyz_var / 2;
-    double max_yaw_var = r_yaw_ * 10;
-    double r_yaw_var = r_yaw_ * 1 / std::fabs(std::cos(x[6]));
-    r_yaw_var = std::min(r_yaw_var, max_yaw_var);
+    const double xc = x(0);
+    const double yc = x(2);
+    const double za = x(4);
+    const double yaw = x(6);
+    const double radius = x(8);
 
-    r.diagonal() << r_x_var, r_y_var, r_z_var, r_yaw_var;
+    const double xa = xc - radius * std::cos(yaw);
+    const double ya = yc - radius * std::sin(yaw);
+
+    const double dist = std::sqrt(xa * xa + ya * ya + za * za);
+    const double los_yaw = std::atan2(ya, xa);
+    const double oblique = std::min(std::abs(wrap_to_pi(yaw - los_yaw)), 1.57);
+
+    const double sigma_xy =
+        r_xyz_base_ + r_xyz_dist_gain_ * dist + r_xyz_oblique_gain_ * std::log1p(oblique);
+
+    const double sigma_z = sigma_xy * r_z_scale_;
+
+    double sigma_yaw =
+        r_yaw_base_ + r_yaw_dist_gain_ * std::log1p(dist) + r_yaw_oblique_gain_ * oblique;
+
+    if (tracker_->tracked_id == "outpost")
+    {
+      sigma_yaw *= r_yaw_outpost_scale_;
+    }
+
+    r.diagonal() << sigma_xy * sigma_xy, sigma_xy * sigma_xy, sigma_z * sigma_z,
+        sigma_yaw * sigma_yaw;
     return r;
   };
   // P - error estimate covariance matrix
@@ -189,6 +251,18 @@ void ArmorTrackerNode::InitParameters()
 
   r_xyz_factor_ = this->declare_parameter("ekf.r_xyz_factor", 0.05);
   r_yaw_ = this->declare_parameter("ekf.r_yaw", 0.02);
+
+  r_xyz_base_ = this->declare_parameter("ekf.r_xyz_base", 0.010);
+  r_xyz_dist_gain_ = this->declare_parameter("ekf.r_xyz_dist_gain", 0.003);
+  r_xyz_oblique_gain_ = this->declare_parameter("ekf.r_xyz_oblique_gain", 0.010);
+
+  r_z_scale_ = this->declare_parameter("ekf.r_z_scale", 1.30);
+
+  r_yaw_base_ = this->declare_parameter("ekf.r_yaw_base", 0.050);
+  r_yaw_dist_gain_ = this->declare_parameter("ekf.r_yaw_dist_gain", 0.030);
+  r_yaw_oblique_gain_ = this->declare_parameter("ekf.r_yaw_oblique_gain", 0.150);
+
+  r_yaw_outpost_scale_ = this->declare_parameter("ekf.r_yaw_outpost_scale", 0.7);
 }
 
 void ArmorTrackerNode::ArmorsCallback(
@@ -248,6 +322,7 @@ void ArmorTrackerNode::ArmorsCallback(
   else
   {
     dt_ = (time - last_time_).seconds();
+    dt_ = std::clamp(dt_, 1e-3, 0.1);
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
     tracker_->change_thres = static_cast<int>(change_time_thres_ / dt_);
     tracker_->Update(armors_msg);
@@ -297,4 +372,3 @@ void ArmorTrackerNode::ArmorsCallback(
 #include "rclcpp_components/register_node_macro.hpp"
 
 RCLCPP_COMPONENTS_REGISTER_NODE(rm_auto_aim::ArmorTrackerNode)
-
