@@ -48,6 +48,7 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
 void Tracker::Update(const Armors::SharedPtr& armors_msg)
 {
   Eigen::VectorXd ekf_prediction = ekf.predict();
+  TickManeuverBoost();
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
 
   bool matched = false;
@@ -58,6 +59,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     UpdateTrackerState(matched);
     return;
   }
+
   int same_id_armors_count = 0;
   predicted_position = GetArmorPositionFromState(ekf_prediction);
   double min_position_diff = DBL_MAX;
@@ -77,30 +79,33 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   if (!matched)
   {
     double health_rate = ekf.GetHealthRate();
-    double effective_yaw_thresh =
-        (tracked_armor.number != "outpost") ? max_match_yaw_diff_
-                                            : max_match_yaw_diff_ + 0.7;
+    double effective_yaw_thresh = (tracked_armor.number != "outpost")
+                                      ? max_match_yaw_diff_
+                                      : max_match_yaw_diff_ + 0.7;
 
     if (same_id_armors_count == 1 && yaw_diff > effective_yaw_thresh)
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
+      // ArmManeuverBoost(4);
       HandleArmorJump(tracked_armor);
     }
-    else if (0.5 < health_rate && health_rate < 0.8)
+    else if (0.5 < health_rate && health_rate < 0.8 && same_id_armors_count > 0)
     {
-      SoftBreakEKF(ekf_prediction(2), tracked_armor.pose.position.y);
+      Eigen::Vector2d innovation_xy(
+          tracked_armor.pose.position.x - predicted_position.x(),
+          tracked_armor.pose.position.y - predicted_position.y());
+      SoftBreakEKF(innovation_xy);
     }
+
     else if (health_rate < 0.5)
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
                   health_rate);
+      // ResetState(double &yaw, const geometry_msgs::msg::Point &position)
     }
   }
 
-  // 防止半径扩散
   ClampTargetRadius();
-
-  // 跟踪状态机制处理
   UpdateTrackerState(matched);
 
   if (armors_msg->armors.size() > 1)
@@ -155,53 +160,85 @@ void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
 }
 
 bool Tracker::MatchArmor(const Armors::SharedPtr& armors_msg,
-                         const Eigen::VectorXd& ekf_prediction,
-                         int& same_id_armors_count, double& min_position_diff,
-                         double& yaw_diff)
+                         const Eigen::VectorXd& ekf_prediction, int& same_id_armors_count,
+                         double& min_position_diff, double& yaw_diff)
 {
   int correct_match_count = 0;
   double best_yaw_diff = DBL_MAX;
+  double best_nis = DBL_MAX;
+
+  constexpr double kPositionGateScale = 1.5;
+  constexpr double kChi2Gate = 13.28;  // dof=4, ~99%
+
+  bool has_same_id_candidate = false;
+  double nearest_same_id_dist = DBL_MAX;
+  Armor nearest_same_id_armor = tracked_armor;
+  Armor best_match_armor = tracked_armor;
 
   for (const auto& armor : armors_msg->armors)
   {
-    if (armor.number == tracked_id)
+    if (armor.number != tracked_id)
     {
-      same_id_armors_count++;
+      continue;
+    }
 
-      auto p = armor.pose.position;
-      Eigen::Vector3d position_vec(p.x, p.y, p.z);
-      double position_diff = (predicted_position - position_vec).norm();
+    same_id_armors_count++;
 
-      double local_yaw_diff =
-          std::abs(OrientationToYaw(armor.pose.orientation) - ekf_prediction(6));
+    const auto& p = armor.pose.position;
+    Eigen::Vector3d position_vec(p.x, p.y, p.z);
+    const double position_diff = (predicted_position - position_vec).norm();
+    min_position_diff = std::min(min_position_diff, position_diff);
 
-      double effective_yaw_thresh =
-          (tracked_armor.number != "outpost") ? max_match_yaw_diff_
-                                              : max_match_yaw_diff_ + 0.7;
+    // 记录最近的 same-id 候选，即使它最终没通过 gate
+    if (position_diff < nearest_same_id_dist)
+    {
+      nearest_same_id_dist = position_diff;
+      nearest_same_id_armor = armor;
+      has_same_id_candidate = true;
+    }
 
-      if (position_diff < max_match_distance_ && local_yaw_diff < effective_yaw_thresh)
+    const double measured_yaw = OrientationToYaw(armor.pose.orientation);
+    const double local_yaw_diff = std::abs(AngleDiff(measured_yaw, ekf_prediction(6)));
+    best_yaw_diff = std::min(best_yaw_diff, local_yaw_diff);
+
+    const double effective_yaw_thresh = (tracked_armor.number != "outpost")
+                                            ? max_match_yaw_diff_
+                                            : max_match_yaw_diff_ + 0.7;
+
+    // 第一级：粗筛
+    if (position_diff > kPositionGateScale * max_match_distance_ ||
+        local_yaw_diff > effective_yaw_thresh)
+    {
+      continue;
+    }
+
+    // 第二级：NIS 精排
+    Eigen::Vector4d z;
+    z << p.x, p.y, p.z, measured_yaw;
+    const double nis = ekf.ComputeNIS(z);
+
+    if (nis < kChi2Gate)
+    {
+      if (nis < best_nis)
       {
-        if (position_diff < min_position_diff)
-        {
-          min_position_diff = position_diff;
-          best_yaw_diff = local_yaw_diff;
-          tracked_armor = armor;
-        }
-        correct_match_count++;
+        best_nis = nis;
+        best_match_armor = armor;
       }
-      else
-      {
-        // 即使不匹配，也记录最小 yaw_diff 供外部跳变判断使用
-        if (local_yaw_diff < best_yaw_diff)
-        {
-          best_yaw_diff = local_yaw_diff;
-        }
-      }
+      correct_match_count++;
     }
   }
 
-  yaw_diff = best_yaw_diff;
+  if (correct_match_count > 0)
+  {
+    tracked_armor = best_match_armor;
+  }
+  else if (has_same_id_candidate)
+  {
+    // 即使没匹配成功，也留一个当前帧最近的同 ID 候选
+    tracked_armor = nearest_same_id_armor;
+  }
 
+  yaw_diff = best_yaw_diff;
   return correct_match_count > 0;
 }
 
@@ -214,6 +251,10 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
   }
 
   measurement = Eigen::Vector4d(adjusted_p.x, adjusted_p.y, adjusted_p.z, measured_yaw);
+
+  // 先基于 x_pri 取 innovation，后面用来判断“是否还在沿旧方向跑”
+  const Eigen::VectorXd innovation = ekf.ComputeInnovation(measurement);
+
   target_state = ekf.update(measurement);
 
   if (tracked_id == "outpost")
@@ -221,13 +262,14 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
     target_state(1) = 0;
     target_state(3) = 0;
     target_state(5) = 0;
-    // FIX: 正负对称的固定角速度
-    target_state(7) =
-        (target_state(7) > 0 ? 1.0 : -1.0) * outpost_vyaw_abs;
+    target_state(7) = (target_state(7) > 0 ? 1.0 : -1.0) * outpost_vyaw_abs;
   }
   else
   {
-    VelocityConstrain(10, 10, 10, 10, 1);
+    // 新增：轻量 lag compensation
+    CompensatePredictionLag(innovation);
+
+    VelocityConstrain(5, 5, 5, 16, 1);
   }
 
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
@@ -291,6 +333,8 @@ void Tracker::SwitchEKFParams() { switch_q_(is_outpost); }
 
 void Tracker::InitEkf(const Armor& armor)
 {
+  maneuver_boost_count_ = 0;
+
   first_tracked = true;
   is_outpost = (armor.number == "outpost");
   SwitchEKFParams();
@@ -348,28 +392,102 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   ekf.setState(target_state);
 }
 
-void Tracker::SoftBreakEKF(const double y_pri, const double y_mea)
+void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
 {
-  int sign = (target_state(3) > 0) - (target_state(3) < 0);
-  if ((y_pri - y_mea) * sign > 0.1)
+  // innovation_xy = measured_xy - predicted_xy
+  const double innovation_norm = innovation_xy.norm();
+  if (innovation_norm < 0.03)
   {
-    y_diff_count_++;
+    lag_diff_count_ = 0;
+    return;
+  }
+
+  Eigen::Vector2d v_xy(target_state(1), target_state(3));
+  const double v_norm = v_xy.norm();
+  if (v_norm < 1e-3)
+  {
+    lag_diff_count_ = 0;
+    return;
+  }
+
+  // 残差在当前速度方向上的投影
+  // 若 proj < 0，说明观测落在“当前速度方向的反方向”，也就是预测还沿旧方向跑
+  const double proj = innovation_xy.dot(v_xy / v_norm);
+
+  // 横向残差占比大，也说明可能在变向
+  const double lateral =
+      std::sqrt(std::max(0.0, innovation_norm * innovation_norm - proj * proj));
+
+  // 条件 1：沿速度方向明显“拖后”
+  // 条件 2：横向残差显著，说明可能在拐弯
+  const bool lagging_along_velocity = (proj < -0.03);
+  const bool strong_lateral_error = (lateral > 0.05 && lateral > 0.8 * std::abs(proj));
+
+  if (lagging_along_velocity || strong_lateral_error)
+  {
+    lag_diff_count_++;
   }
   else
   {
-    y_diff_count_ = 0;
+    lag_diff_count_ = 0;
   }
-  if (y_diff_count_ > 3)
+
+  if (lag_diff_count_ > 2)
   {
-    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Soft break EKF!");
-    target_state(3) *= -0.5;
+    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                "Soft break EKF! proj=%.3f lateral=%.3f", proj, lateral);
+
+    // 只刹平面速度，不直接反号，避免抖动
+    target_state(1) *= 0.35;
+    target_state(3) *= 0.35;
+
     ekf.setState(target_state);
-    y_diff_count_ = 0;
+    lag_diff_count_ = 0;
   }
 }
 
+void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
+{
+  if (innovation.size() < 4)
+  {
+    return;
+  }
+
+  bool boost_needed = false;
+
+  // innovation 是“装甲板观测 - 装甲板预测”
+  // 若 residual 与当前平面速度方向相反，说明滤波器还在沿旧方向跑
+  const Eigen::Vector2d v(target_state(1), target_state(3));
+  const Eigen::Vector2d e(innovation(0), innovation(1));
+
+  if (v.squaredNorm() > 1e-4)
+  {
+    const double proj = e.dot(v.normalized());
+    if (proj < -0.03)
+    {
+      target_state(1) *= 0.35;
+      target_state(3) *= 0.35;
+      boost_needed = true;
+    }
+  }
+
+  // 转向残差大，说明旧角速度也可能不对
+  if (std::abs(innovation(3)) > 0.35)
+  {
+    target_state(7) *= 0.5;
+    boost_needed = true;
+  }
+
+  if (boost_needed)
+  {
+    ArmManeuverBoost(4);
+  }
+
+  ekf.setState(target_state);
+}
+
 void Tracker::VelocityConstrain(double vx_max, double vy_max, double vz_max,
-                                double vyaw_max, double yaw_coupling = 1.0)
+                                double vyaw_max, double yaw_coupling)
 {
   double& vx = target_state(1);
   double& vy = target_state(3);
@@ -472,4 +590,3 @@ Eigen::Vector3d Tracker::GetArmorPositionFromState(const Eigen::VectorXd& x)
 }
 
 }  // namespace rm_auto_aim
-

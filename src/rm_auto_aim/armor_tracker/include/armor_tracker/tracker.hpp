@@ -41,9 +41,8 @@ class Tracker  // 整车观测
   /// @brief 匹配当前帧中与 tracked_id 相同的装甲板，返回是否匹配成功
   ///        匹配成功时 tracked_armor 被更新为最佳匹配
   bool MatchArmor(const Armors::SharedPtr& armors_msg,
-                  const Eigen::VectorXd& ekf_prediction,
-                  int& same_id_armors_count, double& min_position_diff,
-                  double& yaw_diff);
+                  const Eigen::VectorXd& ekf_prediction, int& same_id_armors_count,
+                  double& min_position_diff, double& yaw_diff);
 
   /// @brief 匹配成功后，执行 EKF update 并做速度约束
   void UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p);
@@ -53,6 +52,23 @@ class Tracker  // 整车观测
 
   /// @brief 跟踪状态机转移
   void UpdateTrackerState(bool matched);
+  bool NeedManeuverBoost() const { return maneuver_boost_count_ > 0; }
+
+  void ArmManeuverBoost(int count = 4)
+  {
+    if (count > maneuver_boost_count_)
+    {
+      maneuver_boost_count_ = count;
+    }
+  }
+
+  void TickManeuverBoost()
+  {
+    if (maneuver_boost_count_ > 0)
+    {
+      --maneuver_boost_count_;
+    }
+  }
 
   ExtendedKalmanFilter ekf;
 
@@ -87,10 +103,10 @@ class Tracker  // 整车观测
   static int outpost_idx;
   static double outpost_cast_threshold;
 
-  double radius_min = 0.12;             // 半径下限
-  double radius_max = 0.4;              // 半径上限
-  double default_init_radius = 0.26;    // 非前哨站初始半径
-  double outpost_vyaw_abs = 0.8;        // 前哨站固定角速度绝对值
+  double radius_min = 0.12;           // 半径下限
+  double radius_max = 0.4;            // 半径上限
+  double default_init_radius = 0.26;  // 非前哨站初始半径
+  double outpost_vyaw_abs = 0.8;      // 前哨站固定角速度绝对值
 
   Eigen::VectorXd measurement;   // 测量
   Eigen::VectorXd target_state;  // 目标状态
@@ -100,26 +116,29 @@ class Tracker  // 整车观测
   double dz, another_r;
 
  private:
+  static double NormalizeAngle(double a) { return std::remainder(a, 2.0 * M_PI); }
+  static double AngleDiff(double a, double b) { return NormalizeAngle(a - b); }
   void InitEkf(const Armor& a);
   void UpdateArmorsNum(const Armor& a);
   void ResetState(double& yaw, const geometry_msgs::msg::Point& position);
   void UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw);
   void HandleArmorJump(const Armor& current_armor);
-  void SoftBreakEKF(const double y_pri, const double y_mea);
+  void SoftBreakEKF(const Eigen::Vector2d& innovation_xy);
   void VelocityConstrain(double vx_max, double vy_max, double vz_max, double vyaw_max,
                          double yaw_coupling);
 
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
   Eigen::Vector3d GetArmorPositionFromState(const Eigen::VectorXd& x);
   void SwitchEKFParams();
-
+  void CompensatePredictionLag(const Eigen::VectorXd& innovation);
   double max_match_distance_;
   double max_match_yaw_diff_;
+  int maneuver_boost_count_ = 0;
 
   int detect_count_ = 0;
   int lost_count_ = 0;
   int change_count_ = 0;
-  int y_diff_count_ = 0;
+  int lag_diff_count_ = 0;
 
   double last_yaw_ = 0.0;  // FIX: 显式初始化，避免首次 OrientationToYaw 结果随机
 };
@@ -127,4 +146,3 @@ class Tracker  // 整车观测
 }  // namespace rm_auto_aim
 
 #endif  // ARMOR_PROCESSOR__TRACKER_HPP_
-

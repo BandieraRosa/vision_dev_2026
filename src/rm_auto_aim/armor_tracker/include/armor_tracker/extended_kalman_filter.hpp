@@ -34,10 +34,15 @@ class ExtendedKalmanFilter
   // Get the estimated state
   Eigen::VectorXd getState();
 
+  // 新增：给 MatchArmor 用
+  Eigen::VectorXd ComputeInnovation(const Eigen::VectorXd& z) const;
+  double ComputeNIS(const Eigen::VectorXd& z) const;
+
   // Get the health rate
   double GetHealthRate();
 
  private:
+  static double NormalizeAngle(double a) { return std::remainder(a, 2.0 * M_PI); }
   // Process nonlinear vector function
   VecVecFunc f;
   // Observation nonlinear vector function

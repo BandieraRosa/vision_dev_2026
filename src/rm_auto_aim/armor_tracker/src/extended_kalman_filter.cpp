@@ -45,16 +45,39 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict()
   return x_pri;
 }
 
+Eigen::VectorXd ExtendedKalmanFilter::ComputeInnovation(const Eigen::VectorXd& z) const
+{
+  Eigen::VectorXd innovation = z - h(x_pri);
+  if (innovation.size() > 3)
+  {
+    innovation(3) = NormalizeAngle(innovation(3));
+  }
+  return innovation;
+}
+
+double ExtendedKalmanFilter::ComputeNIS(const Eigen::VectorXd& z) const
+{
+  const Eigen::MatrixXd H_local = jacobian_h(x_pri);
+  const Eigen::MatrixXd R_local = update_R(x_pri);
+  const Eigen::VectorXd innovation = ComputeInnovation(z);
+  const Eigen::MatrixXd S = H_local * P_pri * H_local.transpose() + R_local;
+
+  return innovation.transpose() * S.ldlt().solve(innovation);
+}
+
 Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
 {
   H = jacobian_h(x_pri), R = update_R(x_pri);
 
   K = P_pri * H.transpose() *
       (H * P_pri * H.transpose() + R).inverse();  // inverse计算逆矩阵
-  x_post = x_pri + K * (z - h(x_pri));
-  P_post = (I - K * H) * P_pri;
 
-  Eigen::VectorXd innovation = z - h(x_pri);
+  const Eigen::VectorXd innovation = ComputeInnovation(z);
+  x_post = x_pri + K * innovation;
+  //  P_post = (I - K * H) * P_pri;
+  const Eigen::MatrixXd I_KH = I - K * H;
+  P_post = I_KH * P_pri * I_KH.transpose() + K * R * K.transpose();
+
   Eigen::MatrixXd s = H * P_pri * H.transpose() + R;
   double nis = innovation.transpose() * s.inverse() * innovation;
   nis_window_.push_back(nis);
@@ -66,10 +89,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
   return x_post;
 }
 
-Eigen::VectorXd ExtendedKalmanFilter::getState()
-{
-  return x_post;
-}
+Eigen::VectorXd ExtendedKalmanFilter::getState() { return x_post; }
 
 double ExtendedKalmanFilter::GetHealthRate()
 {
@@ -78,8 +98,8 @@ double ExtendedKalmanFilter::GetHealthRate()
     return 1.0;
   }
   int health = static_cast<int>(std::count_if(nis_window_.begin(), nis_window_.end(),
-                                            [](double v)
-                                            { return v < 9.49; }));  // chi2(4, 0.05)
+                                              [](double v)
+                                              { return v < 9.49; }));  // chi2(4, 0.05)
   return static_cast<double>(health) / nis_window_.size();
 }
 

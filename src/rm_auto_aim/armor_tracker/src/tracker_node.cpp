@@ -78,6 +78,12 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(9, 9);
     const double t = dt_;
 
+    const bool boost_on = (tracker_ && tracker_->NeedManeuverBoost());
+
+    const double xy_scale = boost_on ? q_boost_xy_ : 1.0;
+    const double z_scale = boost_on ? q_boost_z_ : 1.0;
+    const double yaw_scale = boost_on ? q_boost_yaw_ : 1.0;
+
     auto add_cv_block = [&](int idx_pos, int idx_vel, double sigma2)
     {
       const double a = std::pow(t, 4) / 4.0 * sigma2;
@@ -89,10 +95,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
       q(idx_vel, idx_vel) = c;
     };
 
-    add_cv_block(0, 1, s2_q_x_);
-    add_cv_block(2, 3, s2_q_y_);
-    add_cv_block(4, 5, s2_q_z_);
-    add_cv_block(6, 7, s2_q_yaw_);
+    add_cv_block(0, 1, xy_scale * s2_q_x_);
+    add_cv_block(2, 3, xy_scale * s2_q_y_);
+    add_cv_block(4, 5, z_scale * s2_q_z_);
+    add_cv_block(6, 7, yaw_scale * s2_q_yaw_);
 
     q(8, 8) = std::max(1e-8, t * s2_q_r_);
     return q;
@@ -263,6 +269,10 @@ void ArmorTrackerNode::InitParameters()
   r_yaw_oblique_gain_ = this->declare_parameter("ekf.r_yaw_oblique_gain", 0.150);
 
   r_yaw_outpost_scale_ = this->declare_parameter("ekf.r_yaw_outpost_scale", 0.7);
+  
+  q_boost_xy_ = this->declare_parameter("ekf.q_boost_xy", 4.0);
+  q_boost_z_ = this->declare_parameter("ekf.q_boost_z", 1.0);
+  q_boost_yaw_ = this->declare_parameter("ekf.q_boost_yaw", 3.0);
 }
 
 void ArmorTrackerNode::ArmorsCallback(

@@ -53,6 +53,10 @@ class ArmorTrackerNode : public rclcpp::Node
   double r_yaw_oblique_gain_;
   double r_yaw_outpost_scale_;
 
+  double q_boost_xy_;
+  double q_boost_z_;
+  double q_boost_yaw_;
+
   double lost_time_thres_;
   double change_time_thres_;
   std::unique_ptr<Tracker> tracker_;
