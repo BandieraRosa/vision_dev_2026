@@ -74,6 +74,7 @@ class TrajectorySolver
     double radius1{0.0};
     double radius2{0.0};
     int outpost_idx{0};
+    int number{0};
   };
 
   struct control

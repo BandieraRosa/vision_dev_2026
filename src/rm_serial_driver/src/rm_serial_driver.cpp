@@ -43,9 +43,15 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // target_euler_topic_ =
   //     LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>("target_euler");
   target_euler_topic_ =
-      LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler"); 
+      LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler");
   fire_notify_topic_ =
       LibXR::Topic::FindOrCreate<uint8_t>("fire_notify", &tracker_domain);
+  target_num_topic_ =
+      LibXR::Topic::FindOrCreate<int>("target_num");
+
+   // ROS2发布者
+
+   // 云台关节状态
 
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
@@ -172,6 +178,7 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   fire_notify_ = msg->is_fire;
   target_euler_topic_.Publish(target);
   fire_notify_topic_.Publish(fire_notify_);
+  target_num_topic_.Publish(msg->num);
 }
 
 }  // namespace rm_serial_driver

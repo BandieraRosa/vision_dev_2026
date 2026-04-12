@@ -45,6 +45,10 @@ void PlanningTrajectoryNode::TargetCallback(
   target_.radius1 = target_msg->radius_1;
   target_.radius2 = target_msg->radius_2;
 
+  target_.number = target_msg->num;
+
+   // 发布 Target 消息
+
   if (!tracking_)
   {
     trajectory_->Reset();
@@ -118,6 +122,7 @@ void PlanningTrajectoryNode::timer_callback()
   send_msg.yaw = cmd.yaw;
   send_msg.vel_yaw = cmd.vel_yaw;
   send_msg.acc_yaw = cmd.acc_yaw;
+  send_msg.num = target_local.number;
   send_pub_->publish(send_msg);
 
   auto_aim_interfaces::msg::TrajectoryInfo info_msg;

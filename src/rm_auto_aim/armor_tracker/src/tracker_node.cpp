@@ -2,6 +2,7 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+#include "armor_tracker/tracker.hpp"
 
 namespace rm_auto_aim
 {
@@ -269,7 +270,7 @@ void ArmorTrackerNode::InitParameters()
   r_yaw_oblique_gain_ = this->declare_parameter("ekf.r_yaw_oblique_gain", 0.150);
 
   r_yaw_outpost_scale_ = this->declare_parameter("ekf.r_yaw_outpost_scale", 0.7);
-  
+
   q_boost_xy_ = this->declare_parameter("ekf.q_boost_xy", 4.0);
   q_boost_z_ = this->declare_parameter("ekf.q_boost_z", 1.0);
   q_boost_yaw_ = this->declare_parameter("ekf.q_boost_yaw", 3.0);
@@ -360,6 +361,24 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
       target_msg.outpost_idx = tracker_->outpost_idx;
+      int num = 0;
+      if (tracker_->tracked_armor.number == "outpost")
+      {
+        num = 10;
+      }
+      else if (tracker_->tracked_armor.number == "guard")
+      {
+        num = 7;
+      }
+      else if (tracker_->tracked_armor.number == "base")
+      {
+        num = 11;
+      }
+      else if (!tracker_->tracked_armor.number.empty())
+      {
+        num = std::stoi(tracker_->tracked_armor.number);
+      }
+      target_msg.num = num;
     }
   }
 

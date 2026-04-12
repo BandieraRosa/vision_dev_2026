@@ -1,6 +1,7 @@
 std_msgs/Header header
 bool tracking
 string type
+int8 num
 int32 armors_num
 int32 outpost_idx
 geometry_msgs/Point position

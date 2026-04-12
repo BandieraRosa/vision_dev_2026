@@ -5,3 +5,4 @@ float64 yaw
 float64 vel_yaw
 float64 acc_yaw
 int8 idx
+int8 num

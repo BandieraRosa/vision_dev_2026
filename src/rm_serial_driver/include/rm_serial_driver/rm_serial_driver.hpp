@@ -76,6 +76,7 @@ class RMSerialDriver : public rclcpp::Node
   LibXR::Topic target_euler_topic_;
   LibXR::Topic fire_notify_topic_;
   LibXR::Topic lob_shot_topic_;
+  LibXR::Topic target_num_topic_;
 
   /* LibXR初始化相关成员变量 */
   std::unique_ptr<LibXR::RamFS> ramfs_;
