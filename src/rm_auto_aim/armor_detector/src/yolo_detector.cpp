@@ -163,7 +163,9 @@ YoloDetector::YoloDetector(const YoloParams& params)
 
 DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
 {
+  debug_latencies_.clear();
   DetectionResult result;
+  auto infer_start_time = std::chrono::steady_clock::now();
   if (rgb_img.empty())
   {
     return result;
@@ -191,10 +193,21 @@ DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
   const auto& output_shape = output_tensor.get_shape();
   cv::Mat output(static_cast<int>(output_shape[1]), static_cast<int>(output_shape[2]),
                  CV_32F, output_tensor.data());
+  auto infer_end_time = std::chrono::steady_clock::now();
+  auto infer_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                           infer_end_time - infer_start_time)
+                           .count();
+  debug_latencies_.emplace_back("Inference", static_cast<uint64_t>(infer_latency));
 
+  auto parse_start_time = std::chrono::steady_clock::now();
   // 后处理
   last_armors_ = Parse(scale, output);
   result.armors = last_armors_;
+  auto parse_end_time = std::chrono::steady_clock::now();
+  auto parse_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                           parse_end_time - parse_start_time)
+                           .count();
+  debug_latencies_.emplace_back("Parse Output", static_cast<uint64_t>(parse_latency));
   return result;
 }
 

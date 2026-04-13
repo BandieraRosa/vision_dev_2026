@@ -4,7 +4,6 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <image_transport/image_transport.hpp>
-#include <iomanip>
 #include <sstream>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/create_timer_ros.hpp>
@@ -17,8 +16,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
     : Node("armor_detector", options)
 {
   RCLCPP_INFO(this->get_logger(), "Starting DetectorNode!");
-
-  const auto detector_type =
+  auto detector_type =
       this->declare_parameter("detector_type", std::string("traditional"));
   detector_ = create_detector(detector_type, *this);
 
@@ -95,6 +93,8 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
 void ArmorDetectorNode::ImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
+  debug_latencies_.clear();  // 初始化时清空 debug_latencies_
+  auto start_time = this->get_clock()->now();
   if (!pnp_solver_)
   {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
@@ -106,6 +106,7 @@ void ArmorDetectorNode::ImageCallback(
 
   if (pnp_solver_ != nullptr)
   {
+    auto pnp_start_time = this->get_clock()->now();
     armors_msg_.header = img_msg->header;
     armors_msg_.armors.clear();
 
@@ -187,6 +188,11 @@ void ArmorDetectorNode::ImageCallback(
         RCLCPP_WARN(this->get_logger(), "PnP failed!");
       }
     }
+    auto pnp_end_time = this->get_clock()->now();
+    auto pnp_latency =
+        static_cast<uint64_t>((pnp_end_time - pnp_start_time).nanoseconds() / 1000);
+    // debug_latencies_.emplace_back("PnP", static_cast<uint64_t>(pnp_latency));
+    RCLCPP_INFO(this->get_logger(), "PnP latency: %lu us", pnp_latency);
 
     // Publishing detected armors
     armors_pub_->publish(armors_msg_);
@@ -196,24 +202,40 @@ void ArmorDetectorNode::ImageCallback(
 std::vector<Armor> ArmorDetectorNode::DetectArmors(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
+  auto convert_start_time = this->get_clock()->now();
   // Convert ROS img to cv::Mat
   auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
+  auto convert_end_time = this->get_clock()->now();
+  auto convert_latency =
+      static_cast<uint64_t>((convert_end_time - convert_start_time).nanoseconds() / 1000);
+  debug_latencies_.emplace_back("Image Convert", static_cast<uint64_t>(convert_latency));
   auto result = detector_->Detect(img);
+  auto detect_latencies = detector_->GetDebugLatencies();
+  debug_latencies_.insert(debug_latencies_.end(), detect_latencies.begin(),
+                          detect_latencies.end());
 
   if (corner_corrector_ != nullptr && result.binary_image)
   {
+    auto corner_correct_start_time = std::chrono::steady_clock::now();
     for (auto& armor : result.armors)
     {
       corner_corrector_->CorrectCorners(armor, *result.binary_image);
     }
+    auto corner_correct_end_time = std::chrono::steady_clock::now();
+    auto corner_correct_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                                      corner_correct_end_time - corner_correct_start_time)
+                                      .count();
+    debug_latencies_.emplace_back("Corner Correct",
+                                  static_cast<uint64_t>(corner_correct_latency));
   }
 
   auto final_time = this->now();
-  auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
-  RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
+  auto latency = (final_time - img_msg->header.stamp).seconds() * 1000000;
+  RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "us");
 
   if (debug_)
   {
+    auto debug_data_fill_start_time = std::chrono::steady_clock::now();
     if (result.binary_image)
     {
       binary_img_pub_.publish(
@@ -242,12 +264,30 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
     std::stringstream latency_ss;
     latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
     auto latency_s = latency_ss.str();
-    cv::putText(img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0,
-                cv::Scalar(0, 255, 0), 2);
+    // cv::putText(img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0,
+    //             cv::Scalar(0, 255, 0), 2);
+    auto debug_data_fill_end_time = std::chrono::steady_clock::now();
+    auto debug_data_fill_latency =
+        std::chrono::duration_cast<std::chrono::microseconds>(debug_data_fill_end_time -
+                                                              debug_data_fill_start_time)
+            .count();
+    debug_latencies_.emplace_back("Debug Fill",
+                                  static_cast<uint64_t>(debug_data_fill_latency));
+
+    // 在图像上显示各环节延迟
+    int y_offset = 30;
+    for (const auto& [stage, stage_latency] : debug_latencies_)
+    {
+      std::string text;
+      text += stage + ": " + std::to_string(stage_latency) + "us";
+      cv::putText(img, text, cv::Point(10, y_offset), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                  cv::Scalar(0, 255, 0), 1);
+      y_offset += 20;
+    }
     result_img_pub_.publish(
         cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
   }
-
+  // RCLCPP_INFO(this->get_logger(), "latencies size: %zu", debug_latencies_.size());
   return std::move(result.armors);
 }
 

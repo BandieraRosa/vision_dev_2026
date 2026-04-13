@@ -4,11 +4,10 @@
 #ifdef ARMOR_DETECTOR_HAS_OPENVINO
 
 #include <memory>
+#include <opencv2/core.hpp>
+#include <openvino/openvino.hpp>
 #include <string>
 #include <vector>
-
-#include <openvino/openvino.hpp>
-#include <opencv2/core.hpp>
 
 #include "armor_detector/armor.hpp"
 #include "armor_detector/detection_result.hpp"

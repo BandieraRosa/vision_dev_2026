@@ -76,6 +76,8 @@ class ArmorDetectorNode : public rclcpp::Node
   image_transport::Publisher binary_img_pub_;
   image_transport::Publisher number_img_pub_;
   image_transport::Publisher result_img_pub_;
+
+  std::vector<std::pair<std::string, uint64_t>> debug_latencies_;  // 各环节延迟
 };
 
 }  // namespace rm_auto_aim

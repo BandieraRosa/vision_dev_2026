@@ -65,18 +65,44 @@ Detector::Detector(DetectorParams& params) : params_(params)
 
 DetectionResult Detector::Detect(const cv::Mat& input)
 {
+  debug_latencies_.clear();  // Clear previous latencies at the start of detection
   DetectionResult result;
-
+  auto preprocess_start_time = std::chrono::steady_clock::now();
   binary_img_ = PreprocessImage(input);
+  auto preprocess_end_time = std::chrono::steady_clock::now();
+  auto preprocess_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                                preprocess_end_time - preprocess_start_time)
+                                .count();
+  debug_latencies_.emplace_back("Preprocess", static_cast<uint64_t>(preprocess_latency));
+  auto find_light_start_time = std::chrono::steady_clock::now();
   lights_ = FindLights(input, binary_img_);
+  auto find_light_end_time = std::chrono::steady_clock::now();
+  auto find_light_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                                find_light_end_time - find_light_start_time)
+                                .count();
+  debug_latencies_.emplace_back("Find Lights", static_cast<uint64_t>(find_light_latency));
+  auto match_light_start_time = std::chrono::steady_clock::now();
   armors_ = MatchLights(lights_);
+  auto match_light_end_time = std::chrono::steady_clock::now();
+  auto match_light_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                                 match_light_end_time - match_light_start_time)
+                                 .count();
+  debug_latencies_.emplace_back("Match Lights",
+                                static_cast<uint64_t>(match_light_latency));
 
   if (!armors_.empty())
   {
+    auto classify_start_time = std::chrono::steady_clock::now();
     classifier_->ExtractNumbers(input, armors_);
     classifier_->Classify(armors_);
+    auto classify_end_time = std::chrono::steady_clock::now();
+    auto classify_latency = std::chrono::duration_cast<std::chrono::microseconds>(
+                                classify_end_time - classify_start_time)
+                                .count();
+    debug_latencies_.emplace_back("Classify", static_cast<uint64_t>(classify_latency));
   }
 
+  auto detect_result_fill_time = std::chrono::steady_clock::now();
   result.armors = armors_;
   result.binary_image = binary_img_;
   result.debug_data = GetDebugData();
@@ -86,6 +112,13 @@ DetectionResult Detector::Detect(const cv::Mat& input)
   {
     result.numbers_image = numbers_image;
   }
+  auto detect_result_fill_end_time = std::chrono::steady_clock::now();
+  auto detect_result_fill_latency =
+      std::chrono::duration_cast<std::chrono::microseconds>(detect_result_fill_end_time -
+                                                            detect_result_fill_time)
+          .count();
+  debug_latencies_.emplace_back("Fill Result",
+                                static_cast<uint64_t>(detect_result_fill_latency));
 
   return result;
 }
