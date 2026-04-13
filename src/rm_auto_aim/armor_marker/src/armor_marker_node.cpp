@@ -258,7 +258,7 @@ void ArmorMarkerNode::TrajectoryInfoCallback(
 
   visualization_msgs::msg::MarkerArray marker_array;
   aiming_point_marker_.header.stamp = this->now();
-  aiming_point_marker_.header.frame_id = "odom";
+  aiming_point_marker_.header.frame_id = "gimbal_odom";
   aiming_point_marker_.action = visualization_msgs::msg::Marker::ADD;
   aiming_point_marker_.pose.position = info_msg->aim_position;
   marker_array.markers.emplace_back(aiming_point_marker_);
