@@ -30,6 +30,12 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc
 }
 
 void ExtendedKalmanFilter::setState(const Eigen::VectorXd& x0) { x_post = x0; }
+void ExtendedKalmanFilter::setState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0)
+{
+  x_post = x0;
+  P_post = P0;
+  nis_window_.clear();
+}
 
 Eigen::MatrixXd ExtendedKalmanFilter::predict()
 {

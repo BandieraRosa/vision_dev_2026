@@ -2,6 +2,7 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+
 #include "armor_tracker/tracker.hpp"
 
 namespace rm_auto_aim
@@ -188,13 +189,24 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     return r;
   };
   // P - error estimate covariance matrix
-  Eigen::DiagonalMatrix<double, 9> p0;
-  p0.setIdentity();
-
+  // Eigen::DiagonalMatrix<double, 9> p0;
+  // p0.setIdentity();
+  Eigen::MatrixXd p0 = Eigen::MatrixXd::Zero(9, 9);
+  p0(0, 0) = 0.05;  // xc
+  p0(1, 1) = 1.0;   // v_xc
+  p0(2, 2) = 0.05;  // yc
+  p0(3, 3) = 1.0;   // v_yc
+  p0(4, 4) = 0.05;  // za
+  p0(5, 5) = 1.0;   // v_za
+  p0(6, 6) = 0.1;   // yaw
+  p0(7, 7) = 2.0;   // v_yaw
+  p0(8, 8) = 1.0;   // r
   // outpost 的 EKF 参数
   auto switch_q = [this](bool flag)
   {
     s2_q_x_ = flag ? s2qxyz_outpost_ : s2_q_x_armor_;
+    s2_q_y_ = flag ? s2qxyz_outpost_ : s2_q_y_armor_;
+    s2_q_z_ = flag ? s2qxyz_outpost_ : s2_q_z_armor_;
     s2_q_yaw_ = flag ? s2qyaw_outpost_ : s2_q_yaw_armor_;
     s2_q_r_ = flag ? s2qr_outpost_ : s2_q_r_armor_;
   };

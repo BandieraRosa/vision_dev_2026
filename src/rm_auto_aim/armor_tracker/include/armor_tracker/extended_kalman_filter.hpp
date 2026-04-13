@@ -24,6 +24,7 @@ class ExtendedKalmanFilter
 
   // Set the initial state
   void setState(const Eigen::VectorXd& x0);
+  void setState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);  // ← 新增
 
   // Compute a predicted state
   Eigen::MatrixXd predict();

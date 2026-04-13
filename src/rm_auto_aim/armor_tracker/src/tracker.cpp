@@ -47,6 +47,7 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
 
 void Tracker::Update(const Armors::SharedPtr& armors_msg)
 {
+  if (jump_cooldown_ > 0) --jump_cooldown_;  // ← 每帧递减
   Eigen::VectorXd ekf_prediction = ekf.predict();
   TickManeuverBoost();
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
@@ -85,9 +86,13 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
 
     if (same_id_armors_count == 1 && yaw_diff > effective_yaw_thresh)
     {
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
-      // ArmManeuverBoost(4);
-      HandleArmorJump(tracked_armor);
+      if (jump_cooldown_ <= 0)  // ← 新增冷却判断
+      {
+        RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
+        // ArmManeuverBoost(4);
+        HandleArmorJump(tracked_armor);
+        jump_cooldown_ = kJumpCooldownFrames;  // ← 激活冷却
+      }
     }
     else if (0.5 < health_rate && health_rate < 0.8 && same_id_armors_count > 0)
     {
@@ -167,11 +172,7 @@ bool Tracker::MatchArmor(const Armors::SharedPtr& armors_msg,
   double best_yaw_diff = DBL_MAX;
   double best_nis = DBL_MAX;
 
-  constexpr double kPositionGateScale = 1.5;
   constexpr double kChi2Gate = 13.28;  // dof=4, ~99%
-
-  bool has_same_id_candidate = false;
-  double nearest_same_id_dist = DBL_MAX;
   Armor nearest_same_id_armor = tracked_armor;
   Armor best_match_armor = tracked_armor;
 
@@ -186,28 +187,24 @@ bool Tracker::MatchArmor(const Armors::SharedPtr& armors_msg,
 
     const auto& p = armor.pose.position;
     Eigen::Vector3d position_vec(p.x, p.y, p.z);
-    const double position_diff = (predicted_position - position_vec).norm();
-    min_position_diff = std::min(min_position_diff, position_diff);
-
-    // 记录最近的 same-id 候选，即使它最终没通过 gate
-    if (position_diff < nearest_same_id_dist)
-    {
-      nearest_same_id_dist = position_diff;
-      nearest_same_id_armor = armor;
-      has_same_id_candidate = true;
-    }
-
     const double measured_yaw = OrientationToYaw(armor.pose.orientation);
-    const double local_yaw_diff = std::abs(AngleDiff(measured_yaw, ekf_prediction(6)));
-    best_yaw_diff = std::min(best_yaw_diff, local_yaw_diff);
+
+    const double position_diff = (predicted_position - position_vec).norm();
+    // 记录最近的 same-id 候选，即使它最终没通过 gate
+    if (position_diff < min_position_diff)
+    {
+      min_position_diff = position_diff;
+      const double local_yaw_diff = std::abs(AngleDiff(measured_yaw, ekf_prediction(6)));
+      yaw_diff = local_yaw_diff;
+      nearest_same_id_armor = armor;
+    }
 
     const double effective_yaw_thresh = (tracked_armor.number != "outpost")
                                             ? max_match_yaw_diff_
                                             : max_match_yaw_diff_ + 0.7;
 
     // 第一级：粗筛
-    if (position_diff > kPositionGateScale * max_match_distance_ ||
-        local_yaw_diff > effective_yaw_thresh)
+    if (position_diff > max_match_distance_ || yaw_diff > effective_yaw_thresh)
     {
       continue;
     }
@@ -232,13 +229,11 @@ bool Tracker::MatchArmor(const Armors::SharedPtr& armors_msg,
   {
     tracked_armor = best_match_armor;
   }
-  else if (has_same_id_candidate)
+  else if (same_id_armors_count > 0)
   {
     // 即使没匹配成功，也留一个当前帧最近的同 ID 候选
     tracked_armor = nearest_same_id_armor;
   }
-
-  yaw_diff = best_yaw_diff;
   return correct_match_count > 0;
 }
 
@@ -247,9 +242,8 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
   geometry_msgs::msg::Point adjusted_p = p;
   if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
-    adjusted_p.z = p.z + (1 - outpost_idx) * outpost_dz;
+    adjusted_p.z = adjusted_p.z + (1 - outpost_idx) * outpost_dz;
   }
-
   measurement = Eigen::Vector4d(adjusted_p.x, adjusted_p.y, adjusted_p.z, measured_yaw);
 
   // 先基于 x_pri 取 innovation，后面用来判断“是否还在沿旧方向跑”
@@ -262,7 +256,7 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
     target_state(1) = 0;
     target_state(3) = 0;
     target_state(5) = 0;
-    target_state(7) = (target_state(7) > 0 ? 1.0 : -1.0) * outpost_vyaw_abs;
+    target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));
   }
   else
   {
@@ -333,6 +327,7 @@ void Tracker::SwitchEKFParams() { switch_q_(is_outpost); }
 
 void Tracker::InitEkf(const Armor& armor)
 {
+  jump_cooldown_ = 0;  // ← 新目标，清除冷却
   maneuver_boost_count_ = 0;
 
   first_tracked = true;
@@ -460,10 +455,10 @@ void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
   const Eigen::Vector2d v(target_state(1), target_state(3));
   const Eigen::Vector2d e(innovation(0), innovation(1));
 
-  if (v.squaredNorm() > 1e-4)
+  if (v.squaredNorm() > 1e-2)
   {
     const double proj = e.dot(v.normalized());
-    if (proj < -0.03)
+    if (proj < -0.08)
     {
       target_state(1) *= 0.35;
       target_state(3) *= 0.35;
@@ -529,17 +524,31 @@ void Tracker::UpdateArmorsNum(const Armor& armor)
 void Tracker::ResetState(double& yaw, const geometry_msgs::msg::Point& p)
 {
   double r = target_state(8);
+   // 位置：用观测重置
   target_state(0) = p.x + r * cos(yaw);
-  target_state(1) = 0;
   target_state(2) = p.y + r * sin(yaw);
-  target_state(3) = 0;
   target_state(4) = p.z;
-  target_state(5) = 0;
-  if (tracked_armors_num == ArmorsNum::OUTPOST_3)
-  {
-    outpost_idx = 0;
-  }
-  RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
+  target_state(6) = yaw;
+
+  // if (tracked_armors_num == ArmorsNum::OUTPOST_3)
+  // {
+  //   outpost_idx = 0;
+  // }
+
+  Eigen::MatrixXd P_reset = Eigen::MatrixXd::Zero(9, 9);
+  P_reset(0, 0) = 0.05;   // xc
+  P_reset(1, 1) = 0.5;    // v_xc   保留了旧值，但不完全信任
+  P_reset(2, 2) = 0.05;   // yc
+  P_reset(3, 3) = 0.5;    // v_yc
+  P_reset(4, 4) = 0.05;   // za
+  P_reset(5, 5) = 0.5;    // v_za
+  P_reset(6, 6) = 0.1;    // yaw
+  P_reset(7, 7) = 2.0;    // v_yaw  保留但给较大不确定性
+  P_reset(8, 8) = 1.0;    // r
+
+  ekf.setState(target_state, P_reset);
+
+  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with P!");
 }
 
 void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw)
