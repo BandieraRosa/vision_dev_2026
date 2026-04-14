@@ -6,3 +6,4 @@
 [submodule "src/rm_vision/rm_vision_bringup/test_assets"]
 	path = src/rm_vision/rm_vision_bringup/test_assets
 	url = git@github.com:QDU-VRobot/test_assets.git
+	update = none
