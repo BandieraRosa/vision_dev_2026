@@ -2,7 +2,7 @@
 
 获取源码：
 ```bash
-git clone https://github.com/QDU-VRobot/vision_dev.git --recursive
+git clone https://github.com/QDU-VRobot/vision_dev.git
 ```
 
 第一次 `clone` 本仓库，则需配置 `hook`：
@@ -10,9 +10,23 @@ git clone https://github.com/QDU-VRobot/vision_dev.git --recursive
 git config core.hooksPath .githooks
 ```
 
-获取配置文件，请在 `src/rm_vision/rm_vision_bringup/config/` 目录下执行以下命令：
+获取配置文件：
 ```bash
-git switch <robot_type>
+git submodule update --init --recursive
+```
+
+获取测试资源：
+
+首先需要安装 git lfs
+```bash
+sudo apt install git-lfs
+git lfs install
+```
+
+```bash
+git clone git@github.com:QDU-VRobot/test_assets.git src/rm_vision/rm_vision_bringup/test_assets
+cd src/rm_vision/rm_vision_bringup/test_assets
+git lfs pull
 ```
 
 要使用 `launch` 脚本，方法如下：

@@ -2,6 +2,8 @@
 
 delay_time=3
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 while true
 do
     ps -ef | grep "armor_tracker_node" | grep -v "grep" > /dev/null
@@ -23,7 +25,7 @@ do
         echo "等待 ${delay_time}秒 后启动..."
         sleep $delay_time
         
-        gnome-terminal --title="tracker" -- bash -c "cd /home/nvidia/vision_dev/ && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py"
+        gnome-terminal --title="tracker" -- bash -c "cd \"$SCRIPT_DIR\" && source install/setup.bash && ros2 launch rm_vision_bringup vision_bringup.launch.py"
         
         [ $? -eq 0 ] && echo "启动成功" || echo "启动失败"
     else
