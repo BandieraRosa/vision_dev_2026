@@ -7,6 +7,8 @@
 #include <tf2_ros/message_filter.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <Eigen/Dense>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/int32.hpp>
@@ -28,6 +30,8 @@ class ArmorTrackerNode : public rclcpp::Node
   void InitParameters();
 
   void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
+
+  Eigen::Matrix3d BuildJacobianYpdToCameraXyz(const Eigen::Vector3d& p_cam);
 
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
@@ -76,7 +80,15 @@ class ArmorTrackerNode : public rclcpp::Node
 
   // Lob shot
   bool is_hero_{false};
-  std::string last_frame_id_ = "camera_optical_frame";
+  std::string last_camera_frame_id_ = "camera_optical_frame";
+
+  // ypd R
+  double r_ypd_yaw_std_;
+  double r_ypd_pitch_std_;
+  double r_ypd_distance_std_scale_;
+  double r_armor_yaw_std_;
+  Eigen::Matrix3d camera_to_world_rot_ = Eigen::Matrix3d::Identity();
+  Eigen::Vector3d camera_origin_world_ = Eigen::Vector3d::Zero();
 };
 
 }  // namespace rm_auto_aim

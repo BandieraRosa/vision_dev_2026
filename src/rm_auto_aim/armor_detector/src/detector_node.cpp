@@ -193,7 +193,7 @@ void ArmorDetectorNode::ImageCallback(
     auto pnp_latency =
         static_cast<uint64_t>((pnp_end_time - pnp_start_time).nanoseconds() / 1000);
     // debug_latencies_.emplace_back("PnP", static_cast<uint64_t>(pnp_latency));
-    RCLCPP_INFO(this->get_logger(), "PnP latency: %lu us", pnp_latency);
+    // RCLCPP_INFO(this->get_logger(), "PnP latency: %lu us", pnp_latency);
 
     // Publishing detected armors
     armors_pub_->publish(armors_msg_);
