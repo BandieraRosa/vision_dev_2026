@@ -141,6 +141,7 @@ void ArmorDetectorNode::ImageCallback(
             m.getRPY(roll, pitch, yaw);
 
             pose_optimizer_->SetCameraToGimbalRotation(rmat_gimbal_cam);
+            pose_optimizer_->SetArmorNumber(armor.number == "outpost");
 
             // TF 查询成功后才执行优化；失败时 rvec/tvec 保持原始 PnP 结果不变
             if (!pose_optimizer_->Optimize(armor, rvec, tvec))

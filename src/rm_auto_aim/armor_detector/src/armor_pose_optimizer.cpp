@@ -192,26 +192,13 @@ bool ArmorPoseOptimizer::CheckConstraint(const Eigen::Matrix3d& R_cam, double& y
     return false;
   }
 
-  // pitch 必须接近某个已知先验值
-  // 计算与两个先验的偏差，选取更近的那个
-  double diff_ground = std::abs(measured_pitch - ground_pitch_rad_) * 180.0 / M_PI;
-  double diff_outpost = std::abs(measured_pitch - outpost_pitch_rad_) * 180.0 / M_PI;
-
-  if (diff_ground <= diff_outpost)
+  if (is_outpost_)
   {
-    if (diff_ground > params_.max_pitch_deviation)
-    {
-      return false;
-    }
-    pitch_prior = ground_pitch_rad_;
+    pitch_prior = outpost_pitch_rad_;
   }
   else
   {
-    if (diff_outpost > params_.max_pitch_deviation)
-    {
-      return false;
-    }
-    pitch_prior = outpost_pitch_rad_;
+    pitch_prior = ground_pitch_rad_;
   }
 
   yaw_init = euler_ypr(0);

@@ -24,7 +24,7 @@ class ArmorPoseOptimizer
       RANGE_LM = 2,  // 在范围搜索基础上以最优解为起点再迭代
     };
     OptimizeMethod optimize_method = OptimizeMethod::RANGE_LM;
-    
+
     // 地面兵种装甲板安装 pitch
     double standard_pitch_deg = 15.0;
     // 前哨站装甲板安装 pitch
@@ -69,6 +69,8 @@ class ArmorPoseOptimizer
   /// @param tvec    [in/out] 平移向量（相机系）
   /// @return true 表示优化成功；false 表示先验不满足或优化失败
   bool Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tvec);
+
+  void SetArmorNumber(bool is_outpost) { is_outpost_ = is_outpost; }
 
  private:
   /// 将 cv::Mat 旋转向量转为 3x3 旋转矩阵
@@ -168,6 +170,8 @@ class ArmorPoseOptimizer
   static constexpr double LARGE_HALF_Z = LARGE_ARMOR_HEIGHT / 2.0 / 1000.0;
 
   Params params_;
+
+  bool is_outpost_ = false;  // 是否为前哨站装甲板
 
   // 装甲板安装 pitch 先验
   double ground_pitch_rad_;
