@@ -40,18 +40,10 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
-  // target_euler_topic_ =
-  //     LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>("target_euler");
-  target_euler_topic_ =
-      LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler");
+  target_euler_topic_ = LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler");
   fire_notify_topic_ =
       LibXR::Topic::FindOrCreate<uint8_t>("fire_notify", &tracker_domain);
-  target_num_topic_ =
-      LibXR::Topic::FindOrCreate<int>("target_num");
-
-   // ROS2发布者
-
-   // 云台关节状态
+  target_num_topic_ = LibXR::Topic::FindOrCreate<int>("target_num");
 
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(

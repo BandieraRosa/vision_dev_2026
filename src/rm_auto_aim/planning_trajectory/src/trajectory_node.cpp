@@ -47,7 +47,7 @@ void PlanningTrajectoryNode::TargetCallback(
 
   target_.number = target_msg->num;
 
-   // 发布 Target 消息
+  // 发布 Target 消息
 
   if (!tracking_)
   {
@@ -254,14 +254,12 @@ void PlanningTrajectoryNode::Init()
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { trajectory_->InitVelocity(velocity_msg); },
-      sub_options);
+      { trajectory_->InitVelocity(velocity_msg); }, sub_options);
 
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(),
       [this](const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
-      { TargetCallback(target_msg); },
-      sub_options);
+      { TargetCallback(target_msg); }, sub_options);
 
   // ====== 发布器（无 group 概念，发布是同步调用） ======
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
@@ -272,8 +270,7 @@ void PlanningTrajectoryNode::Init()
   // ====== Timer：放进 timer_cb_group_ ======
   timer_ = this->create_wall_timer(
       std::chrono::duration<double, std::milli>(1000.0 / send_frequency_),
-      std::bind(&PlanningTrajectoryNode::timer_callback, this),
-      timer_cb_group_); 
+      std::bind(&PlanningTrajectoryNode::timer_callback, this), timer_cb_group_);
   q_yaw_ = this->declare_parameter("ekf.q_yaw", 0.0);
   q_pitch_ = this->declare_parameter("ekf.q_pitch", 0.0);
   q_jerk_ = this->declare_parameter("ekf.q_jerk", 0.0);
@@ -349,7 +346,7 @@ void PlanningTrajectoryNode::Init()
   TrajectorySolver solver(k, bias_time, s_bias, z_bias, pitch_bias, calculate_mode,
                           table_config_, table_config_lob_);
   ExtendedKalmanFilter ekf(f, h, j_f, j_h, u_q, u_r, P0);
-  ConstrainedPlanner planner(25, 4, 116, dt_);
+  ConstrainedPlanner planner(25, 20, 500, dt_);
 
   trajectory_ = std::make_unique<Trajectory>(solver, std::move(ekf), std::move(planner));
 }

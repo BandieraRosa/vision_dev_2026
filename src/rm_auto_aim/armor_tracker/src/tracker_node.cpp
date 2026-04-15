@@ -130,10 +130,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // update_R - measurement noise covariance matrix
   auto u_r = [this](const Eigen::VectorXd& x)
   {
-    // Eigen::DiagonalMatrix<double, 4> r;
-    // double factor = r_xyz_factor_;
-    // r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
-    // return r;
+    Eigen::DiagonalMatrix<double, 4> r;
+    double factor = r_xyz_factor_;
+    r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
+    return r;
 
     // Eigen::DiagonalMatrix<double, 4> r;
 
@@ -154,39 +154,41 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     // r.diagonal() << r_x_var, r_y_var, r_z_var, r_yaw_var;
     // return r;
 
-    Eigen::DiagonalMatrix<double, 4> r;
+    // Eigen::DiagonalMatrix<double, 4> r;
 
-    auto wrap_to_pi = [](double a) { return std::atan2(std::sin(a), std::cos(a)); };
+    // auto wrap_to_pi = [](double a) { return std::atan2(std::sin(a), std::cos(a)); };
 
-    const double xc = x(0);
-    const double yc = x(2);
-    const double za = x(4);
-    const double yaw = x(6);
-    const double radius = x(8);
+    // const double xc = x(0);
+    // const double yc = x(2);
+    // const double za = x(4);
+    // const double yaw = x(6);
+    // const double radius = x(8);
 
-    const double xa = xc - radius * std::cos(yaw);
-    const double ya = yc - radius * std::sin(yaw);
+    // const double xa = xc - radius * std::cos(yaw);
+    // const double ya = yc - radius * std::sin(yaw);
 
-    const double dist = std::sqrt(xa * xa + ya * ya + za * za);
-    const double los_yaw = std::atan2(ya, xa);
-    const double oblique = std::min(std::abs(wrap_to_pi(yaw - los_yaw)), 1.57);
+    // const double dist = std::sqrt(xa * xa + ya * ya + za * za);
+    // const double los_yaw = std::atan2(ya, xa);
+    // const double oblique = std::min(std::abs(wrap_to_pi(yaw - los_yaw)), 1.57);
 
-    const double sigma_xy =
-        r_xyz_base_ + r_xyz_dist_gain_ * dist + r_xyz_oblique_gain_ * std::log1p(oblique);
+    // const double sigma_xy =
+    //     r_xyz_base_ + r_xyz_dist_gain_ * dist + r_xyz_oblique_gain_ *
+    //     std::log1p(oblique);
 
-    const double sigma_z = sigma_xy * r_z_scale_;
+    // const double sigma_z = sigma_xy * r_z_scale_;
 
-    double sigma_yaw =
-        r_yaw_base_ + r_yaw_dist_gain_ * std::log1p(dist) + r_yaw_oblique_gain_ * oblique;
+    // double sigma_yaw =
+    //     r_yaw_base_ + r_yaw_dist_gain_ * std::log1p(dist) + r_yaw_oblique_gain_ *
+    //     oblique;
 
-    if (tracker_->tracked_id == "outpost")
-    {
-      sigma_yaw *= r_yaw_outpost_scale_;
-    }
+    // if (tracker_->tracked_id == "outpost")
+    // {
+    //   sigma_yaw *= r_yaw_outpost_scale_;
+    // }
 
-    r.diagonal() << sigma_xy * sigma_xy, sigma_xy * sigma_xy, sigma_z * sigma_z,
-        sigma_yaw * sigma_yaw;
-    return r;
+    // r.diagonal() << sigma_xy * sigma_xy, sigma_xy * sigma_xy, sigma_z * sigma_z,
+    //     sigma_yaw * sigma_yaw;
+    // return r;
   };
   // P - error estimate covariance matrix
   // Eigen::DiagonalMatrix<double, 9> p0;
@@ -373,7 +375,7 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.radius_2 = tracker_->another_r;
       target_msg.dz = tracker_->dz;
       target_msg.outpost_idx = tracker_->outpost_idx;
-      int num = 0;
+      signed char num = 0;
       if (tracker_->tracked_armor.number == "outpost")
       {
         num = 10;
@@ -388,7 +390,7 @@ void ArmorTrackerNode::ArmorsCallback(
       }
       else if (!tracker_->tracked_armor.number.empty())
       {
-        num = std::stoi(tracker_->tracked_armor.number);
+        num = static_cast<signed char>(std::stoi(tracker_->tracked_armor.number));
       }
       target_msg.num = num;
     }

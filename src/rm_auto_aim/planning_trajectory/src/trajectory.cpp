@@ -13,26 +13,27 @@ void ConstrainedPlanner::setState(double theta0, double v0)
 
 void ConstrainedPlanner::update(double target_pos, double target_vel, double target_acc)
 {
-  const double e = target_pos - theta_cmd_;
-  const double ve = v_cmd_ - target_vel;
+  double e = target_pos - theta_cmd_;
+  double ve = v_cmd_ - target_vel;
 
-  const double d_brake = (ve * ve) / (2.0 * a_max_);
-  const bool approaching = (e > 0.0 && v_cmd_ > target_vel) ||
-                           (e < 0.0 && v_cmd_ < target_vel);
-  const bool too_close = std::abs(e) <= d_brake;
+  double d_brake = (ve * ve) / (2.0 * a_max_);
+  bool approaching = (e > 0.0 && v_cmd_ > target_vel) || (e < 0.0 && v_cmd_ < target_vel);
+  bool too_close = std::abs(e) <= d_brake;
 
-  const double vel_thresh = std::abs(target_vel) * 0.1 + 1.0;
-  const bool wrong_direction =
-      (e >= 0.0 && v_cmd_ < -vel_thresh) ||
-      (e < 0.0 && v_cmd_ > vel_thresh);
+  double vel_thresh = std::abs(target_vel) * 0.1 + 1.0;
+  bool wrong_direction =
+      (e >= 0.0 && v_cmd_ < -vel_thresh) || (e < 0.0 && v_cmd_ > vel_thresh);
 
   double a_desired = 0.0;
 
   if (approaching && too_close)
   {
-    if (std::abs(e) > 1e-6) {
+    if (std::abs(e) > 1e-6)
+    {
       a_desired = (target_vel * target_vel - v_cmd_ * v_cmd_) / (2.0 * e);
-    } else {
+    }
+    else
+    {
       a_desired = -std::copysign(a_max_, ve);
     }
   }
