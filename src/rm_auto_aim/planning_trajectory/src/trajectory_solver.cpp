@@ -238,7 +238,7 @@ double fast_atan(double x, double y)
 }
 
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
-bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire)
+bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fire)
 {
   if (!HasValidSelection())
   {
@@ -266,7 +266,8 @@ bool TrajectorySolver::CanFire(double tar_yaw, bool is_fast_fire)
 
   else
   {
-    bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff;
+    bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff &&
+                            fabs(tar_pitch - gimbal_pitch_) > 0.02;
     if (choose_next_)
     {
       if (yaw_diff_exceeds)
@@ -347,7 +348,7 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
       std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
   const double s_1 = armor1.x * armor1.x + armor1.y * armor1.y;
 
-  choose_next_ = (armor_yaw_err_1 <= armor_yaw_err_0) && (s_1 <= s_0);
+  choose_next_ = (armor_yaw_err_1 <= 1.5 * armor_yaw_err_0) && (s_1 <= s_0);
 
   selected_idx_ = choose_next_ ? 1 : 0;
   selected_time_delay_ = choose_next_ ? t1 : time_delay;
@@ -525,7 +526,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     const double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) > 0.02 && !choose_next_;
+    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) > 0.01 && !choose_next_;
     if (is_fire)
     {
       yaw = aim_yaw;
@@ -534,7 +535,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   else
   {
     yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(yaw, false);
+    is_fire = CanFire(yaw, pitch, false);
   }
 
   last_pitch_ = pitch;
@@ -547,16 +548,32 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
 void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire,
                                            double& aim_x, double& aim_y, double& aim_z,
                                            int& idx, const Target& target,
-                                           double gimbal_yaw, const double send_time)
+                                           double gimbal_yaw, double gimbal_pitch,
+                                           const double send_time)
 {
   target_ = target;
   gimbal_yaw_ = gimbal_yaw;
+  gimbal_pitch_ = gimbal_pitch;
 
   fire_logic_mode_ = FireLogicMode::COMMON;
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
+
+  // 若希望每块装甲板只打一发
+  // if(no_fire == true)
+  // {
+  //   is_fire = false;
+  // }
+  // if(is_fire == true)
+  // {
+  //   no_fire = true;
+  // }
+  // if(choose_next_ == true)
+  // {
+  //   no_fire = false;
+  // }
 }
 
 }  // namespace rm_auto_aim

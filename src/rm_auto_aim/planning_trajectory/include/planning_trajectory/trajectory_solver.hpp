@@ -103,7 +103,7 @@ class TrajectorySolver
   double SolvePitch(double x, double y, double z);
   double SolveYaw(double x, double y);
 
-  bool CanFire(double yaw, bool is_fast_fire = false);
+  bool CanFire(double yaw, double pitch, bool is_fast_fire = false);
   void GlobalSelectArmor(double time_delay);
   void LocalSelectArmor(double time_delay);
   void PreSelectArmor(double time_delay);
@@ -115,7 +115,8 @@ class TrajectorySolver
 
   void AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                            double& aim_y, double& aim_z, int& idx, const Target& target,
-                           double gimbal_yaw, const double send_time);
+                           double gimbal_yaw, double gimbal_pitch,
+                           const double send_time);
 
   void SetTarget(const Target& t) { target_ = t; }
 
@@ -155,6 +156,7 @@ class TrajectorySolver
   Target target_{};
 
   double gimbal_yaw_{0.0};
+  double gimbal_pitch_{0.0};
 
   std::shared_ptr<Table> table_;
   std::shared_ptr<Table> table_lob_;
@@ -180,5 +182,7 @@ class TrajectorySolver
 
   bool choose_next_{false};
   bool should_last_shot_{false};
+
+  bool no_fire{false};
 };
 }  // namespace rm_auto_aim

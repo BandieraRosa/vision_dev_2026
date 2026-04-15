@@ -25,7 +25,7 @@ void PlanningTrajectoryNode::TargetCallback(
     trajectory_->SwitchTable();
   }
   last_switchtable_ = target_msg->is_switchtable;
-
+  send_time_ = 0;
   tracking_ = target_msg->tracking;
 
   target_.position.x = target_msg->position.x;
@@ -107,16 +107,23 @@ void PlanningTrajectoryNode::timer_callback()
   TrajectorySolver::control cmd{};
 
   // 调用 solver 也要加锁，因为 trajectory_ 内部状态会被 Reset() / SwitchTable() 修改
+
+  std::lock_guard<std::mutex> lk(target_mutex_);
+  trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
+                                            aim_z, idx, target_local, gimbal_yaw,
+                                            gimbal_pitch, send_time_);
+  double bc_yaw = cmd.yaw;
   {
-    std::lock_guard<std::mutex> lk(target_mutex_);
-    trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x,
-                                              aim_y, aim_z, idx, target_local, gimbal_yaw,
-                                              dt_);
+    send_time_ += dt_;
     trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
   }
 
   // publish 放在锁外，避免阻塞 sub 线程
   auto_aim_interfaces::msg::Send send_msg;
+  if (send_time_ >= 2 * dt_)
+  {
+    cmd.is_fire = false;
+  }
   send_msg.is_fire = cmd.is_fire;
   send_msg.pitch = cmd.pitch;
   send_msg.yaw = cmd.yaw;
@@ -130,9 +137,9 @@ void PlanningTrajectoryNode::timer_callback()
   info_msg.aim_position.y = aim_y;
   info_msg.aim_position.z = aim_z;
   info_msg.gimbal_yaw = gimbal_yaw;
-  info_msg.gimbal_pitch = gimbal_pitch;
+  info_msg.gimbal_pitch = -gimbal_pitch;
   info_msg.idx = idx;
-  info_msg.bc_yaw = cmd.yaw;
+  info_msg.bc_yaw = bc_yaw;
   info_msg.bc_pitch = cmd.pitch;
   info_pub_->publish(info_msg);
 

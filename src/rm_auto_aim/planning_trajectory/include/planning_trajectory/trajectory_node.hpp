@@ -67,6 +67,7 @@ class PlanningTrajectoryNode : public rclcpp::Node
   TrajectorySolver::Target target_{};
   double send_frequency_{200.0};
   double dt_{0.005};
+  double send_time_{0.0};
 
   double q_yaw_{0.0};
   double q_pitch_{0.0};
