@@ -519,7 +519,14 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   aim_y = pre_position_[selected_idx_].y;
   aim_z = pre_position_[selected_idx_].z;
 
-  pitch = SolvePitch(aim_x, aim_y, aim_z);
+  // if (choose_next_ == true && target_.num == 3)
+  // {
+  //   pitch = SolvePitch(pre_center_.x, pre_center_.y, pre_center_.z);
+  // }
+  // else
+  // {
+    pitch = SolvePitch(aim_x, aim_y, aim_z);
+  // }
 
   if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
@@ -543,6 +550,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   last_x_v_ = target_.velocity.x;
   last_y_v_ = target_.velocity.y;
   last_v_yaw_ = target_.velocity.yaw;
+  last_choose_next_ = choose_next_;
 }
 
 void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire,
@@ -570,7 +578,7 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   // {
   //   no_fire = true;
   // }
-  // if(choose_next_ == true)
+  // if(choose_next_ == false && last_choose_next_ == true)
   // {
   //   no_fire = false;
   // }

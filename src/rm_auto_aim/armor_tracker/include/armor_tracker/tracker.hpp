@@ -40,9 +40,8 @@ class Tracker  // 整车观测
 
   /// @brief 匹配当前帧中与 tracked_id 相同的装甲板，返回是否匹配成功
   ///        匹配成功时 tracked_armor 被更新为最佳匹配
-  bool MatchArmor(const Armors::SharedPtr& armors_msg,
-                  const Eigen::VectorXd& ekf_prediction, int& same_id_armors_count,
-                  double& min_position_diff, double& yaw_diff);
+  bool MatchArmor(const std::vector<Armor>& target_id_armors,
+                         double& position_diff, double& yaw_diff, bool& is_jump);
 
   /// @brief 匹配成功后，执行 EKF update 并做速度约束
   void UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p);
