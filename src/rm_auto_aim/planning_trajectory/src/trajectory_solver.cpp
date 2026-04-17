@@ -95,6 +95,7 @@ TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
     center.z = target_.position.z;
     center.yaw = NormalizeAngle(target_.position.yaw + target_.velocity.yaw * time_delay);
   }
+  pre_center_ = PredictCenter(time_delay);
   return center;
 }
 
@@ -134,7 +135,7 @@ TrajectorySolver::TarPostion TrajectorySolver::PredictArmor(
 // msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
 void TrajectorySolver::PredictAllArmorPosition(double time_delay)
 {
-  pre_center_ = PredictCenter(time_delay);
+  PredictCenter(time_delay);
   pre_position_.fill({});
 
   for (int i = 0; i < target_.num; ++i)
@@ -145,7 +146,7 @@ void TrajectorySolver::PredictAllArmorPosition(double time_delay)
 
 void TrajectorySolver::PredictOneArmorPosition(double time_delay, int idx)
 {
-  pre_center_ = PredictCenter(time_delay);
+  PredictCenter(time_delay);
   pre_position_[idx] = PredictArmor(idx, pre_center_);
 }
 
@@ -228,7 +229,7 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
   return pitch;
 }
 
-double TrajectorySolver::SolveYaw(double x, double y) { return std::atan2(y, x); }
+double TrajectorySolver::SolveYaw(double x, double y) const { return std::atan2(y, x); }
 
 double fast_atan(double x, double y)
 {
@@ -238,22 +239,90 @@ double fast_atan(double x, double y)
 }
 
 // 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
+// bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fire)
+// {
+//   if (!HasValidSelection())
+//   {
+//     return false;
+//   }
+
+//   const double distance =
+//       std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
+//                 pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
+//       s_bias_;
+
+//   const double armor_half_length =
+//       (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
+
+//   const double max_yaw_diff = SolveYaw(distance, armor_half_length);
+
+//   const bool stable_tracking = std::fabs(target_.velocity.x - last_x_v_) < 0.4 &&
+//                                std::fabs(target_.velocity.y - last_y_v_) < 0.3 &&
+//                                std::fabs(target_.velocity.yaw - last_v_yaw_) < 0.3;
+
+//   if (!stable_tracking && !is_fast_fire && !should_last_shot_)
+//   {
+//     return false;
+//   }
+
+//   else
+//   {
+//     bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff &&
+//                             fabs(tar_pitch - gimbal_pitch_) > 0.02;
+//     if (choose_next_)
+//     {
+//       if (yaw_diff_exceeds)
+//       {
+//         // RCLCPP_WARN(logger_, "云台和跟踪都未就位");
+//         return false;
+//       }
+//       // RCLCPP_WARN(logger_, "云台就位而跟踪未就位");
+//       return is_fast_fire;
+//     }
+//     else
+//     {
+//       if (yaw_diff_exceeds)
+//       {
+//         // RCLCPP_WARN(logger_, "跟踪就位而云台未就位");
+//         return is_fast_fire;
+//       }
+//       // RCLCPP_DEBUG(logger_, "云台和跟踪都就位");
+//       return true;
+//     }
+//   }
+// }
+std::pair<double, double> TrajectorySolver::ComputeFireYawWindow(
+    const TarPostion& armor) const
+{
+  const double half_length_ = (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
+
+  const double sy = std::sin(armor.yaw);
+  const double cy = std::cos(armor.yaw);
+
+  const double ax = armor.x - half_length_ * sy;
+  const double ay = armor.y + half_length_ * cy;
+  const double bx = armor.x + half_length_ * sy;
+  const double by = armor.y - half_length_ * cy;
+
+  const double angle_c = SolveYaw(armor.x, armor.y);
+  const double angle_a = SolveYaw(ax, ay);
+  const double angle_b = SolveYaw(bx, by);
+
+  const double lo = AngleDiff(angle_b, angle_c);
+  const double hi = AngleDiff(angle_a, angle_c);
+  return {std::min(lo, hi), std::max(lo, hi)};
+}
+
 bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fire)
 {
-  if (!HasValidSelection())
-  {
-    return false;
-  }
+  if (!HasValidSelection()) return false;
 
-  const double distance =
-      std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
-                pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
-      s_bias_;
+  const auto& p = pre_position_[selected_idx_];
+  const auto [yaw_lo, yaw_hi] = ComputeFireYawWindow(p);
 
-  const double armor_half_length =
-      (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
-
-  const double max_yaw_diff = SolveYaw(distance, armor_half_length);
+  const double control_delta = AngleDiff(tar_yaw, gimbal_yaw_);
+  const bool yaw_ok = (control_delta >= yaw_lo) && (control_delta <= yaw_hi);
+  const bool pitch_ok = std::fabs(tar_pitch - gimbal_pitch_) <= 0.02;
 
   const bool stable_tracking = std::fabs(target_.velocity.x - last_x_v_) < 0.4 &&
                                std::fabs(target_.velocity.y - last_y_v_) < 0.3 &&
@@ -264,31 +333,15 @@ bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fi
     return false;
   }
 
-  else
+  const bool angle_diff_exceeds = !yaw_ok || !pitch_ok;
+
+  if (choose_next_)
   {
-    bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff &&
-                            fabs(tar_pitch - gimbal_pitch_) > 0.02;
-    if (choose_next_)
-    {
-      if (yaw_diff_exceeds)
-      {
-        // RCLCPP_WARN(logger_, "云台和跟踪都未就位");
-        return false;
-      }
-      // RCLCPP_WARN(logger_, "云台就位而跟踪未就位");
-      return is_fast_fire;
-    }
-    else
-    {
-      if (yaw_diff_exceeds)
-      {
-        // RCLCPP_WARN(logger_, "跟踪就位而云台未就位");
-        return is_fast_fire;
-      }
-      // RCLCPP_DEBUG(logger_, "云台和跟踪都就位");
-      return true;
-    }
+    if (angle_diff_exceeds) return false;
+    return is_fast_fire;
   }
+  if (angle_diff_exceeds) return is_fast_fire;
+  return true;
 }
 
 void TrajectorySolver::GlobalSelectArmor(double time_delay)
@@ -323,35 +376,76 @@ void TrajectorySolver::GlobalSelectArmor(double time_delay)
   PredictOneArmorPosition(best_time, best_idx);
 }
 
+// void TrajectorySolver::LocalSelectArmor(double time_delay)
+// {
+//   if (std::fabs(target_.velocity.yaw) < 0.3)
+//   {
+//     selected_idx_ = 0;
+//     selected_time_delay_ = time_delay;
+//     PredictOneArmorPosition(time_delay, selected_idx_);
+//     return;
+//   }
+
+//   const TarPostion center0 = PredictCenter(time_delay);
+//   const TarPostion armor0 = PredictArmor(0, center0);
+//   const double center_yaw_0 = SolveYaw(center0.x, center0.y);
+//   const double armor_yaw_err_0 =
+//       std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
+//   const double s_0 = armor0.x * armor0.x + armor0.y * armor0.y;
+
+//   const double t1 = time_delay + turn_s_;
+//   const TarPostion center1 = PredictCenter(t1);
+//   const TarPostion armor1 = PredictArmor(1, center1);
+//   const double center_yaw_1 = SolveYaw(center1.x, center1.y);
+//   const double armor_yaw_err_1 =
+//       std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
+//   const double s_1 = armor1.x * armor1.x + armor1.y * armor1.y;
+
+//   choose_next_ = (armor_yaw_err_1 <= 1.5 * armor_yaw_err_0) && (s_1 <= s_0);
+
+//   selected_idx_ = choose_next_ ? 1 : 0;
+//   selected_time_delay_ = choose_next_ ? t1 : time_delay;
+//   PredictOneArmorPosition(selected_time_delay_, selected_idx_);
+// }
+
 void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
   if (std::fabs(target_.velocity.yaw) < 0.3)
   {
     selected_idx_ = 0;
     selected_time_delay_ = time_delay;
+    choose_next_ = false;
     PredictOneArmorPosition(time_delay, selected_idx_);
     return;
   }
 
-  const TarPostion center0 = PredictCenter(time_delay);
-  const TarPostion armor0 = PredictArmor(0, center0);
-  const double center_yaw_0 = SolveYaw(center0.x, center0.y);
-  const double armor_yaw_err_0 =
-      std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
-  const double s_0 = armor0.x * armor0.x + armor0.y * armor0.y;
+  const TarPostion center_curr = PredictCenter(time_delay);
+  const TarPostion armor_curr0 = PredictArmor(0, center_curr);
+  const TarPostion armor_curr1 = PredictArmor(1, center_curr);
+  const double center_yaw_curr = SolveYaw(pre_center_.x, pre_center_.y);
+  const double armor_yaw_curr0 = SolveYaw(armor_curr0.x, armor_curr0.y);
+  const double armor_yaw_curr1 = SolveYaw(armor_curr1.x, armor_curr1.y);
 
-  const double t1 = time_delay + turn_s_;
-  const TarPostion center1 = PredictCenter(t1);
-  const TarPostion armor1 = PredictArmor(1, center1);
-  const double center_yaw_1 = SolveYaw(center1.x, center1.y);
-  const double armor_yaw_err_1 =
-      std::fabs(AngleDiff(SolveYaw(armor1.x, armor1.y), center_yaw_1));
-  const double s_1 = armor1.x * armor1.x + armor1.y * armor1.y;
+  const double yaw_turn_delta = std::fabs(AngleDiff(armor_yaw_curr1, armor_yaw_curr0));
+  const double target_yaw_speed =
+      target_.velocity.yaw * (target_.radius1 + target_.radius2) / 2 - target_.velocity.y;
+  const double turn_time =
+      yaw_turn_delta / (std::fabs(gimbal_yaw_speed_) + std::fabs(target_yaw_speed));
 
-  choose_next_ = (armor_yaw_err_1 <= 1.5 * armor_yaw_err_0) && (s_1 <= s_0);
+  const TarPostion center_next = PredictCenter(time_delay + turn_time);
+  const TarPostion armor_next_0 = PredictArmor(0, center_next);
+  const TarPostion armor_next_1 = PredictArmor(1, center_next);
+  const double center_yaw_next = SolveYaw(center_next.x, center_next.y);
+  const double armor_yaw_next0 = SolveYaw(armor_next_0.x, armor_next_0.y);
+  const double armor_yaw_next1 = SolveYaw(armor_next_1.x, armor_next_1.y);
+
+  const double s_0 = armor_next_0.x * armor_next_0.x + armor_next_0.y * armor_next_0.y;
+  const double s_1 = armor_next_1.x * armor_next_1.x + armor_next_1.y * armor_next_1.y;
+
+  choose_next_ = (armor_yaw_next1 <= armor_yaw_next0) && (s_1 <= s_0);
 
   selected_idx_ = choose_next_ ? 1 : 0;
-  selected_time_delay_ = choose_next_ ? t1 : time_delay;
+  selected_time_delay_ = choose_next_ ? time_delay + turn_time : time_delay;
   PredictOneArmorPosition(selected_time_delay_, selected_idx_);
 }
 
@@ -519,21 +613,14 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   aim_y = pre_position_[selected_idx_].y;
   aim_z = pre_position_[selected_idx_].z;
 
-  // if (choose_next_ == true && target_.num == 3)
-  // {
-  //   pitch = SolvePitch(pre_center_.x, pre_center_.y, pre_center_.z);
-  // }
-  // else
-  // {
-    pitch = SolvePitch(aim_x, aim_y, aim_z);
-  // }
+  pitch = SolvePitch(aim_x, aim_y, aim_z);
 
   if (fire_logic_mode_ == FireLogicMode::SPIN)
   {
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     const double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) > 0.01 && !choose_next_;
+    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) > 0.01 && CanFire(gimbal_yaw_, pitch, false);
     if (is_fire)
     {
       yaw = aim_yaw;
@@ -557,11 +644,12 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
                                            double& aim_x, double& aim_y, double& aim_z,
                                            int& idx, const Target& target,
                                            double gimbal_yaw, double gimbal_pitch,
-                                           const double send_time)
+                                           const double send_time, double gimbal_yaw_speed)
 {
   target_ = target;
   gimbal_yaw_ = gimbal_yaw;
   gimbal_pitch_ = gimbal_pitch;
+  gimbal_yaw_speed_ = gimbal_yaw_speed;
 
   fire_logic_mode_ = FireLogicMode::COMMON;
 

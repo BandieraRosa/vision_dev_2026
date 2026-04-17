@@ -111,13 +111,14 @@ void PlanningTrajectoryNode::timer_callback()
   std::lock_guard<std::mutex> lk(target_mutex_);
   trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
                                             aim_z, idx, target_local, gimbal_yaw,
-                                            gimbal_pitch, send_time_);
+                                            gimbal_pitch, send_time_, gimbal_yaw_speed_);
   double bc_yaw = cmd.yaw;
   {
     send_time_ += dt_;
     trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
   }
 
+  gimbal_yaw_speed_ = cmd.vel_yaw;
   // publish 放在锁外，避免阻塞 sub 线程
   auto_aim_interfaces::msg::Send send_msg;
   if (send_time_ >= 2 * dt_)

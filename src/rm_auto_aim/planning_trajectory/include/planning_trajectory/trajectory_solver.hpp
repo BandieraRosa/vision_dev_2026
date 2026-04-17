@@ -101,7 +101,11 @@ class TrajectorySolver
   void PredictOneArmorPosition(double time_delay, int idx);
 
   double SolvePitch(double x, double y, double z);
-  double SolveYaw(double x, double y);
+  double SolveYaw(double x, double y) const;
+  // 返回以 (target.x, target.y) 为原点的允许开火 yaw 窗口 [min, max]
+  // delta = tar_yaw - gimbal_yaw 落在此区间即可命中
+  std::pair<double, double> ComputeFireYawWindow(const TarPostion& armor) const;
+  double GetArmorHalfWidth() const;
 
   bool CanFire(double yaw, double pitch, bool is_fast_fire = false);
   void GlobalSelectArmor(double time_delay);
@@ -116,7 +120,7 @@ class TrajectorySolver
   void AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                            double& aim_y, double& aim_z, int& idx, const Target& target,
                            double gimbal_yaw, double gimbal_pitch,
-                           const double send_time);
+                           const double send_time, double gimbal_yaw_speed);
 
   void SetTarget(const Target& t) { target_ = t; }
 
@@ -182,7 +186,10 @@ class TrajectorySolver
 
   bool choose_next_{false};
   bool should_last_shot_{false};
+  double gimbal_yaw_speed_{0.0};
 
   bool no_fire{false};
 };
+
+
 }  // namespace rm_auto_aim
