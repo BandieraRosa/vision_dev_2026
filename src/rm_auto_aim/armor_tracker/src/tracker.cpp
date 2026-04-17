@@ -194,8 +194,8 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), next_yaw));
     // RCLCPP_WARN(
     //     rclcpp::get_logger("armor_tracker"),
-    //     "Matching armors, target id nums == 1, current match yaw diff: %f, jump yaw diff: %f",
-    //     match_yaw_diff, jump_yaw_diff);
+    //     "Matching armors, target id nums == 1, current match yaw diff: %f, jump yaw
+    //     diff: %f", match_yaw_diff, jump_yaw_diff);
     auto p = armor.pose.position;
     Eigen::Vector3d position_vec(p.x, p.y, p.z);
     double match_position_diff = (predicted_position - position_vec).norm();
@@ -280,14 +280,20 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
   return false;
 }
 
-void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
+void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& armor_pose)
 {
-  geometry_msgs::msg::Point adjusted_p = p;
+  geometry_msgs::msg::Point adjusted_p = armor_pose;
   if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
     adjusted_p.z = adjusted_p.z + (1 - outpost_idx) * outpost_dz;
+    auto measurement_z = outpost_idx == 1 ? adjusted_p.z : target_state(2);
+    measurement =
+        Eigen::Vector4d(adjusted_p.x, adjusted_p.y, measurement_z, measured_yaw);
   }
-  measurement = Eigen::Vector4d(adjusted_p.x, adjusted_p.y, adjusted_p.z, measured_yaw);
+  else
+  {
+    measurement = Eigen::Vector4d(adjusted_p.x, adjusted_p.y, adjusted_p.z, measured_yaw);
+  }
 
   // 先基于 x_pri 取 innovation，后面用来判断“是否还在沿旧方向跑”
   const Eigen::VectorXd innovation = ekf.ComputeInnovation(measurement);
