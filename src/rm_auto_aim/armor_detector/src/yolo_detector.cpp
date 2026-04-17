@@ -95,11 +95,7 @@ std::string map_label(const std::string& raw_label)
 
 std::unique_ptr<YoloDetector> YoloDetector::Create(rclcpp::Node& node)
 {
-  const auto ignore_classes =
-      get_parameter<std::vector<std::string>>(node, "ignore_classes", {"negative"});
-  const auto detect_color = get_parameter<int>(node, "detect_color", RED);
-
-  const auto model_name = get_parameter<std::string>(node, "yolo.model_path", "");
+  auto model_name = get_parameter<std::string>(node, "yolo.model_path", "");
   if (model_name.empty())
   {
     RCLCPP_ERROR(
@@ -108,8 +104,8 @@ std::unique_ptr<YoloDetector> YoloDetector::Create(rclcpp::Node& node)
     throw std::runtime_error("Parameter 'yolo.model_path' must not be empty");
   }
 
-  const auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-  const auto model_path = pkg_path + "/model/" + model_name;
+  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+  auto model_path = pkg_path + "/model/" + model_name;
   if (!std::filesystem::exists(model_path))
   {
     RCLCPP_ERROR(node.get_logger(), "YOLO model file not found: %s", model_path.c_str());
@@ -126,8 +122,9 @@ std::unique_ptr<YoloDetector> YoloDetector::Create(rclcpp::Node& node)
           static_cast<float>(get_parameter<double>(node, "yolo.min_confidence", 0.8)),
       .nms_threshold =
           static_cast<float>(get_parameter<double>(node, "yolo.nms_threshold", 0.3)),
-      .ignore_classes = ignore_classes,
-      .detect_color = detect_color,
+      .ignore_classes =
+          get_parameter<std::vector<std::string>>(node, "ignore_classes", {"negative"}),
+      .detect_color = get_parameter<int>(node, "detect_color", RED),
       .num_keypoints = get_parameter<int>(node, "yolo.num_keypoints", 4),
       .large_armor_ratio_threshold = static_cast<float>(
           get_parameter<double>(node, "yolo.large_armor_ratio_threshold", 3.2))};

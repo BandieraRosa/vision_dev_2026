@@ -8,6 +8,7 @@
 #include "armor_detector/armor.hpp"
 #include "armor_detector/detection_result.hpp"
 #include "armor_detector/detector_base.hpp"
+#include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/number_classifier.hpp"
 
 namespace rclcpp
@@ -28,6 +29,8 @@ class Detector : public DetectorBase
     double max_ratio;
     // vertical angle与垂直方向的最大差角
     double max_angle;
+    // area condition
+    double min_fill_ratio;
   };
 
   struct ArmorParams
@@ -50,6 +53,15 @@ class Detector : public DetectorBase
     std::vector<std::string> ignore_classes;
   };
 
+  struct CornerCorrectorParams
+  {
+    bool use_corner_corrector;
+    double max_brightness;
+    double scale;
+    double start;
+    double end;
+  };
+
   struct DetectorParams
   {
     int binary_lower_thres;
@@ -58,6 +70,7 @@ class Detector : public DetectorBase
     LightParams l;
     ArmorParams a;
     ClassifierParams c;
+    CornerCorrectorParams cc;
   };
 
   static std::unique_ptr<Detector> Create(rclcpp::Node& node);
@@ -67,7 +80,7 @@ class Detector : public DetectorBase
   DetectionResult Detect(const cv::Mat& input) override;
 
   cv::Mat PreprocessImage(const cv::Mat& input);
-  std::vector<Light> FindLights(const cv::Mat& rbg_img, const cv::Mat& binary_img);
+  std::vector<Light> FindLights(const cv::Mat& rbg_img, const cv::Mat& binary_img) noexcept;
   std::vector<Armor> MatchLights(const std::vector<Light>& lights);
 
   void DrawResults(cv::Mat& img) override;
@@ -82,11 +95,14 @@ class Detector : public DetectorBase
 
   DetectorParams params_;
   std::unique_ptr<NumberClassifier> classifier_;
+  std::unique_ptr<LightCornerCorrector> light_corner_corrector_ = nullptr;
   std::vector<Light> lights_;
   std::vector<Armor> armors_;
 
+
   // Debug msgs
   cv::Mat binary_img_;
+  cv::Mat gray_img_;
   cv::Mat all_num_img_;
   DebugData debug_data_;
 };

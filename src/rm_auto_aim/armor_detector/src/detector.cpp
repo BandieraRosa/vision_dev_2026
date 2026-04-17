@@ -51,7 +51,14 @@ std::unique_ptr<Detector> Detector::Create(rclcpp::Node& node)
             .label_path = pkg_path + "/model/label.txt",
             .threshold = get_parameter<double>(node, "classifier_threshold", 0.7),
             .ignore_classes = get_parameter<std::vector<std::string>>(
-                node, "ignore_classes", {"negative"})}};
+                node, "ignore_classes", {"negative"})},
+      .cc = {.use_corner_corrector = get_parameter<bool>(
+                 node, "corner_corrector.use_corner_corrector", false),
+             .max_brightness =
+                 get_parameter<double>(node, "corner_corrector.max_brightness", 25.0),
+             .scale = get_parameter<double>(node, "corner_corrector.scale", 0.07),
+             .start = get_parameter<double>(node, "corner_corrector.start", 0.4),
+             .end = get_parameter<double>(node, "corner_corrector.end", 0.6)}};
 
   return std::make_unique<Detector>(detector_params);
 }
@@ -61,11 +68,21 @@ Detector::Detector(DetectorParams& params) : params_(params)
   classifier_ =
       std::make_unique<NumberClassifier>(params.c.model_path, params.c.label_path,
                                          params.c.threshold, params.c.ignore_classes);
+  if (params_.cc.use_corner_corrector)
+  {
+    light_corner_corrector_ = std::make_unique<LightCornerCorrector>(
+        params_.cc.max_brightness, params_.cc.scale, params_.cc.start, params_.cc.end);
+    RCLCPP_ERROR(rclcpp::get_logger("armor_detector"),
+                 "Using LightCornerCorrector with max_brightness: %f, scale: %f, start: "
+                 "%f, end: %f",
+                 params_.cc.max_brightness, params_.cc.scale, params_.cc.start,
+                 params_.cc.end);
+  }
 }
 
 DetectionResult Detector::Detect(const cv::Mat& input)
 {
-  debug_latencies_.clear();  // Clear previous latencies at the start of detection
+  debug_latencies_.clear();
   DetectionResult result;
   auto preprocess_start_time = std::chrono::steady_clock::now();
   binary_img_ = PreprocessImage(input);
@@ -92,6 +109,20 @@ DetectionResult Detector::Detect(const cv::Mat& input)
 
   if (!armors_.empty())
   {
+    if (light_corner_corrector_)
+    {
+      auto corner_correct_start_time = std::chrono::steady_clock::now();
+
+      light_corner_corrector_->CorrectCorners(armors_, gray_img_);
+
+      auto corner_correct_end_time = std::chrono::steady_clock::now();
+      auto corner_correct_latency =
+          std::chrono::duration_cast<std::chrono::microseconds>(corner_correct_end_time -
+                                                                corner_correct_start_time)
+              .count();
+      debug_latencies_.emplace_back("Corner Correct",
+                                    static_cast<uint64_t>(corner_correct_latency));
+    }
     auto classify_start_time = std::chrono::steady_clock::now();
     classifier_->ExtractNumbers(input, armors_);
     classifier_->Classify(armors_);
@@ -102,7 +133,7 @@ DetectionResult Detector::Detect(const cv::Mat& input)
     debug_latencies_.emplace_back("Classify", static_cast<uint64_t>(classify_latency));
   }
 
-  auto detect_result_fill_time = std::chrono::steady_clock::now();
+  auto detect_result_fill_start_time = std::chrono::steady_clock::now();
   result.armors = armors_;
   result.binary_image = binary_img_;
   result.debug_data = GetDebugData();
@@ -115,7 +146,7 @@ DetectionResult Detector::Detect(const cv::Mat& input)
   auto detect_result_fill_end_time = std::chrono::steady_clock::now();
   auto detect_result_fill_latency =
       std::chrono::duration_cast<std::chrono::microseconds>(detect_result_fill_end_time -
-                                                            detect_result_fill_time)
+                                                            detect_result_fill_start_time)
           .count();
   debug_latencies_.emplace_back("Fill Result",
                                 static_cast<uint64_t>(detect_result_fill_latency));
@@ -125,19 +156,19 @@ DetectionResult Detector::Detect(const cv::Mat& input)
 
 cv::Mat Detector::PreprocessImage(const cv::Mat& rgb_img)  // 图像预处理
 {
-  cv::Mat gray_img;
-  cv::cvtColor(rgb_img, gray_img, cv::COLOR_RGB2GRAY);
+  cv::cvtColor(rgb_img, gray_img_, cv::COLOR_RGB2GRAY);
 
   cv::Mat binary_img;
-  cv::inRange(gray_img, cv::Scalar(params_.binary_lower_thres),
+  cv::inRange(gray_img_, cv::Scalar(params_.binary_lower_thres),
               cv::Scalar(params_.binary_upper_thres), binary_img);
   return binary_img;
 }
 
-std::vector<Light> Detector::FindLights(const cv::Mat& rbg_img, const cv::Mat& binary_img)
+std::vector<Light> Detector::FindLights(const cv::Mat& rbg_img,
+                                        const cv::Mat& binary_img) noexcept
 {
   using std::vector;
-  vector<vector<cv::Point>> contours;  //// 定义一个向量，用于存储图像中检测到的所有轮廓
+  vector<vector<cv::Point>> contours;  // 定义一个向量，用于存储图像中检测到的所有轮廓
   vector<cv::Vec4i> hierarchy;  // 定义一个向量，用于存储图像中检测到的所有轮廓的层级信息
   cv::findContours(
       binary_img, contours, hierarchy, cv::RETR_EXTERNAL,

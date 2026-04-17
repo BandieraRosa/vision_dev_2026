@@ -449,15 +449,15 @@ bool ArmorPoseOptimizer::SolveTranslationForFixedRotation(
     double du = img_points_ud[i](0) - cx_;
     double dv = img_points_ud[i](1) - cy_;
 
-    a(2 * i, 0) = fx_;
-    a(2 * i, 1) = 0.0;
-    a(2 * i, 2) = -du;
-    b(2 * i) = du * q(2) - fx_ * q(0);
+    a(2L * i, 0) = fx_;
+    a(2L * i, 1) = 0.0;
+    a(2L * i, 2) = -du;
+    b(2L * i) = du * q(2) - fx_ * q(0);
 
-    a(2 * i + 1, 0) = 0.0;
-    a(2 * i + 1, 1) = fy_;
-    a(2 * i + 1, 2) = -dv;
-    b(2 * i + 1) = dv * q(2) - fy_ * q(1);
+    a(2L * i + 1, 0) = 0.0;
+    a(2L * i + 1, 1) = fy_;
+    a(2L * i + 1, 2) = -dv;
+    b(2L * i + 1) = dv * q(2) - fy_ * q(1);
   }
 
   // 正规方程求解 (A^T A) t = A^T b

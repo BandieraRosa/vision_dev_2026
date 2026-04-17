@@ -251,7 +251,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     // cov_ypd(2, 2) = sigma_distance * sigma_distance;
 
     // // ypd -> camera xyz
-    // const Eigen::Matrix3d j_ypd_to_cam = build_jacobian_ypd_to_camera_xyz(p_cam);
+    // const Eigen::Matrix3d j_ypd_to_cam = BuildJacobianYpdToCameraXyz(p_cam);
     // const Eigen::Matrix3d cov_cam = j_ypd_to_cam * cov_ypd * j_ypd_to_cam.transpose();
 
     // // camera xyz -> world xyz

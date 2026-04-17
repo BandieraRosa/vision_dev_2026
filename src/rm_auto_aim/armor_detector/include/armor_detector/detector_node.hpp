@@ -14,7 +14,6 @@
 #include "armor_detector/armor_pose_optimizer.hpp"
 #include "armor_detector/detector_base.hpp"
 #include "armor_detector/detector_factory.hpp"
-#include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 
@@ -29,7 +28,6 @@ class ArmorDetectorNode : public rclcpp::Node
  private:
   void ImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& IMG_MSG);
 
-  std::unique_ptr<LightCornerCorrector> InitLightCornerCorrector();
   std::unique_ptr<PnPSolver> InitPnPSolver();
   std::unique_ptr<ArmorPoseOptimizer> InitPoseOptimizer();
   void InitTransformListener();
@@ -41,7 +39,6 @@ class ArmorDetectorNode : public rclcpp::Node
 
   // Armor Detector
   std::unique_ptr<DetectorBase> detector_;
-  std::unique_ptr<LightCornerCorrector> corner_corrector_;
   std::unique_ptr<PnPSolver> pnp_solver_;
   std::unique_ptr<ArmorPoseOptimizer> pose_optimizer_;
 

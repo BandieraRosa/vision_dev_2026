@@ -1,6 +1,7 @@
 #include "armor_tracker/tracker.hpp"
 
 #include <numbers>
+#include <rclcpp/logger.hpp>
 
 namespace rm_auto_aim
 {
@@ -49,7 +50,10 @@ void Tracker::Init(const Armors::SharedPtr& armors_msg)
 
 void Tracker::Update(const Armors::SharedPtr& armors_msg)
 {
-  if (jump_cooldown_ > 0) --jump_cooldown_;  // ← 每帧递减
+  if (jump_cooldown_ > 0)
+  {
+    --jump_cooldown_;  // ← 每帧递减
+  }
   Eigen::VectorXd ekf_prediction = ekf.predict();
   TickManeuverBoost();
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
@@ -92,10 +96,9 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   }
   else if (is_jump)
   {
-    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
     if (jump_cooldown_ <= 0)
     {
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "armor_yaw_diff: %f", yaw_diff);
+      RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Armor Jump!");
       // ArmManeuverBoost(4);
       HandleArmorJump(tracked_armor);
       jump_cooldown_ = kJumpCooldownFrames;
@@ -116,7 +119,8 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
                   health_rate);
-      // ResetState(double &yaw, const geometry_msgs::msg::Point &position)
+      double tracked_armor_yaw = OrientationToYaw(tracked_armor.pose.orientation);
+      // ResetState(tracked_armor_yaw, tracked_armor.pose.position);
     }
   }
 
@@ -182,8 +186,16 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
     auto armor = target_id_armors[0];
     double match_yaw_diff =
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), target_state(6)));
+    // RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+    //             "Matching armors, target id nums == 1, current match yaw diff: %f, "
+    //             "current target yaw: %f",
+    //             match_yaw_diff, target_state(6));
     double jump_yaw_diff =
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), next_yaw));
+    // RCLCPP_WARN(
+    //     rclcpp::get_logger("armor_tracker"),
+    //     "Matching armors, target id nums == 1, current match yaw diff: %f, jump yaw diff: %f",
+    //     match_yaw_diff, jump_yaw_diff);
     auto p = armor.pose.position;
     Eigen::Vector3d position_vec(p.x, p.y, p.z);
     double match_position_diff = (predicted_position - position_vec).norm();
@@ -287,7 +299,7 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p)
     target_state(1) = 0;
     target_state(3) = 0;
     target_state(5) = 0;
-    target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));
+    // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));
   }
   else
   {
@@ -411,7 +423,7 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   Eigen::Vector3d infer_p = GetArmorPositionFromState(target_state);
   if ((current_p - infer_p).norm() > max_match_distance_)
   {
-    ResetState(yaw, position);
+    // ResetState(yaw, position);
   }
 
   last_tracked_armor = current_armor;
@@ -498,7 +510,7 @@ void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
   }
 
   // 转向残差大，说明旧角速度也可能不对
-  if (std::abs(innovation(3)) > 0.35)
+  if (std::abs(innovation(3)) > 0.35 && tracked_armor.number != "outpost")
   {
     target_state(7) *= 0.5;
     boost_needed = true;

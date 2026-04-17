@@ -4,7 +4,6 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <image_transport/image_transport.hpp>
-#include <sstream>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/create_timer_ros.hpp>
 
@@ -19,9 +18,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
   auto detector_type =
       this->declare_parameter("detector_type", std::string("traditional"));
   detector_ = create_detector(detector_type, *this);
-
-  // Light corner corrector
-  corner_corrector_ = InitLightCornerCorrector();
 
   // Pose optimizer
   pose_optimizer_ = InitPoseOptimizer();
@@ -152,7 +148,7 @@ void ArmorDetectorNode::ImageCallback(
           }
           catch (const tf2::TransformException& ex)
           {
-            RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
+            // RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", ex.what());
           }
         }
 
@@ -210,25 +206,10 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   auto convert_latency =
       static_cast<uint64_t>((convert_end_time - convert_start_time).nanoseconds() / 1000);
   debug_latencies_.emplace_back("Image Convert", static_cast<uint64_t>(convert_latency));
-  auto result = detector_->Detect(img);
+  DetectionResult result = detector_->Detect(img);
   auto detect_latencies = detector_->GetDebugLatencies();
   debug_latencies_.insert(debug_latencies_.end(), detect_latencies.begin(),
                           detect_latencies.end());
-
-  if (corner_corrector_ != nullptr && result.binary_image)
-  {
-    auto corner_correct_start_time = std::chrono::steady_clock::now();
-    for (auto& armor : result.armors)
-    {
-      corner_corrector_->CorrectCorners(armor, *result.binary_image);
-    }
-    auto corner_correct_end_time = std::chrono::steady_clock::now();
-    auto corner_correct_latency = std::chrono::duration_cast<std::chrono::microseconds>(
-                                      corner_correct_end_time - corner_correct_start_time)
-                                      .count();
-    debug_latencies_.emplace_back("Corner Correct",
-                                  static_cast<uint64_t>(corner_correct_latency));
-  }
 
   auto final_time = this->now();
   auto latency = (final_time - img_msg->header.stamp).seconds() * 1000000;
@@ -262,9 +243,9 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
     // Draw camera center
     cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
     // Draw latency
-    std::stringstream latency_ss;
-    latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
-    auto latency_s = latency_ss.str();
+    // std::stringstream latency_ss;
+    // latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
+    // auto latency_s = latency_ss.str();
     // cv::putText(img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0,
     //             cv::Scalar(0, 255, 0), 2);
     auto debug_data_fill_end_time = std::chrono::steady_clock::now();
@@ -290,13 +271,6 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
   }
   // RCLCPP_INFO(this->get_logger(), "latencies size: %zu", debug_latencies_.size());
   return std::move(result.armors);
-}
-
-std::unique_ptr<LightCornerCorrector> ArmorDetectorNode::InitLightCornerCorrector()
-{
-  return static_cast<bool>(this->declare_parameter("use_corner_corrector", false))
-             ? std::make_unique<LightCornerCorrector>()
-             : nullptr;
 }
 
 std::unique_ptr<PnPSolver> ArmorDetectorNode::InitPnPSolver()
@@ -361,7 +335,7 @@ std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
 
 void ArmorDetectorNode::InitTransformListener()
 {
-  odom_frame_ = this->declare_parameter("target_frame", "gimbal_odom");
+  odom_frame_ = this->declare_parameter("odom_frame", "gimbal_odom");
   tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
       this->get_node_base_interface(), this->get_node_timers_interface());

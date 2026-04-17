@@ -21,10 +21,14 @@ struct SymmetryAxis
 class LightCornerCorrector
 {
  public:
-  explicit LightCornerCorrector() noexcept {}
+  explicit LightCornerCorrector(double max_brightness, double scale, double start,
+                                double end) noexcept
+      : max_brightness_(max_brightness), scale_(scale), start_(start), end_(end)
+  {
+  }
 
   // 修正装甲灯条的角点
-  void CorrectCorners(Armor &armor, const cv::Mat &gray_img);
+  void CorrectCorners(std::vector<Armor> &armors, const cv::Mat &gray_img);
 
  private:
   // 查找灯条的对称轴
@@ -33,6 +37,11 @@ class LightCornerCorrector
   // 沿对称轴查找灯条的角点
   cv::Point2f FindCorner(const cv::Mat &gray_img, const Light &light,
                          const SymmetryAxis &axis, const std::string &order);
+
+  double max_brightness_;
+  double scale_;
+  double start_;
+  double end_;
 };
 
 };  // namespace rm_auto_aim
