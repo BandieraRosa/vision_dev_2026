@@ -140,7 +140,10 @@ class Tracker  // 整车观测
   int lag_diff_count_ = 0;
   int jump_cooldown_ = 0;
   static constexpr int kJumpCooldownFrames = 5;  // 冷却帧数，可调
-  double last_yaw_ = 0.0;  // FIX: 显式初始化，避免首次 OrientationToYaw 结果随机
+  double last_yaw_ = 0.0;
+  int update_count_ = 0;
+  double last_v_yaw_ = 0.0;
+  double last_z_ = 0.0;
 };
 
 }  // namespace rm_auto_aim

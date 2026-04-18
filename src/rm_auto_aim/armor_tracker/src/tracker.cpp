@@ -282,6 +282,7 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
 
 void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& armor_pose)
 {
+  update_count_++;
   geometry_msgs::msg::Point adjusted_p = armor_pose;
   if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
@@ -305,7 +306,20 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     target_state(1) = 0;
     target_state(3) = 0;
     target_state(5) = 0;
-    // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));
+    // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));\
+
+    if (update_count_ == 10)
+    {
+      last_v_yaw_ = target_state(7);
+      last_z_ = target_state(4);
+    }
+    if (update_count_ > 10)
+    {
+      target_state(7) = std::clamp(target_state(7), -last_v_yaw_ - 0.1, last_v_yaw_ + 0.1);
+      target_state(4) = std::clamp(target_state(4), -last_z_ - 0.02, last_z_ + 0.02);
+      last_v_yaw_ = target_state(7);
+      last_z_ = target_state(4);
+    }
   }
   else
   {
@@ -378,6 +392,7 @@ void Tracker::InitEkf(const Armor& armor)
 {
   jump_cooldown_ = 0;  // ← 新目标，清除冷却
   maneuver_boost_count_ = 0;
+  update_count_ = 0;
 
   first_tracked = true;
   is_outpost = (armor.number == "outpost");
