@@ -29,7 +29,7 @@ class ArmorTrackerNode : public rclcpp::Node
  private:
   void InitParameters();
 
-  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
+  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr& armors_ptr);
 
   Eigen::Matrix3d BuildJacobianYpdToCameraXyz(const Eigen::Vector3d& p_cam);
 

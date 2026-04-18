@@ -23,17 +23,17 @@ class ExtendedKalmanFilter
                                 const Eigen::MatrixXd& P0);
 
   // Set the initial state
-  void setState(const Eigen::VectorXd& x0);
-  void setState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);  // ← 新增
-
-  // Compute a predicted state
-  Eigen::MatrixXd predict();
-
-  // Update the estimated state based on measurement
-  Eigen::MatrixXd update(const Eigen::VectorXd& z);
+  void SetState(const Eigen::VectorXd& x0);
+  void SetState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);  // ← 新增
 
   // Get the estimated state
-  Eigen::VectorXd getState();
+  Eigen::VectorXd GetState();
+
+  // Compute a predicted state
+  Eigen::MatrixXd Predict();
+
+  // Update the estimated state based on measurement
+  Eigen::MatrixXd Update(const Eigen::VectorXd& z);
 
   // 新增：给 MatchArmor 用
   Eigen::VectorXd ComputeInnovation(const Eigen::VectorXd& z) const;

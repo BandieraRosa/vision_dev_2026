@@ -54,7 +54,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   {
     --jump_cooldown_;  // ← 每帧递减
   }
-  Eigen::VectorXd ekf_prediction = ekf.predict();
+  Eigen::VectorXd ekf_prediction = ekf.Predict();
   TickManeuverBoost();
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
 
@@ -101,7 +101,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
       RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Armor Jump!");
       // ArmManeuverBoost(4);
       HandleArmorJump(tracked_armor);
-      jump_cooldown_ = kJumpCooldownFrames;
+      jump_cooldown_ = JUMP_COOLDOWN_FRAMES;
     }
   }
   else
@@ -176,14 +176,14 @@ void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
 bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
                          double& position_diff, double& yaw_diff, bool& is_jump)
 {
-  const double sign = target_state(7) >= 0.0 ? 1.0 : -1.0;
+  double sign = target_state(7) >= 0.0 ? 1.0 : -1.0;
   double a2a_yaw_diff =
       2 * std::numbers::pi_v<double> / static_cast<double>(tracked_armors_num);
   double next_yaw = target_state(6) - sign * a2a_yaw_diff;
 
   if (target_id_armors.size() == 1)
   {
-    auto armor = target_id_armors[0];
+    const auto& armor = target_id_armors[0];
     double match_yaw_diff =
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), target_state(6)));
     // RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
@@ -227,10 +227,10 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
 
   else if (target_id_armors.size() == 2)
   {
-    auto armor0 = target_id_armors[0];
+    const auto& armor0 = target_id_armors[0];
     Eigen::Vector3d position_vec0(armor0.pose.position.x, armor0.pose.position.y,
                                   armor0.pose.position.z);
-    auto armor1 = target_id_armors[1];
+    const auto& armor1 = target_id_armors[1];
     Eigen::Vector3d position_vec1(armor1.pose.position.x, armor1.pose.position.y,
                                   armor1.pose.position.z);
     double position_diff021 = abs((position_vec0 - position_vec1).norm());
@@ -287,7 +287,7 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
   if (tracked_armors_num == ArmorsNum::OUTPOST_3)
   {
     adjusted_p.z = adjusted_p.z + (1 - outpost_idx) * outpost_dz;
-    auto measurement_z = outpost_idx == 1 ? adjusted_p.z : target_state(2);
+    auto measurement_z = outpost_idx == 1 ? adjusted_p.z : target_state(4);
     measurement =
         Eigen::Vector4d(adjusted_p.x, adjusted_p.y, measurement_z, measured_yaw);
   }
@@ -297,9 +297,9 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
   }
 
   // 先基于 x_pri 取 innovation，后面用来判断“是否还在沿旧方向跑”
-  const Eigen::VectorXd innovation = ekf.ComputeInnovation(measurement);
+  Eigen::VectorXd innovation = ekf.ComputeInnovation(measurement);
 
-  target_state = ekf.update(measurement);
+  target_state = ekf.Update(measurement);
 
   if (tracked_id == "outpost")
   {
@@ -315,8 +315,8 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     }
     if (update_count_ > 10)
     {
-      target_state(7) = std::clamp(target_state(7), -last_v_yaw_ - 0.1, last_v_yaw_ + 0.1);
-      target_state(4) = std::clamp(target_state(4), -last_z_ - 0.02, last_z_ + 0.02);
+      target_state(7) = std::clamp(target_state(7), -last_v_yaw_ - 0.01, last_v_yaw_ + 0.01);
+      target_state(4) = std::clamp(target_state(4), -last_z_ - 0.001, last_z_ + 0.001);
       last_v_yaw_ = target_state(7);
       last_z_ = target_state(4);
     }
@@ -337,7 +337,7 @@ void Tracker::ClampTargetRadius()
   target_state(8) = (tracked_id == "outpost")
                         ? outpost_r
                         : std::clamp(target_state(8), radius_min, radius_max);
-  ekf.setState(target_state);
+  ekf.SetState(target_state);
 }
 
 void Tracker::UpdateTrackerState(bool matched)
@@ -420,7 +420,7 @@ void Tracker::InitEkf(const Armor& armor)
   target_state = Eigen::VectorXd::Zero(9);
   target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
 
-  ekf.setState(target_state);
+  ekf.SetState(target_state);
 }
 
 void Tracker::HandleArmorJump(const Armor& current_armor)
@@ -448,13 +448,13 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   }
 
   last_tracked_armor = current_armor;
-  ekf.setState(target_state);
+  ekf.SetState(target_state);
 }
 
 void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
 {
   // innovation_xy = measured_xy - predicted_xy
-  const double innovation_norm = innovation_xy.norm();
+  double innovation_norm = innovation_xy.norm();
   if (innovation_norm < 0.03)
   {
     lag_diff_count_ = 0;
@@ -462,7 +462,7 @@ void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
   }
 
   Eigen::Vector2d v_xy(target_state(1), target_state(3));
-  const double v_norm = v_xy.norm();
+  double v_norm = v_xy.norm();
   if (v_norm < 1e-3)
   {
     lag_diff_count_ = 0;
@@ -471,16 +471,16 @@ void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
 
   // 残差在当前速度方向上的投影
   // 若 proj < 0，说明观测落在“当前速度方向的反方向”，也就是预测还沿旧方向跑
-  const double proj = innovation_xy.dot(v_xy / v_norm);
+  double proj = innovation_xy.dot(v_xy / v_norm);
 
   // 横向残差占比大，也说明可能在变向
-  const double lateral =
+  double lateral =
       std::sqrt(std::max(0.0, innovation_norm * innovation_norm - proj * proj));
 
   // 条件 1：沿速度方向明显“拖后”
   // 条件 2：横向残差显著，说明可能在拐弯
-  const bool lagging_along_velocity = (proj < -0.03);
-  const bool strong_lateral_error = (lateral > 0.05 && lateral > 0.8 * std::abs(proj));
+  bool lagging_along_velocity = (proj < -0.03);
+  bool strong_lateral_error = (lateral > 0.05 && lateral > 0.8 * std::abs(proj));
 
   if (lagging_along_velocity || strong_lateral_error)
   {
@@ -500,7 +500,7 @@ void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
     target_state(1) *= 0.35;
     target_state(3) *= 0.35;
 
-    ekf.setState(target_state);
+    ekf.SetState(target_state);
     lag_diff_count_ = 0;
   }
 }
@@ -516,12 +516,12 @@ void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
 
   // innovation 是“装甲板观测 - 装甲板预测”
   // 若 residual 与当前平面速度方向相反，说明滤波器还在沿旧方向跑
-  const Eigen::Vector2d v(target_state(1), target_state(3));
-  const Eigen::Vector2d e(innovation(0), innovation(1));
+  Eigen::Vector2d v(target_state(1), target_state(3));
+  Eigen::Vector2d e(innovation(0), innovation(1));
 
   if (v.squaredNorm() > 1e-2)
   {
-    const double proj = e.dot(v.normalized());
+    double proj = e.dot(v.normalized());
     if (proj < -0.08)
     {
       target_state(1) *= 0.35;
@@ -542,7 +542,7 @@ void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
     ArmManeuverBoost(4);
   }
 
-  ekf.setState(target_state);
+  ekf.SetState(target_state);
 }
 
 void Tracker::VelocityConstrain(double vx_max, double vy_max, double vz_max,
@@ -553,20 +553,20 @@ void Tracker::VelocityConstrain(double vx_max, double vy_max, double vz_max,
   double& vz = target_state(5);
   double& vyaw = target_state(7);
 
-  const double k = std::clamp(yaw_coupling, 0.0, 1.0);
+  double k = std::clamp(yaw_coupling, 0.0, 1.0);
 
   vyaw = std::clamp(vyaw, -vyaw_max, vyaw_max);
 
-  const double yaw_ratio = std::abs(vyaw) / vyaw_max;
-  const double trans_budget = std::sqrt(std::max(0.0, 1.0 - k * yaw_ratio * yaw_ratio));
+  double yaw_ratio = std::abs(vyaw) / vyaw_max;
+  double trans_budget = std::sqrt(std::max(0.0, 1.0 - k * yaw_ratio * yaw_ratio));
 
-  const double trans_ratio =
+  double trans_ratio =
       std::sqrt((vx * vx) / (vx_max * vx_max) + (vy * vy) / (vy_max * vy_max) +
                 (vz * vz) / (vz_max * vz_max));
 
   if (trans_ratio > trans_budget && trans_ratio > 0)
   {
-    const double scale = trans_budget / trans_ratio;
+    double scale = trans_budget / trans_ratio;
     vx *= scale;
     vy *= scale;
     vz *= scale;
@@ -599,18 +599,18 @@ void Tracker::ResetState(double& yaw, const geometry_msgs::msg::Point& p)
   //   outpost_idx = 0;
   // }
 
-  Eigen::MatrixXd P_reset = Eigen::MatrixXd::Zero(9, 9);
-  P_reset(0, 0) = 0.05;  // xc
-  P_reset(1, 1) = 0.5;   // v_xc   保留了旧值，但不完全信任
-  P_reset(2, 2) = 0.05;  // yc
-  P_reset(3, 3) = 0.5;   // v_yc
-  P_reset(4, 4) = 0.05;  // za
-  P_reset(5, 5) = 0.5;   // v_za
-  P_reset(6, 6) = 0.1;   // yaw
-  P_reset(7, 7) = 2.0;   // v_yaw  保留但给较大不确定性
-  P_reset(8, 8) = 1.0;   // r
+  Eigen::MatrixXd p_reset = Eigen::MatrixXd::Zero(9, 9);
+  p_reset(0, 0) = 0.05;  // xc
+  p_reset(1, 1) = 0.5;   // v_xc   保留了旧值，但不完全信任
+  p_reset(2, 2) = 0.05;  // yc
+  p_reset(3, 3) = 0.5;   // v_yc
+  p_reset(4, 4) = 0.05;  // za
+  p_reset(5, 5) = 0.5;   // v_za
+  p_reset(6, 6) = 0.1;   // yaw
+  p_reset(7, 7) = 2.0;   // v_yaw  保留但给较大不确定性
+  p_reset(8, 8) = 1.0;   // r
 
-  ekf.setState(target_state, P_reset);
+  ekf.SetState(target_state, p_reset);
 
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with P!");
 }

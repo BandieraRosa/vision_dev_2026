@@ -12,7 +12,6 @@
 
 #include "armor_detector/armor.hpp"
 #include "armor_detector/armor_pose_optimizer.hpp"
-#include "armor_detector/detector_base.hpp"
 #include "armor_detector/detector_factory.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"

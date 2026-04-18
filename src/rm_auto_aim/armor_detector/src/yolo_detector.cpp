@@ -11,6 +11,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace rm_auto_aim
@@ -38,52 +39,64 @@ T get_parameter(rclcpp::Node& node, const std::string& name, const T& default_va
   return node.get_parameter(name).get_value<T>();
 }
 
-std::string map_label(const std::string& raw_label)
+std::string map_label(std::string_view raw_label)
 {
-  auto strip_prefix = [](const std::string& s) -> std::string
+  if (raw_label.empty())
   {
-    if (s.empty())
-    {
-      return s;
-    }
-    if (s[0] == 'B' || s[0] == 'R' || s[0] == 'E' || s[0] == 'P')
-    {
-      return s.substr(1);
-    }
-    return s;
-  };
+    return "negative";
+  }
 
-  const std::string NAME = strip_prefix(raw_label);
+  if (raw_label[0] == 'B' || raw_label[0] == 'R' || raw_label[0] == 'E' ||
+      raw_label[0] == 'P')
+  {
+    raw_label.remove_prefix(1);
+  }
 
-  if (NAME == "sentry")
+  if (raw_label == "sentry")
   {
     return "guard";
   }
-  if (NAME == "one")
+  if (raw_label == "one")
   {
     return "1";
   }
-  if (NAME == "two")
+  if (raw_label == "two")
   {
     return "2";
   }
-  if (NAME == "three" || NAME == "balancethree")
+  if (raw_label == "three")
   {
     return "3";
   }
-  if (NAME == "four" || NAME == "balancefour")
+  if (raw_label == "balancethree")
+  {
+    return "3";
+  }
+  if (raw_label == "four")
   {
     return "4";
   }
-  if (NAME == "five" || NAME == "balancefive")
+  if (raw_label == "balancefour")
+  {
+    return "4";
+  }
+  if (raw_label == "five")
   {
     return "5";
   }
-  if (NAME == "outpost")
+  if (raw_label == "balancefive")
+  {
+    return "5";
+  }
+  if (raw_label == "outpost")
   {
     return "outpost";
   }
-  if (NAME == "base" || NAME == "basesmall")
+  if (raw_label == "base")
+  {
+    return "base";
+  }
+  if (raw_label == "basesmall")
   {
     return "base";
   }

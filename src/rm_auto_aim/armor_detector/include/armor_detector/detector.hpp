@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "armor_detector/armor.hpp"
-#include "armor_detector/detection_result.hpp"
 #include "armor_detector/detector_base.hpp"
 #include "armor_detector/light_corner_corrector.hpp"
 #include "armor_detector/number_classifier.hpp"

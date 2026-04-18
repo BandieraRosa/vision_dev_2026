@@ -14,7 +14,7 @@
 namespace rm_auto_aim
 {
 NumberClassifier::NumberClassifier(const std::string& model_path,
-                                   const std::string& label_path, const double thre,
+                                   const std::string& label_path, const double& thre,
                                    const std::vector<std::string>& ignore_classes)
     : threshold_(thre), ignore_classes_(ignore_classes)
 {

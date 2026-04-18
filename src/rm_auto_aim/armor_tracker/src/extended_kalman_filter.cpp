@@ -29,15 +29,15 @@ ExtendedKalmanFilter::ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc
 {
 }
 
-void ExtendedKalmanFilter::setState(const Eigen::VectorXd& x0) { x_post = x0; }
-void ExtendedKalmanFilter::setState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0)
+void ExtendedKalmanFilter::SetState(const Eigen::VectorXd& x0) { x_post = x0; }
+void ExtendedKalmanFilter::SetState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0)
 {
   x_post = x0;
   P_post = P0;
   nis_window_.clear();
 }
 
-Eigen::MatrixXd ExtendedKalmanFilter::predict()
+Eigen::MatrixXd ExtendedKalmanFilter::Predict()
 {
   F = jacobian_f(x_post), Q = update_Q();
 
@@ -71,7 +71,7 @@ double ExtendedKalmanFilter::ComputeNIS(const Eigen::VectorXd& z) const
   return innovation.transpose() * S.ldlt().solve(innovation);
 }
 
-Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
+Eigen::MatrixXd ExtendedKalmanFilter::Update(const Eigen::VectorXd& z)
 {
   H = jacobian_h(x_pri), R = update_R(x_pri);
 
@@ -95,7 +95,7 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd& z)
   return x_post;
 }
 
-Eigen::VectorXd ExtendedKalmanFilter::getState() { return x_post; }
+Eigen::VectorXd ExtendedKalmanFilter::GetState() { return x_post; }
 
 double ExtendedKalmanFilter::GetHealthRate()
 {

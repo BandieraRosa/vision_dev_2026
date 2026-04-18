@@ -80,15 +80,15 @@ void Trajectory::UpdatePlanTrajectory(TrajectorySolver::control& cmd,
   {
     Eigen::VectorXd x0(4);
     x0 << meas_yaw, 0.0, 0.0, cmd.pitch;
-    ekf_.setState(x0);
+    ekf_.SetState(x0);
     ekf_initialized_ = true;
   }
 
   Eigen::VectorXd z(2);
   z << meas_yaw, cmd.pitch;
 
-  ekf_.predict();
-  Eigen::VectorXd x = ekf_.update(z);
+  ekf_.Predict();
+  Eigen::VectorXd x = ekf_.Update(z);
 
   if (!planner_initialized_)
   {

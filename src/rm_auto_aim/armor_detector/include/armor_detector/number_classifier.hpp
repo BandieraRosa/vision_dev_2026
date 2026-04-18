@@ -16,7 +16,7 @@ class NumberClassifier
 {
  public:
   NumberClassifier(const std::string& model_path, const std::string& label_path,
-                   const double THRESHOLD,
+                   const double& thre,
                    const std::vector<std::string>& ignore_classes = {});
 
   void ExtractNumbers(const cv::Mat& src, std::vector<Armor>& armors);

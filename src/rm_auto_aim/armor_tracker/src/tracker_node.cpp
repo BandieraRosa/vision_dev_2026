@@ -7,33 +7,6 @@
 
 namespace rm_auto_aim
 {
-Eigen::Matrix3d ArmorTrackerNode::BuildJacobianYpdToCameraXyz(
-    const Eigen::Vector3d& p_cam)
-{
-  const double X = p_cam.x();
-  const double Y = p_cam.y();
-  const double Z = p_cam.z();
-
-  const double D = std::max(1e-6, p_cam.norm());
-  const double RHO = std::max(1e-6, std::hypot(X, Z));
-
-  const double YAW = std::atan2(X, Z);
-  const double PITCH = std::atan2(Y, RHO);
-
-  const double CY = std::cos(YAW);
-  const double SY = std::sin(YAW);
-  const double CP = std::cos(PITCH);
-  const double SP = std::sin(PITCH);
-
-  // x = d * cos(pitch) * sin(yaw)
-  // y = d * sin(pitch)
-  // z = d * cos(pitch) * cos(yaw)
-  Eigen::Matrix3d j;
-  j << D * CP * CY, -D * SP * SY, CP * SY, 0.0, D * CP, SP, -D * CP * SY, -D * SP * CY,
-      CP * CY;
-  return j;
-}
-
 ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     : Node("armor_tracker", options)
 {
@@ -105,19 +78,19 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   auto u_q = [this]()
   {
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(9, 9);
-    const double t = dt_;
+    double t = dt_;
 
-    const bool boost_on = (tracker_ && tracker_->NeedManeuverBoost());
+    bool boost_on = (tracker_ && tracker_->NeedManeuverBoost());
 
-    const double xy_scale = boost_on ? q_boost_xy_ : 1.0;
-    const double z_scale = boost_on ? q_boost_z_ : 1.0;
-    const double yaw_scale = boost_on ? q_boost_yaw_ : 1.0;
+    double xy_scale = boost_on ? q_boost_xy_ : 1.0;
+    double z_scale = boost_on ? q_boost_z_ : 1.0;
+    double yaw_scale = boost_on ? q_boost_yaw_ : 1.0;
 
     auto add_cv_block = [&](int idx_pos, int idx_vel, double sigma2)
     {
-      const double a = std::pow(t, 4) / 4.0 * sigma2;
-      const double b = std::pow(t, 3) / 2.0 * sigma2;
-      const double c = std::pow(t, 2) * sigma2;
+      double a = std::pow(t, 4) / 4.0 * sigma2;
+      double b = std::pow(t, 3) / 2.0 * sigma2;
+      double c = std::pow(t, 2) * sigma2;
       q(idx_pos, idx_pos) = a;
       q(idx_pos, idx_vel) = b;
       q(idx_vel, idx_pos) = b;
@@ -373,7 +346,7 @@ void ArmorTrackerNode::InitParameters()
 }
 
 void ArmorTrackerNode::ArmorsCallback(
-    const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
+    const auto_aim_interfaces::msg::Armors::SharedPtr& armors_msg)
 {
   // try
   // {
@@ -510,6 +483,34 @@ void ArmorTrackerNode::ArmorsCallback(
   info_msg.outpost_idx = Tracker::outpost_idx;
   info_pub_->publish(info_msg);
 }
+
+Eigen::Matrix3d ArmorTrackerNode::BuildJacobianYpdToCameraXyz(
+    const Eigen::Vector3d& p_cam)
+{
+  const double X = p_cam.x();
+  const double Y = p_cam.y();
+  const double Z = p_cam.z();
+
+  const double D = std::max(1e-6, p_cam.norm());
+  const double RHO = std::max(1e-6, std::hypot(X, Z));
+
+  const double YAW = std::atan2(X, Z);
+  const double PITCH = std::atan2(Y, RHO);
+
+  const double CY = std::cos(YAW);
+  const double SY = std::sin(YAW);
+  const double CP = std::cos(PITCH);
+  const double SP = std::sin(PITCH);
+
+  // x = d * cos(pitch) * sin(yaw)
+  // y = d * sin(pitch)
+  // z = d * cos(pitch) * cos(yaw)
+  Eigen::Matrix3d j;
+  j << D * CP * CY, -D * SP * SY, CP * SY, 0.0, D * CP, SP, -D * CP * SY, -D * SP * CY,
+      CP * CY;
+  return j;
+}
+
 }  // namespace rm_auto_aim
 
 #include "rclcpp_components/register_node_macro.hpp"

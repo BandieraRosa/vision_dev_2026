@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "armor_detector/armor.hpp"
-#include "armor_detector/detection_result.hpp"
 #include "armor_detector/detector_base.hpp"
 
 namespace rclcpp

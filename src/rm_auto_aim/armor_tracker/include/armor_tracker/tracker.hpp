@@ -40,8 +40,8 @@ class Tracker  // 整车观测
 
   /// @brief 匹配当前帧中与 tracked_id 相同的装甲板，返回是否匹配成功
   ///        匹配成功时 tracked_armor 被更新为最佳匹配
-  bool MatchArmor(const std::vector<Armor>& target_id_armors,
-                         double& position_diff, double& yaw_diff, bool& is_jump);
+  bool MatchArmor(const std::vector<Armor>& target_id_armors, double& position_diff,
+                  double& yaw_diff, bool& is_jump);
 
   /// @brief 匹配成功后，执行 EKF update 并做速度约束
   void UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p);
@@ -139,7 +139,7 @@ class Tracker  // 整车观测
   int change_count_ = 0;
   int lag_diff_count_ = 0;
   int jump_cooldown_ = 0;
-  static constexpr int kJumpCooldownFrames = 5;  // 冷却帧数，可调
+  static constexpr int JUMP_COOLDOWN_FRAMES = 5;  // 冷却帧数，可调
   double last_yaw_ = 0.0;
   int update_count_ = 0;
   double last_v_yaw_ = 0.0;
