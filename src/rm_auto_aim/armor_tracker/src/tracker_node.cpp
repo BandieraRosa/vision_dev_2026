@@ -468,6 +468,7 @@ void ArmorTrackerNode::ArmorsCallback(
       target_msg.num = num;
     }
   }
+  target_msg.state = static_cast<int8_t>(tracker_->tracker_state);
 
   last_time_ = time;
 

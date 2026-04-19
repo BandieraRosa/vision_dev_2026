@@ -18,7 +18,7 @@ PlanningTrajectoryNode::PlanningTrajectoryNode(const rclcpp::NodeOptions& option
 void PlanningTrajectoryNode::TargetCallback(
     const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
 {
-  std::lock_guard<std::mutex> lk(target_mutex_);
+  // std::lock_guard<std::mutex> lk(target_mutex_);
 
   if (target_msg->is_switchtable && !last_switchtable_)
   {
@@ -47,37 +47,21 @@ void PlanningTrajectoryNode::TargetCallback(
 
   target_.number = target_msg->num;
 
-  // 发布 Target 消息
-
   if (!tracking_)
   {
     trajectory_->Reset();
   }
-}
 
-void PlanningTrajectoryNode::PublishStopCommand()
-{
-  auto_aim_interfaces::msg::Send send_msg;
-  send_msg.is_fire = false;
-  send_msg.pitch = 0.0;
-  send_msg.yaw = 0.0;
-  send_msg.vel_yaw = 0.0;
-  send_msg.acc_yaw = 0.0;
-  send_pub_->publish(send_msg);
-}
-
-void PlanningTrajectoryNode::timer_callback()
-{
   auto start = std::chrono::high_resolution_clock::now();
 
   // 先把需要的状态在锁内拷贝出来，尽快释放锁
   bool tracking_local;
   TrajectorySolver::Target target_local;
-  {
-    std::lock_guard<std::mutex> lk(target_mutex_);
-    tracking_local = tracking_;
-    target_local = target_;
-  }
+  // {
+  //   std::lock_guard<std::mutex> lk(target_mutex_);
+  tracking_local = tracking_;
+  target_local = target_;
+  // }
 
   if (!tracking_local)
   {
@@ -108,7 +92,7 @@ void PlanningTrajectoryNode::timer_callback()
 
   // 调用 solver 也要加锁，因为 trajectory_ 内部状态会被 Reset() / SwitchTable() 修改
 
-  std::lock_guard<std::mutex> lk(target_mutex_);
+  // std::lock_guard<std::mutex> lk(target_mutex_);
   trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
                                             aim_z, idx, target_local, gimbal_yaw,
                                             gimbal_pitch, send_time_, gimbal_yaw_speed_);
@@ -126,7 +110,7 @@ void PlanningTrajectoryNode::timer_callback()
     cmd.is_fire = false;
   }
   send_msg.is_fire = cmd.is_fire;
-  send_msg.pitch = cmd.pitch;
+  send_msg.pitch = cmd.pitch + 0.015;
   send_msg.yaw = cmd.yaw;
   send_msg.vel_yaw = cmd.vel_yaw;
   send_msg.acc_yaw = cmd.acc_yaw;
@@ -148,6 +132,19 @@ void PlanningTrajectoryNode::timer_callback()
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   RCLCPP_DEBUG(this->get_logger(), "Trajectory time: %ld us", duration.count());
 }
+
+void PlanningTrajectoryNode::PublishStopCommand()
+{
+  auto_aim_interfaces::msg::Send send_msg;
+  send_msg.is_fire = false;
+  send_msg.pitch = 0.0;
+  send_msg.yaw = 0.0;
+  send_msg.vel_yaw = 0.0;
+  send_msg.acc_yaw = 0.0;
+  send_pub_->publish(send_msg);
+}
+
+void PlanningTrajectoryNode::timer_callback() {}
 
 std::pair<double, double> PlanningTrajectoryNode::GetGimbalYawAndPitch()
 {

@@ -12,3 +12,4 @@ float64 radius_1
 float64 radius_2
 float64 dz
 bool is_switchtable
+int8 state

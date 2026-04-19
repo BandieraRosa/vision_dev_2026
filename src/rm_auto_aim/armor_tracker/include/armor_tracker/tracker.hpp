@@ -77,11 +77,11 @@ class Tracker  // 整车观测
   int change_thres;
 
   enum class State : uint8_t
-  {             // 四个状态
-    LOST,       // 丢失
-    DETECTING,  // 观测中
-    TRACKING,   // 跟踪中
-    TEMP_LOST,  // 临时丢失
+  {                 // 四个状态
+    LOST = 0,       // 丢失
+    DETECTING = 1,  // 观测中
+    TRACKING = 2,   // 跟踪中
+    TEMP_LOST = 3,  // 临时丢失
   } tracker_state;
 
   // 装甲板情况

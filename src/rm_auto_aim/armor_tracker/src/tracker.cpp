@@ -308,15 +308,20 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     target_state(5) = 0;
     // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));\
 
-    if (update_count_ == 10)
+    if (update_count_ == 400)
     {
       last_v_yaw_ = target_state(7);
       last_z_ = target_state(4);
     }
-    if (update_count_ > 10)
+    if (update_count_ > 400)
     {
-      target_state(7) = std::clamp(target_state(7), -last_v_yaw_ - 0.01, last_v_yaw_ + 0.01);
-      target_state(4) = std::clamp(target_state(4), -last_z_ - 0.001, last_z_ + 0.001);
+      if (std::fabs(last_v_yaw_) > 1.5)
+      {
+        target_state(7) =
+            0.8 * std::numbers::pi;  // std::clamp(target_state(7), last_v_yaw_ - 0.05,
+                                     // last_v_yaw_ + 0.05);
+      }
+      target_state(4) = std::clamp(target_state(4), last_z_ - 0.01, last_z_ + 0.01);
       last_v_yaw_ = target_state(7);
       last_z_ = target_state(4);
     }

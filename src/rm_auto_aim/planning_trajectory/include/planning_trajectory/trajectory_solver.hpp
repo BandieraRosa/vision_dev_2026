@@ -188,7 +188,10 @@ class TrajectorySolver
   bool should_last_shot_{false};
   double gimbal_yaw_speed_{0.0};
 
-  bool no_fire{false};
+  bool no_fire_{false};
+  int choose_next_count_{0};
+
+  int last_outpost_idx_{-1};
 };
 
 
