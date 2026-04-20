@@ -462,11 +462,8 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
 //   const double armor_yaw_curr1 = SolveYaw(armor_curr1.x, armor_curr1.y);
 
 //   const double yaw_turn_delta = std::fabs(AngleDiff(armor_yaw_curr1, armor_yaw_curr0));
-//   const double target_yaw_speed =
-//       target_.velocity.yaw * (target_.radius1 + target_.radius2) / 2 -
-//       target_.velocity.y;
 //   const double turn_time =
-//       yaw_turn_delta / (std::fabs(gimbal_yaw_speed_ + target_yaw_speed));
+      // yaw_turn_delta / (std::fabs(gimbal_yaw_speed_ + target_.velocity.yaw));
 
 //   const TarPostion center_next = PredictCenter(time_delay + turn_time);
 //   const TarPostion armor_next_0 = PredictArmor(0, center_next);
