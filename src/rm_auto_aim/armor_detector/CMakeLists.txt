@@ -12,6 +12,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ## Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(ARMOR_DETECTOR_ENABLE_YOLO "Build YOLO detector with OpenVINO support" OFF)
+
 #######################
 ## Find dependencies ##
 #######################
@@ -37,17 +39,15 @@ ament_auto_add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
-find_package(OpenVINO REQUIRED CONFIG)
-if(OpenVINO_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_detector.cpp")
+if(ARMOR_DETECTOR_ENABLE_YOLO)
+  find_package(OpenVINO REQUIRED CONFIG)
   target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
   target_link_libraries(${PROJECT_NAME} openvino::runtime)
   target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=1)
-elseif(NOT OpenVINO_FOUND)
-  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=0)
-  message(STATUS "OpenVINO not found — YOLO detector disabled")
+  message(STATUS "YOLO detector enabled with OpenVINO")
 else()
   target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=0)
-  message(STATUS "OpenVINO found but src/yolo_detector.cpp missing — YOLO detector disabled")
+  message(STATUS "YOLO detector disabled")
 endif()
 
 rclcpp_components_register_node(${PROJECT_NAME}

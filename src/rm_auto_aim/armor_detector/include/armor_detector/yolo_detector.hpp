@@ -1,7 +1,7 @@
 #ifndef ARMOR_DETECTOR__YOLO_DETECTOR_HPP_
 #define ARMOR_DETECTOR__YOLO_DETECTOR_HPP_
 
-#ifdef ARMOR_DETECTOR_HAS_OPENVINO
+#if ARMOR_DETECTOR_HAS_OPENVINO
 
 #include <memory>
 #include <opencv2/core.hpp>
