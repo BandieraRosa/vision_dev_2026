@@ -70,15 +70,15 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   std::copy_if(armors.begin(), armors.end(), std::back_inserter(target_id_armors),
                [id = tracked_id](const Armor& armor) { return armor.number == id; });
 
+  if (target_id_armors.size() != armors.size())
+  {
+    DoYouWantToChangeTarget(armors_msg);
+  }
+
   if (target_id_armors.empty())
   {
     UpdateTrackerState(matched);
     return;
-  }
-
-  if (target_id_armors.size() != armors.size())
-  {
-    DoYouWantToChangeTarget(armors_msg);
   }
 
   predicted_position = GetArmorPositionFromState(ekf_prediction);
@@ -107,7 +107,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   else
   {
     double health_rate = ekf.GetHealthRate();
-    if (0.5 < health_rate && health_rate < 0.8)
+    if (0.2 < health_rate && health_rate < 0.5)
     {
       Eigen::Vector2d innovation_xy(
           tracked_armor.pose.position.x - predicted_position.x(),
@@ -115,12 +115,12 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
       SoftBreakEKF(innovation_xy);
     }
 
-    else if (health_rate < 0.5)
+    else if (health_rate < 0.2)
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
                   health_rate);
       double tracked_armor_yaw = OrientationToYaw(tracked_armor.pose.orientation);
-      // ResetState(tracked_armor_yaw, tracked_armor.pose.position);
+      ResetState(tracked_armor_yaw, tracked_armor.pose.position);
     }
   }
 
@@ -296,9 +296,6 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     measurement = Eigen::Vector4d(adjusted_p.x, adjusted_p.y, adjusted_p.z, measured_yaw);
   }
 
-  // 先基于 x_pri 取 innovation，后面用来判断“是否还在沿旧方向跑”
-  Eigen::VectorXd innovation = ekf.ComputeInnovation(measurement);
-
   target_state = ekf.Update(measurement);
 
   if (tracked_id == "outpost")
@@ -308,29 +305,25 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     target_state(5) = 0;
     // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));\
 
-    if (update_count_ == 400)
+    if (update_count_ <= 400)
     {
-      last_v_yaw_ = target_state(7);
-      last_z_ = target_state(4);
+      last_v_yaw_ += target_state(7)/400.0;
+      last_z_ += target_state(4)/400.0;
     }
     if (update_count_ > 400)
     {
       if (std::fabs(last_v_yaw_) > 1.5)
       {
         target_state(7) =
-            0.8 * std::numbers::pi;  // std::clamp(target_state(7), last_v_yaw_ - 0.05,
-                                     // last_v_yaw_ + 0.05);
+            std::copysign(0.8 * std::numbers::pi, last_v_yaw_);
       }
-      target_state(4) = std::clamp(target_state(4), last_z_ - 0.01, last_z_ + 0.01);
+      target_state(4) = std::clamp(target_state(4), last_z_ - 0.005, last_z_ + 0.01);
       last_v_yaw_ = target_state(7);
       last_z_ = target_state(4);
     }
   }
   else
   {
-    // 新增：轻量 lag compensation
-    CompensatePredictionLag(innovation);
-
     VelocityConstrain(5, 5, 5, 16, 1);
   }
 
@@ -508,46 +501,6 @@ void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
     ekf.SetState(target_state);
     lag_diff_count_ = 0;
   }
-}
-
-void Tracker::CompensatePredictionLag(const Eigen::VectorXd& innovation)
-{
-  if (innovation.size() < 4)
-  {
-    return;
-  }
-
-  bool boost_needed = false;
-
-  // innovation 是“装甲板观测 - 装甲板预测”
-  // 若 residual 与当前平面速度方向相反，说明滤波器还在沿旧方向跑
-  Eigen::Vector2d v(target_state(1), target_state(3));
-  Eigen::Vector2d e(innovation(0), innovation(1));
-
-  if (v.squaredNorm() > 1e-2)
-  {
-    double proj = e.dot(v.normalized());
-    if (proj < -0.08)
-    {
-      target_state(1) *= 0.35;
-      target_state(3) *= 0.35;
-      boost_needed = true;
-    }
-  }
-
-  // 转向残差大，说明旧角速度也可能不对
-  if (std::abs(innovation(3)) > 0.35 && tracked_armor.number != "outpost")
-  {
-    target_state(7) *= 0.5;
-    boost_needed = true;
-  }
-
-  if (boost_needed)
-  {
-    ArmManeuverBoost(4);
-  }
-
-  ekf.SetState(target_state);
 }
 
 void Tracker::VelocityConstrain(double vx_max, double vy_max, double vz_max,

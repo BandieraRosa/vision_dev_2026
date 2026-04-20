@@ -129,7 +129,6 @@ class Tracker  // 整车观测
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
   Eigen::Vector3d GetArmorPositionFromState(const Eigen::VectorXd& x);
   void SwitchEKFParams();
-  void CompensatePredictionLag(const Eigen::VectorXd& innovation);
   double max_match_distance_;
   double max_match_yaw_diff_;
   int maneuver_boost_count_ = 0;
