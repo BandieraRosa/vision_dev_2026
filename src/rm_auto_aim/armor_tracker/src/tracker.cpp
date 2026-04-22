@@ -572,7 +572,7 @@ void Tracker::ResetState(double& yaw, const geometry_msgs::msg::Point& p)
 
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with P!");
 }
-
+                                                          
 void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw)
 {
   target_state(6) = yaw;

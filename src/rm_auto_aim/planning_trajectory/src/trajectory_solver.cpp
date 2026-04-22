@@ -75,7 +75,7 @@ void TrajectorySolver::ReBuild()
   last_v_yaw_ = 0.0;
   last_pitch_ = 0.0;
   last_yaw_ = 0.0;
-  fly_time_ = 0.0;
+  fly_time_ = NAN;
 }
 
 TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
@@ -174,6 +174,7 @@ double TrajectorySolver::MonoDirectionalAirResistanceModel(double s, double angl
 }
 
 // 计算俯仰角(两种模式)
+// 计算俯仰角(两种模式)
 double TrajectorySolver::SolvePitch(double x, double y, double z)
 {
   // 计算水平距离
@@ -182,6 +183,7 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
   double target_z = z + z_bias_;
 
   double pitch = 0.0f;
+  bool use_iteration = false;  // 是否需要走迭代法
 
   if (calculate_mode_ == CalculateMode::TABLE_LOOKUP && current_table_->IsInit())
   {
@@ -194,15 +196,23 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
     }
     else
     {
-      fly_time_ = 0;
-      pitch = 0.0f;
-      RCLCPP_WARN(logger_, "Table lookup nan for s: %.2f, z: %.2f", target_s, target_z);
+      // 查表结果为 NaN，回退到迭代法
+      RCLCPP_WARN(logger_, "Table lookup nan for s: %.2f, z: %.2f, fallback to iteration",
+                  target_s, target_z);
+      use_iteration = true;
     }
   }
   else
   {
+    // 非查表模式，直接使用迭代法
+    use_iteration = true;
+  }
+
+  if (use_iteration)
+  {
     // 正常模式下的迭代计算
     double z_temp = target_z;
+    bool converged = false;
 
     for (int i = 0; i < 20; ++i)
     {
@@ -220,10 +230,17 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
       if (fabs(dz) < 1e-5f)
       {
         RCLCPP_DEBUG(logger_, "Pitch convergence after %d iterations", i + 1);
+        converged = true;
         break;
       }
     }
+
+    if (!converged)
+    {
+      RCLCPP_WARN(logger_, "Pitch iteration did not converge within 20 steps");
+    }
   }
+
   pitch += pitch_bias_;
   return pitch;
 }
@@ -391,7 +408,6 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
   {
     selected_idx_ = 0;
     selected_time_delay_ = time_delay;
-    PredictOneArmorPosition(time_delay, selected_idx_);
     return;
   }
 
@@ -439,8 +455,6 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
     selected_idx_ = (choose_next_ ? 1 : 0);
     selected_time_delay_ = choose_next_ ? t1 : time_delay;
   }
-
-  PredictOneArmorPosition(selected_time_delay_, selected_idx_);
 }
 
 // void TrajectorySolver::LocalSelectArmor(double time_delay)
@@ -463,7 +477,7 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
 
 //   const double yaw_turn_delta = std::fabs(AngleDiff(armor_yaw_curr1, armor_yaw_curr0));
 //   const double turn_time =
-      // yaw_turn_delta / (std::fabs(gimbal_yaw_speed_ + target_.velocity.yaw));
+// yaw_turn_delta / (std::fabs(gimbal_yaw_speed_ + target_.velocity.yaw));
 
 //   const TarPostion center_next = PredictCenter(time_delay + turn_time);
 //   const TarPostion armor_next_0 = PredictArmor(0, center_next);
@@ -676,6 +690,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   last_y_v_ = target_.velocity.y;
   last_v_yaw_ = target_.velocity.yaw;
   last_choose_next_ = choose_next_;
+  last_outpost_idx_ = target_.outpost_idx;
 }
 
 void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire,
@@ -695,8 +710,12 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);
+  // 更新fly_time_
+  SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
+             pre_position_[selected_idx_].z);
+  time_delay = fly_time_ + bias_time_ + send_time;
+  PredictOneArmorPosition(time_delay, selected_idx_);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
-  last_outpost_idx_ = target_.outpost_idx;
   // 若希望每块装甲板只打一发
   // if(no_fire == true)
   // {
