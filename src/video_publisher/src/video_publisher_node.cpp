@@ -5,13 +5,16 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <image_transport/image_transport.hpp>
 #include <memory>
+#include <mutex>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <stdexcept>
 #include <string>
@@ -28,11 +31,29 @@ class VideoPublisherNode : public rclcpp::Node
     frame_id_ = this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
     camera_name_ = this->declare_parameter<std::string>("camera_name", "gimbal_camera");
     camera_info_url_ = this->declare_parameter<std::string>(
-        "camera_info_url", "package://rm_vision_bringup/config/camera_info.yaml");
+        "camera_info_url", "package://video_publisher/config/camera_info.yaml");
     loop_ = this->declare_parameter<bool>("loop", true);
     use_video_fps_ = this->declare_parameter<bool>("use_video_fps", true);
     playback_rate_ = this->declare_parameter<double>("playback_rate", 1.0);
     publish_fps_ = this->declare_parameter<double>("publish_fps", 30.0);
+
+    save_result_video_ = this->declare_parameter<bool>("save_result_video", false);
+    result_img_topic_ =
+        this->declare_parameter<std::string>("result_img_topic", "/result_img");
+    result_img_transport_ =
+        this->declare_parameter<std::string>("result_img_transport", "raw");
+    result_video_path_ = this->declare_parameter<std::string>("result_video_path", "");
+    // 编码 FourCC，4 个字符：mp4v / avc1 / XVID / MJPG 等
+    result_video_fourcc_ =
+        this->declare_parameter<std::string>("result_video_fourcc", "mp4v");
+    result_video_fps_ = this->declare_parameter<double>("result_video_fps", 0.0);
+    result_video_auto_size_ =
+        this->declare_parameter<bool>("result_video_auto_size", true);
+    result_video_width_ = this->declare_parameter<int>("result_video_width", 0);
+    result_video_height_ = this->declare_parameter<int>("result_video_height", 0);
+    // 每累计多少帧打印一次状态日志
+    result_log_every_n_frames_ =
+        this->declare_parameter<int>("result_log_every_n_frames", 100);
 
     if (video_path_.empty())
     {
@@ -90,7 +111,11 @@ class VideoPublisherNode : public rclcpp::Node
                 video_path_.c_str(), video_fps_, source_timeline_fps_,
                 output_publish_fps_, playback_rate_,
                 static_cast<long long>(total_frames_), loop_ ? "true" : "false");
+
+    SetupResultImageSubscriber();
   }
+
+  ~VideoPublisherNode() override { CloseResultVideoWriter(); }
 
  private:
   void LoadCameraInfo()
@@ -345,6 +370,178 @@ class VideoPublisherNode : public rclcpp::Node
     }
   }
 
+  void SetupResultImageSubscriber()
+  {
+    if (!save_result_video_)
+    {
+      RCLCPP_INFO(this->get_logger(),
+                  "save_result_video=false, skipping result image recording.");
+      return;
+    }
+
+    if (result_video_path_.empty())
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "save_result_video=true but result_video_path is empty, "
+                  "recording disabled.");
+      return;
+    }
+
+    // 确保输出目录存在
+    try
+    {
+      std::filesystem::path out_path(result_video_path_);
+      if (out_path.has_parent_path())
+      {
+        std::filesystem::create_directories(out_path.parent_path());
+      }
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "Failed to create directory for result video '%s': %s",
+                  result_video_path_.c_str(), e.what());
+    }
+
+    // 使用 image_transport 订阅，支持 raw / compressed 等多种传输
+    result_img_sub_ = image_transport::create_subscription(
+        this, result_img_topic_,
+        std::bind(&VideoPublisherNode::ResultImageCallback, this, std::placeholders::_1),
+        result_img_transport_, rmw_qos_profile_sensor_data);
+
+    RCLCPP_INFO(this->get_logger(),
+                "Subscribed to result image: topic='%s', transport='%s', "
+                "output='%s', fourcc='%s'.",
+                result_img_topic_.c_str(), result_img_transport_.c_str(),
+                result_video_path_.c_str(), result_video_fourcc_.c_str());
+  }
+
+  void ResultImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+  {
+    if (!msg)
+    {
+      return;
+    }
+
+    cv::Mat frame;
+    try
+    {
+      // VideoWriter 默认写入 BGR
+      auto cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
+      frame = cv_ptr->image;
+    }
+    catch (const cv_bridge::Exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "cv_bridge exception in ResultImageCallback: %s",
+                   e.what());
+      return;
+    }
+
+    if (frame.empty())
+    {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(result_writer_mutex_);
+
+    if (!result_writer_.isOpened())
+    {
+      if (!OpenResultVideoWriter(frame.size()))
+      {
+        return;
+      }
+    }
+
+    cv::Mat frame_to_write;
+    if (frame.size() != result_writer_size_)
+    {
+      cv::resize(frame, frame_to_write, result_writer_size_);
+    }
+    else
+    {
+      frame_to_write = frame;
+    }
+
+    result_writer_.write(frame_to_write);
+    ++result_saved_count_;
+
+    if (result_log_every_n_frames_ > 0 &&
+        static_cast<int>(result_saved_count_ % result_log_every_n_frames_) == 0)
+    {
+      RCLCPP_INFO(this->get_logger(), "Saved %lu result frames to '%s'.",
+                  static_cast<unsigned long>(result_saved_count_),
+                  result_video_path_.c_str());
+    }
+  }
+
+  bool OpenResultVideoWriter(const cv::Size& incoming_size)
+  {
+    // 目标尺寸
+    cv::Size target_size;
+    if (result_video_auto_size_ || result_video_width_ <= 0 || result_video_height_ <= 0)
+    {
+      target_size = incoming_size;
+    }
+    else
+    {
+      target_size = cv::Size(result_video_width_, result_video_height_);
+    }
+
+    // 帧率退化策略：result_video_fps_ -> output_publish_fps_ -> 30
+    double writer_fps = result_video_fps_;
+    if (!std::isfinite(writer_fps) || writer_fps <= 1e-6)
+    {
+      writer_fps = output_publish_fps_;
+    }
+    if (!std::isfinite(writer_fps) || writer_fps <= 1e-6)
+    {
+      writer_fps = 30.0;
+    }
+
+    // FourCC 校验
+    if (result_video_fourcc_.size() != 4)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "result_video_fourcc must be 4 chars, got '%s'. Fallback to 'mp4v'.",
+                  result_video_fourcc_.c_str());
+      result_video_fourcc_ = "mp4v";
+    }
+
+    int fourcc =
+        cv::VideoWriter::fourcc(result_video_fourcc_[0], result_video_fourcc_[1],
+                                result_video_fourcc_[2], result_video_fourcc_[3]);
+
+    if (!result_writer_.open(result_video_path_, fourcc, writer_fps, target_size, true))
+    {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Failed to open VideoWriter '%s' (fourcc=%s, fps=%.3f, size=%dx%d).",
+                   result_video_path_.c_str(), result_video_fourcc_.c_str(), writer_fps,
+                   target_size.width, target_size.height);
+      return false;
+    }
+
+    result_writer_size_ = target_size;
+    result_writer_fps_ = writer_fps;
+    RCLCPP_INFO(this->get_logger(),
+                "Opened result VideoWriter: '%s' (fourcc=%s, fps=%.3f, size=%dx%d).",
+                result_video_path_.c_str(), result_video_fourcc_.c_str(), writer_fps,
+                target_size.width, target_size.height);
+    return true;
+  }
+
+  void CloseResultVideoWriter()
+  {
+    std::lock_guard<std::mutex> lock(result_writer_mutex_);
+    if (result_writer_.isOpened())
+    {
+      result_writer_.release();
+      RCLCPP_INFO(this->get_logger(),
+                  "Closed result VideoWriter. Total frames saved: %lu, path: %s",
+                  static_cast<unsigned long>(result_saved_count_),
+                  result_video_path_.c_str());
+    }
+  }
+
   std::string video_path_;
   std::string frame_id_;
   std::string camera_name_;
@@ -369,6 +566,24 @@ class VideoPublisherNode : public rclcpp::Node
   std::chrono::steady_clock::time_point publish_stat_time_;
   bool has_publish_stat_{false};
   uint64_t published_frame_count_{0};
+
+  bool save_result_video_{false};
+  std::string result_img_topic_;
+  std::string result_img_transport_;
+  std::string result_video_path_;
+  std::string result_video_fourcc_;
+  double result_video_fps_{0.0};
+  bool result_video_auto_size_{true};
+  int result_video_width_{0};
+  int result_video_height_{0};
+  int result_log_every_n_frames_{100};
+
+  image_transport::Subscriber result_img_sub_;
+  cv::VideoWriter result_writer_;
+  cv::Size result_writer_size_{0, 0};
+  double result_writer_fps_{0.0};
+  std::mutex result_writer_mutex_;
+  uint64_t result_saved_count_{0};
 };
 
 RCLCPP_COMPONENTS_REGISTER_NODE(VideoPublisherNode)
