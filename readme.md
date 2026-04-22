@@ -212,3 +212,40 @@ ros2 service call /rm_hand_eye/solve std_srvs/srv/Trigger "{}"
 ```
 
 参数含义参考包目录下的 README.md。
+
+## 将 IR 转换为 onnx / engine
+
+使用如下命令：
+
+```bash
+openvino2onnx yolo11.xml yolo11_raw.onnx -v 23
+```
+
+若为 sp 开源模型，使用如下命令：
+
+```bash
+openvino2onnx yolo11.xml yolo11_raw.onnx -u -v 23
+```
+
+即不进行静态检查。
+
+随后运行 `fix_model` 脚本，修正模型中不兼容的部分，并验证模型是否正确。
+
+```bash
+python fix_model.py -i yolo11_raw.onnx -o yolo11_fixed.onnx
+```
+
+若对于其他模型有其他兼容性问题，则修改 `fix_model.py`，添加对应的修复逻辑。
+
+于目标设备上使用如下命令将 onnx 转换为 engine：
+
+```bash
+trtexec --onnx=yolo11_fixed.onnx --saveEngine=yolo11.engine
+```
+
+如需转换时进行优化：
+
+```bash
+trtexec --onnx=yolo11_fixed.onnx --saveEngine=yolo11.engine --fp16 --builderOptimizationLevel=5 --timingCacheFile=trt_timing.cache --useSpinWait
+```
+
