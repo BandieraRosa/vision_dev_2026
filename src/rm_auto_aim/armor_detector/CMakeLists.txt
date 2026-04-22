@@ -12,7 +12,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ## Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ARMOR_DETECTOR_ENABLE_YOLO "Build YOLO detector with OpenVINO support" OFF)
+option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build YOLO detector with OpenVINO support" OFF)
+option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build YOLO detector with TensorRT support" ON)
 
 #######################
 ## Find dependencies ##
@@ -39,7 +40,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
-if(ARMOR_DETECTOR_ENABLE_YOLO)
+if(ARMOR_DETECTOR_ENABLE_OPENVINO)
   find_package(OpenVINO REQUIRED CONFIG)
   target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
   target_link_libraries(${PROJECT_NAME} openvino::runtime)
@@ -50,10 +51,31 @@ else()
   message(STATUS "YOLO detector disabled")
 endif()
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN rm_auto_aim::ArmorDetectorNode
-  EXECUTABLE armor_detector_node
-)
+if(ARMOR_DETECTOR_ENABLE_TENSORRT)
+  set(TENSORRT_INCLUDE_DIR /usr/include/x86_64-linux-gnu)
+  set(TENSORRT_LIB_DIR /usr/lib/x86_64-linux-gnu)
+
+  find_package(CUDAToolkit REQUIRED)
+
+  target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
+
+  target_include_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_INCLUDE_DIR})
+  target_link_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_LIB_DIR})
+
+  target_link_libraries(${PROJECT_NAME}
+    CUDA::cudart
+    nvinfer
+    nvonnxparser
+    nvinfer_plugin
+  )
+
+  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_TENSORRT=1)
+  message(STATUS "YOLO detector enabled with TensorRT")
+else()
+  target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_TENSORRT=0)
+  message(STATUS "YOLO detector disabled")
+endif()
+
 
 #############
 ## Testing ##
