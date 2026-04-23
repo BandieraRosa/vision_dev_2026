@@ -86,6 +86,37 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
       std::bind(&ArmorDetectorNode::ImageCallback, this, std::placeholders::_1));
 }
 
+namespace
+{
+double compute_view_yaw_deg(const cv::Mat& rvec, const cv::Mat& tvec)
+{
+  cv::Mat rmat;
+  cv::Rodrigues(rvec, rmat);
+
+  // 装甲板法向
+  cv::Vec3d normal_cam(rmat.at<double>(0, 0), rmat.at<double>(1, 0),
+                       rmat.at<double>(2, 0));
+
+  cv::Vec3d center_dir(tvec.at<double>(0, 0), tvec.at<double>(1, 0),
+                       tvec.at<double>(2, 0));
+
+  double n_norm = cv::norm(normal_cam);
+  double d_norm = cv::norm(center_dir);
+  if (n_norm < 1e-6 || d_norm < 1e-6)
+  {
+    return 180.0;
+  }
+
+  double cos_theta = (normal_cam[0] * center_dir[0] + normal_cam[1] * center_dir[1] +
+                      normal_cam[2] * center_dir[2]) /
+                     (n_norm * d_norm);
+
+  cos_theta = std::clamp(std::abs(cos_theta), 0.0, 1.0);
+
+  return std::acos(cos_theta) * 180.0 / M_PI;
+}
+}  // namespace
+
 void ArmorDetectorNode::ImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
 {
@@ -152,6 +183,18 @@ void ArmorDetectorNode::ImageCallback(
           }
         }
 
+        const double view_yaw_deg = compute_view_yaw_deg(rvec, tvec);
+        if (view_yaw_deg > 55.0)
+        {
+          RCLCPP_WARN(this->get_logger(), "Drop armor by yaw gate: %.2f deg > %.2f deg",
+                      view_yaw_deg, 55.0);
+          continue;
+        }
+        else
+        {
+          RCLCPP_WARN(this->get_logger(), "View yaw: %.2f deg", view_yaw_deg);
+        }
+
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];
         armor_msg.number = armor.number;
@@ -212,8 +255,6 @@ std::vector<Armor> ArmorDetectorNode::DetectArmors(
                           detect_latencies.end());
 
   auto final_time = this->now();
-  auto latency = (final_time - img_msg->header.stamp).seconds() * 1000000;
-  RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "us");
 
   if (debug_)
   {
