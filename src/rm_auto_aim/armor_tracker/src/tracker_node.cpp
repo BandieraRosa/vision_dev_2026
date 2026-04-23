@@ -130,10 +130,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
   // update_R - measurement noise covariance matrix
   auto u_r = [this](const Eigen::VectorXd& x)
   {
-    Eigen::DiagonalMatrix<double, 4> r;
-    double factor = r_xyz_factor_;
-    r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
-    return r;
+    // Eigen::DiagonalMatrix<double, 4> r;
+    // double factor = r_xyz_factor_;
+    // r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
+    // return r;
 
     // -----------------------------------------------------------------------------------------------------------
 
@@ -193,50 +193,49 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     // return r;
     // -----------------------------------------------------------------------------------------------------------
 
-    // Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
+    Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
 
-    // // 先从状态恢复“预测装甲板位置”（世界系）
-    // const double xc = x(0);
-    // const double yc = x(2);
-    // const double za = x(4);
-    // const double armor_yaw = x(6);
-    // const double radius = x(8);
+    // 先从状态恢复“预测装甲板位置”（世界系）
+    const double xc = x(0);
+    const double yc = x(2);
+    const double za = x(4);
+    const double armor_yaw = x(6);
+    const double radius = x(8);
 
-    // const Eigen::Vector3d p_world(xc - radius * std::cos(armor_yaw),
-    //                               yc - radius * std::sin(armor_yaw), za);
+    const Eigen::Vector3d p_world(xc - radius * std::cos(armor_yaw),
+                                  yc - radius * std::sin(armor_yaw), za);
 
-    // // 世界系 -> 相机系
-    // // p_cam = R_wc^T * (p_world - t_wc)
-    // const Eigen::Vector3d p_cam =
-    //     camera_to_world_rot_.transpose() * (p_world - camera_origin_world_);
+    // 世界系 -> 相机系
+    // p_cam = R_wc^T * (p_world - t_wc)
+    const Eigen::Vector3d p_cam =
+        camera_to_world_rot_.transpose() * (p_world - camera_origin_world_);
 
-    // const double dist = std::max(1e-6, p_cam.norm());
+    const double dist = std::max(1e-6, p_cam.norm());
 
-    // // ypd 各向异性标准差
-    // const double sigma_yaw = r_ypd_yaw_std_;
-    // const double sigma_pitch = r_ypd_pitch_std_;
-    // const double sigma_distance = r_ypd_distance_std_scale_ * dist * dist;
+    // ypd 各向异性标准差
+    const double sigma_yaw = r_ypd_yaw_std_;
+    const double sigma_pitch = r_ypd_pitch_std_;
+    const double sigma_distance = r_ypd_distance_std_scale_ * dist * dist;
 
-    // // ypd 对角协方差
-    // Eigen::Matrix3d cov_ypd = Eigen::Matrix3d::Zero();
-    // cov_ypd(0, 0) = sigma_yaw * sigma_yaw;
-    // cov_ypd(1, 1) = sigma_pitch * sigma_pitch;
-    // cov_ypd(2, 2) = sigma_distance * sigma_distance;
+    // ypd 对角协方差
+    Eigen::Matrix3d cov_ypd = Eigen::Matrix3d::Zero();
+    cov_ypd(0, 0) = sigma_yaw * sigma_yaw;
+    cov_ypd(1, 1) = sigma_pitch * sigma_pitch;
+    cov_ypd(2, 2) = sigma_distance * sigma_distance;
 
-    // // ypd -> camera xyz
-    // const Eigen::Matrix3d j_ypd_to_cam = BuildJacobianYpdToCameraXyz(p_cam);
-    // const Eigen::Matrix3d cov_cam = j_ypd_to_cam * cov_ypd * j_ypd_to_cam.transpose();
+    // ypd -> camera xyz
+    const Eigen::Matrix3d j_ypd_to_cam = BuildJacobianYpdToCameraXyz(p_cam);
+    const Eigen::Matrix3d cov_cam = j_ypd_to_cam * cov_ypd * j_ypd_to_cam.transpose();
 
-    // // camera xyz -> world xyz
-    // const Eigen::Matrix3d cov_world =
-    //     camera_to_world_rot_ * cov_cam * camera_to_world_rot_.transpose();
+    // camera xyz -> world xyz
+    const Eigen::Matrix3d cov_world =
+        camera_to_world_rot_ * cov_cam * camera_to_world_rot_.transpose();
 
-    // r.block<3, 3>(0, 0) = cov_world;
+    r.block<3, 3>(0, 0) = cov_world;
 
-    // // 第4维仍是装甲板朝向 yaw 的测量噪声
-    // r(3, 3) = r_armor_yaw_std_ * r_armor_yaw_std_;
+    r(3, 3) = 0.005 * std::log1p(dist) + 0.09;
 
-    // return r;
+    return r;
   };
   // P - error estimate covariance matrix
   // Eigen::DiagonalMatrix<double, 9> p0;
@@ -348,23 +347,23 @@ void ArmorTrackerNode::InitParameters()
 void ArmorTrackerNode::ArmorsCallback(
     const auto_aim_interfaces::msg::Armors::SharedPtr& armors_msg)
 {
-  // try
-  // {
-  //   const auto tf = tf2_buffer_->lookupTransform(
-  //       target_frame_, armors_msg->header.frame_id, armors_msg->header.stamp);
+  try
+  {
+    const auto tf = tf2_buffer_->lookupTransform(
+        target_frame_, armors_msg->header.frame_id, armors_msg->header.stamp);
 
-  //   const auto& t = tf.transform.translation;
-  //   const auto& q = tf.transform.rotation;
+    const auto& t = tf.transform.translation;
+    const auto& q = tf.transform.rotation;
 
-  //   camera_origin_world_ = Eigen::Vector3d(t.x, t.y, t.z);
-  //   camera_to_world_rot_ =
-  //       Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized().toRotationMatrix();
-  // }
-  // catch (const tf2::TransformException& ex)
-  // {
-  //   RCLCPP_ERROR(this->get_logger(), "Failed to query camera pose: %s", ex.what());
-  //   return;
-  // }
+    camera_origin_world_ = Eigen::Vector3d(t.x, t.y, t.z);
+    camera_to_world_rot_ =
+        Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized().toRotationMatrix();
+  }
+  catch (const tf2::TransformException& ex)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Failed to query camera pose: %s", ex.what());
+    return;
+  }
 
   if (is_hero_)
   {
