@@ -1,13 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(rm_simulator_driver)
+project(rm_simulator)
 
-## Use C++14
-set(CMAKE_CXX_STANDARD 14)
+## Use C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-## By adding -Wall and -Werror, the compiler does not ignore warnings anymore,
-## enforcing cleaner code.
-# add_definitions(-Wall -Werror)
 
 ## Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -24,11 +20,16 @@ ament_auto_find_build_dependencies()
 ###########
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  DIRECTORY src
+  src/rm_simulator_node.cpp
+)
+
+# robomaster.h 为 header-only，放在 include 目录
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN rm_simulator_driver::SimulatorDriverNode
+  PLUGIN rm_auto_aim::RmSimulatorNode
   EXECUTABLE ${PROJECT_NAME}_node
 )
 
@@ -44,11 +45,6 @@ if(BUILD_TESTING)
     ament_cmake_cpplint
   )
   ament_lint_auto_find_test_dependencies()
-
-  # find_package(ament_cmake_gtest)
-  # set(TEST_NAME test_kalman_filter)
-  # ament_add_gtest(${TEST_NAME} test/${TEST_NAME}.cpp)
-  # target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
 endif()
 
 #############

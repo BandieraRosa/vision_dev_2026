@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <memory>
+#include <rclcpp/logging.hpp>
 
 namespace rm_auto_aim
 {
@@ -75,7 +76,7 @@ void TrajectorySolver::ReBuild()
   last_v_yaw_ = 0.0;
   last_pitch_ = 0.0;
   last_yaw_ = 0.0;
-  fly_time_ = NAN;
+  fly_time_ = 0.0;
 }
 
 TrajectorySolver::TarPostion TrajectorySolver::PredictCenter(double time_delay)
@@ -701,7 +702,6 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
                                            double gimbal_yaw_speed)
 {
   target_ = target;
-
   gimbal_yaw_ = gimbal_yaw;
   gimbal_pitch_ = -gimbal_pitch;
   gimbal_yaw_speed_ = gimbal_yaw_speed;
@@ -710,6 +710,7 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);
+  PredictOneArmorPosition(time_delay, selected_idx_);
   // 更新fly_time_
   SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
              pre_position_[selected_idx_].z);
