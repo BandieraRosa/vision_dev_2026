@@ -25,7 +25,7 @@ inline std::unique_ptr<DetectorBase> create_detector(const std::string& type,
     return Detector::Create(node);
   }
 
-#if ARMOR_DETECTOR_HAS_OPENVINO
+#if ARMOR_DETECTOR_HAS_OPENVINO || ARMOR_DETECTOR_HAS_TENSORRT
   if (type == "yolo")
   {
     return YoloDetector::Create(node);
