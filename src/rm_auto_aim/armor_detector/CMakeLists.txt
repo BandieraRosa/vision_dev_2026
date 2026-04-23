@@ -76,6 +76,8 @@ else()
   message(STATUS "YOLO detector disabled")
 endif()
 
+rclcpp_components_register_node(${PROJECT_NAME} PLUGIN rm_auto_aim::ArmorDetectorNode
+                                EXECUTABLE ${PROJECT_NAME}_node)
 
 #############
 ## Testing ##
