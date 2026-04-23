@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(armor_detector)
 
-## Use C++14
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -12,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ## Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build YOLO detector with OpenVINO support" OFF)
+option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build YOLO detector with OpenVINO support" ON)
 option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build YOLO detector with TensorRT support" ON)
 
 #######################
@@ -37,12 +36,13 @@ list(REMOVE_ITEM SRC_FILES
 
 ament_auto_add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${CMAKE_SOURCE_DIR}/include -I/usr/local/cuda/targets/x86_64-linux/include  -I/usr/local/cuda/include -I/usr/include/opencv4 -I/usr/include/x86_64-linux-gnu")
+target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
 
 if(ARMOR_DETECTOR_ENABLE_OPENVINO)
   find_package(OpenVINO REQUIRED CONFIG)
-  target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
   target_link_libraries(${PROJECT_NAME} openvino::runtime)
   target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=1)
   message(STATUS "YOLO detector enabled with OpenVINO")
@@ -52,15 +52,24 @@ else()
 endif()
 
 if(ARMOR_DETECTOR_ENABLE_TENSORRT)
+  find_package(CUDAToolkit REQUIRED)
+  enable_language(CUDA)
   set(TENSORRT_INCLUDE_DIR /usr/include/x86_64-linux-gnu)
   set(TENSORRT_LIB_DIR /usr/lib/x86_64-linux-gnu)
 
-  find_package(CUDAToolkit REQUIRED)
-
-  target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
-
   target_include_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_INCLUDE_DIR})
   target_link_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_LIB_DIR})
+
+  target_sources(${PROJECT_NAME} PRIVATE
+    src/gpu_preprocessor.cu
+  )
+
+  set_source_files_properties(src/gpu_preprocessor.cu PROPERTIES LANGUAGE CUDA)
+
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+    CUDA_ARCHITECTURES "89"
+    CUDA_SEPARABLE_COMPILATION ON
+  )
 
   target_link_libraries(${PROJECT_NAME}
     CUDA::cudart

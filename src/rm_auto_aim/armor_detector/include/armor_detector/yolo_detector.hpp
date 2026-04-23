@@ -17,6 +17,8 @@
 #include <NvInferPlugin.h>
 #include <cuda_runtime.h>
 
+#include "armor_detector/gpu_preprocessor.hpp"
+
 #elif ARMOR_DETECTOR_HAS_OPENVINO
 #include <openvino/openvino.hpp>
 #endif  // ARMOR_DETECTOR_HAS_OPENVINO / ARMOR_DETECTOR_HAS_TENSORRT
@@ -44,6 +46,7 @@ class YoloDetector : public DetectorBase
     int detect_color;
     int num_keypoints = 4;
     float large_armor_ratio_threshold = 3.2f;
+    bool end_to_end = false;
   };
 
   static std::unique_ptr<YoloDetector> Create(rclcpp::Node& node);
@@ -59,10 +62,14 @@ class YoloDetector : public DetectorBase
   void DrawResults(cv::Mat& img) override;
 
  private:
+  std::vector<Armor> Parse(double scale, cv::Mat& output);
 #if ARMOR_DETECTOR_HAS_TENSORRT
   std::vector<Armor> ParseEnd2End(double scale);
-#else
-  std::vector<Armor> Parse(double scale, cv::Mat& output);
+
+  void InitTrtRaw();
+  void InitTrtEnd2End();
+  DetectionResult DetectTrtRaw(const cv::Mat& rgb_img);
+  DetectionResult DetectTrtEnd2End(const cv::Mat& rgb_img);
 #endif
   void SortKeypoints(std::vector<cv::Point2f>& keypoints);
   ArmorType DetermineArmorType(const Light& light_1, const Light& light_2);
@@ -74,6 +81,21 @@ class YoloDetector : public DetectorBase
   std::unique_ptr<nvinfer1::IRuntime> trt_runtime_;
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine_;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context_;
+
+  std::string trt_input_name_;
+  std::string trt_output_name_;
+
+  nvinfer1::Dims trt_input_dims_{};
+  nvinfer1::Dims trt_output_dims_{};
+
+  void* trt_d_input_ = nullptr;
+  void* trt_d_output_ = nullptr;
+  cudaStream_t trt_stream_ = nullptr;
+
+  std::size_t trt_input_bytes_ = 0;
+  std::size_t trt_output_bytes_ = 0;
+
+  std::vector<float> trt_host_output_;
 
   // IO 张量名
   std::string in_name_;           // images / input
@@ -91,7 +113,6 @@ class YoloDetector : public DetectorBase
   int* d_classes_ = nullptr;
   float* d_kpts_ = nullptr;
 
-  float* h_input_ = nullptr;
   int* h_num_ = nullptr;
   float* h_boxes_ = nullptr;
   float* h_scores_ = nullptr;
@@ -109,6 +130,8 @@ class YoloDetector : public DetectorBase
   cudaGraph_t graph_ = nullptr;
   cudaGraphExec_t graph_exec_ = nullptr;
   bool graph_ready_ = false;
+
+  std::unique_ptr<GpuPreprocessor> preprocessor_;
 
 #elif ARMOR_DETECTOR_HAS_OPENVINO
   ov::Core core_;
