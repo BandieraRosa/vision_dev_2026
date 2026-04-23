@@ -14,6 +14,7 @@
 
 #if ARMOR_DETECTOR_HAS_TENSORRT
 #include <NvInfer.h>
+#include <NvInferPlugin.h>
 #include <cuda_runtime.h>
 
 #elif ARMOR_DETECTOR_HAS_OPENVINO
@@ -58,7 +59,11 @@ class YoloDetector : public DetectorBase
   void DrawResults(cv::Mat& img) override;
 
  private:
+#if ARMOR_DETECTOR_HAS_TENSORRT
+  std::vector<Armor> ParseEnd2End(double scale);
+#else
   std::vector<Armor> Parse(double scale, cv::Mat& output);
+#endif
   void SortKeypoints(std::vector<cv::Point2f>& keypoints);
   ArmorType DetermineArmorType(const Light& light_1, const Light& light_2);
 
@@ -70,21 +75,40 @@ class YoloDetector : public DetectorBase
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine_;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context_;
 
-  std::string trt_input_name_;
-  std::string trt_output_name_;
+  // IO 张量名
+  std::string in_name_;           // images / input
+  std::string out_num_name_;      // num_dets     [1, 1]        int32
+  std::string out_boxes_name_;    // det_boxes    [1, K, 4]     fp32  (xyxy, 640 尺度)
+  std::string out_scores_name_;   // det_scores   [1, K]        fp32
+  std::string out_classes_name_;  // det_classes  [1, K]        int32
+  std::string out_kpts_name_;     // det_kpts     [1, K, K*D]   fp32  (640 尺度)
 
-  nvinfer1::Dims trt_input_dims_{};
-  nvinfer1::Dims trt_output_dims_{};
+  // Device / pinned host buffers
+  void* d_input_ = nullptr;
+  int* d_num_ = nullptr;
+  float* d_boxes_ = nullptr;
+  float* d_scores_ = nullptr;
+  int* d_classes_ = nullptr;
+  float* d_kpts_ = nullptr;
 
-  void* trt_d_input_ = nullptr;
-  void* trt_d_output_ = nullptr;
-  cudaStream_t trt_stream_ = nullptr;
+  float* h_input_ = nullptr;
+  int* h_num_ = nullptr;
+  float* h_boxes_ = nullptr;
+  float* h_scores_ = nullptr;
+  int* h_classes_ = nullptr;
+  float* h_kpts_ = nullptr;
 
-  std::size_t trt_input_bytes_ = 0;
-  std::size_t trt_output_bytes_ = 0;
+  cudaStream_t stream_ = nullptr;
 
-  std::vector<float> trt_host_input_;
-  std::vector<float> trt_host_output_;
+  // 形状元数据
+  int keep_topk_ = 0;     // engine 里 NMS 的 max_output_boxes
+  int kpt_channels_ = 0;  // num_kpts * kp_dim (2 或 3)
+  std::size_t input_bytes_ = 0;
+
+  // CUDA Graph
+  cudaGraph_t graph_ = nullptr;
+  cudaGraphExec_t graph_exec_ = nullptr;
+  bool graph_ready_ = false;
 
 #elif ARMOR_DETECTOR_HAS_OPENVINO
   ov::Core core_;
