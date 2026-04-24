@@ -360,6 +360,7 @@ std::unique_ptr<ArmorPoseOptimizer> ArmorDetectorNode::InitPoseOptimizer()
       .max_roll_deviation = this->declare_parameter("optimizer.max_roll_deviation", 15.0),
       .max_iterations =
           static_cast<int>(this->declare_parameter("optimizer.max_iterations", 20)),
+      .range_fix_t_cam_ = this->declare_parameter("optimizer.range_fix_t_cam", false),
       .range_search_half_range_deg =
           this->declare_parameter("optimizer.range_search_half_range_deg", 70.0),
       .range_search_coarse_step_deg =

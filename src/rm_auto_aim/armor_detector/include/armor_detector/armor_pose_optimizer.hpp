@@ -45,6 +45,7 @@ class ArmorPoseOptimizer
     double lambda_scale_down = 10.0;     // 成功时阻尼缩小倍数
 
     // 范围搜索参数
+    bool range_fix_t_cam_ = false;  // 范围搜索时是否固定 t_cam 不变，仅优化 yaw
     double range_search_half_range_deg = 70.0;  // 粗搜索半范围（度）
     double range_search_coarse_step_deg = 1.0;  // 粗搜索步长（度）
     double range_search_fine_range_deg =
@@ -142,6 +143,15 @@ class ArmorPoseOptimizer
                      const std::array<Eigen::Vector2d, 4>& img_points_ud,
                      double* best_error_out = nullptr);
 
+  bool SearchYaw(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
+                 const std::array<Eigen::Vector3d, 4>& obj_points,
+                 const std::array<Eigen::Vector2d, 4>& img_points_ud,
+                 double* best_error_out);
+  bool SearchYawWithT(double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
+                      const std::array<Eigen::Vector3d, 4>& obj_points,
+                      const std::array<Eigen::Vector2d, 4>& img_points_ud,
+                      double* best_error_out);
+
   /// 固定旋转矩阵，解析求解最优平移向量
   /// @param rotated_points 预计算的旋转后的物体点坐标
   /// @return false 若线性系统退化
@@ -187,6 +197,12 @@ class ArmorPoseOptimizer
   Eigen::Matrix3d r_gimbal_cam_;  // 相机系 → 惯性系 的旋转
   Eigen::Matrix3d r_cam_gimbal_;  // 惯性系 → 相机系 的旋转
   bool transform_set_ = false;
+
+  // 范围搜索参数
+  double half_range_rad_;
+  double coarse_step_rad_;
+  double fine_range_rad_;
+  double fine_step_rad_;
 };
 
 }  // namespace rm_auto_aim

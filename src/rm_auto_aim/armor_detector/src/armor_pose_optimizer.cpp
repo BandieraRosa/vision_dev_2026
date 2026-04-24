@@ -6,7 +6,11 @@ namespace rm_auto_aim
 ArmorPoseOptimizer::ArmorPoseOptimizer(const Params& params)
     : params_(params),
       ground_pitch_rad_(params.standard_pitch_deg * M_PI / 180.0),
-      outpost_pitch_rad_(params.outpost_pitch_deg * M_PI / 180.0)
+      outpost_pitch_rad_(params.outpost_pitch_deg * M_PI / 180.0),
+      half_range_rad_(params.range_search_half_range_deg * M_PI / 180.0),
+      coarse_step_rad_(params.range_search_coarse_step_deg * M_PI / 180.0),
+      fine_range_rad_(params.range_search_fine_range_deg * M_PI / 180.0),
+      fine_step_rad_(params.range_search_fine_step_deg * M_PI / 180.0)
 {
 }
 
@@ -150,7 +154,6 @@ bool ArmorPoseOptimizer::Optimize(const Armor& armor, cv::Mat& rvec, cv::Mat& tv
   }
   else if (params_.optimize_method == Params::OptimizeMethod::RANGE)
   {
-    // 两阶段范围搜索：对每个候选 yaw 解析求解最优 t，联合搜索全局最优 (yaw, t)
     opt_success = RunRangeSolve(yaw, pitch_prior, t_cam, obj_points, img_points_ud);
   }
   else
@@ -373,25 +376,73 @@ bool ArmorPoseOptimizer::RunLM(double& yaw, double pitch_prior, Eigen::Vector3d&
   return ever_succeeded;
 }
 
-bool ArmorPoseOptimizer::RunRangeSolve(
+bool ArmorPoseOptimizer::SearchYaw(double& yaw, double pitch_prior,
+                                   Eigen::Vector3d& t_cam,
+                                   const std::array<Eigen::Vector3d, 4>& obj_points,
+                                   const std::array<Eigen::Vector2d, 4>& img_points_ud,
+                                   double* best_error_out)
+{
+  const double CENTER_YAW = yaw;
+  double best_yaw = yaw;
+  const Eigen::Vector3d FIXED_T = t_cam;
+  double min_error =
+      ComputeReprojectionError(yaw, pitch_prior, FIXED_T, obj_points, img_points_ud);
+
+  for (double candidate = CENTER_YAW - half_range_rad_;
+       candidate <= CENTER_YAW + half_range_rad_; candidate += coarse_step_rad_)
+  {
+    double error = ComputeReprojectionError(candidate, pitch_prior, FIXED_T, obj_points,
+                                            img_points_ud);
+    if (error < min_error)
+    {
+      min_error = error;
+      best_yaw = candidate;
+    }
+  }
+
+  // 搜索全部无效，放弃
+  if (min_error >= 1e9)
+  {
+    return false;
+  }
+
+  // 精搜索
+  const double FINE_START = best_yaw - fine_range_rad_;
+  const double FINE_END = best_yaw + fine_range_rad_;
+  for (double candidate = FINE_START; candidate <= FINE_END; candidate += fine_step_rad_)
+  {
+    double error = ComputeReprojectionError(candidate, pitch_prior, FIXED_T, obj_points,
+                                            img_points_ud);
+    if (error < min_error)
+    {
+      min_error = error;
+      best_yaw = candidate;
+    }
+  }
+
+  yaw = best_yaw;
+
+  t_cam = FIXED_T;
+  if (best_error_out)
+  {
+    *best_error_out = min_error;
+  }
+  return true;
+}
+
+bool ArmorPoseOptimizer::SearchYawWithT(
     double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
     const std::array<Eigen::Vector3d, 4>& obj_points,
     const std::array<Eigen::Vector2d, 4>& img_points_ud, double* best_error_out)
 {
-  const double HALF_RANGE_RAD = params_.range_search_half_range_deg * M_PI / 180.0;
-  const double COARSE_STEP_RAD = params_.range_search_coarse_step_deg * M_PI / 180.0;
-  const double FINE_RANGE_RAD = params_.range_search_fine_range_deg * M_PI / 180.0;
-  const double FINE_STEP_RAD = params_.range_search_fine_step_deg * M_PI / 180.0;
-
-  // 以当前初始 yaw 为中心进行搜索
   const double CENTER_YAW = yaw;
   double best_yaw = yaw;
   Eigen::Vector3d best_t = t_cam;
   double min_error = 1e9;
 
   // 对每个候选 yaw 解析求解最优 t，消除 yaw-t 耦合
-  for (double candidate = CENTER_YAW - HALF_RANGE_RAD;
-       candidate <= CENTER_YAW + HALF_RANGE_RAD; candidate += COARSE_STEP_RAD)
+  for (double candidate = CENTER_YAW - half_range_rad_;
+       candidate <= CENTER_YAW + half_range_rad_; candidate += coarse_step_rad_)
   {
     Eigen::Vector3d candidate_t;
     double error = EvaluateCandidateYaw(candidate, pitch_prior, obj_points, img_points_ud,
@@ -410,9 +461,9 @@ bool ArmorPoseOptimizer::RunRangeSolve(
     return false;
   }
 
-  const double FINE_START = best_yaw - FINE_RANGE_RAD;
-  const double FINE_END = best_yaw + FINE_RANGE_RAD;
-  for (double candidate = FINE_START; candidate <= FINE_END; candidate += FINE_STEP_RAD)
+  const double FINE_START = best_yaw - fine_range_rad_;
+  const double FINE_END = best_yaw + fine_range_rad_;
+  for (double candidate = FINE_START; candidate <= FINE_END; candidate += fine_step_rad_)
   {
     Eigen::Vector3d candidate_t;
     double error = EvaluateCandidateYaw(candidate, pitch_prior, obj_points, img_points_ud,
@@ -430,6 +481,23 @@ bool ArmorPoseOptimizer::RunRangeSolve(
   if (best_error_out)
   {
     *best_error_out = min_error;
+  }
+  return true;
+}
+
+bool ArmorPoseOptimizer::RunRangeSolve(
+    double& yaw, double pitch_prior, Eigen::Vector3d& t_cam,
+    const std::array<Eigen::Vector3d, 4>& obj_points,
+    const std::array<Eigen::Vector2d, 4>& img_points_ud, double* best_error_out)
+{
+  if (params_.range_fix_t_cam_)
+  {
+    return SearchYawWithT(yaw, pitch_prior, t_cam, obj_points, img_points_ud,
+                          best_error_out);
+  }
+  else
+  {
+    return SearchYaw(yaw, pitch_prior, t_cam, obj_points, img_points_ud, best_error_out);
   }
   return true;
 }
