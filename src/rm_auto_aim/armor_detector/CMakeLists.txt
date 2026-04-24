@@ -10,10 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ARMOR_DETECTOR_ENABLE_OPENVINO
-       "Build YOLO detector with OpenVINO support" ON)
-option(ARMOR_DETECTOR_ENABLE_TENSORRT
-       "Build YOLO detector with TensorRT support" ON)
+option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build YOLO detector with OpenVINO support" OFF)
+option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build YOLO detector with TensorRT support" OFF)
 
 # ####################
 # Find dependencies ##

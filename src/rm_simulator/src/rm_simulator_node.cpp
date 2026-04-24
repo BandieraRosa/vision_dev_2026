@@ -15,18 +15,17 @@
 //
 // ============================================================================
 
-#include <chrono>
-#include <cmath>
-#include <memory>
-#include <string>
-
-#include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/static_transform_broadcaster.h>
 
 #include <auto_aim_interfaces/msg/armor.hpp>
 #include <auto_aim_interfaces/msg/armors.hpp>
+#include <chrono>
+#include <cmath>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <tf2_ros/static_transform_broadcaster.h>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <string>
 
 #include "rm_simulator/robomaster.h"
 
@@ -54,28 +53,28 @@ class RmSimulatorNode : public rclcpp::Node
     bool publish_tf = declare_parameter("publish_tf", true);
 
     // 机器人初始位姿 (相机光学坐标系: X 右, Y 下, Z 前)
-    double init_x   = declare_parameter("robot.init_x", 0.0);
-    double init_y   = declare_parameter("robot.init_y", 0.0);
-    double init_z   = declare_parameter("robot.init_z", 5.0);   // 5 m 正前方
+    double init_x = declare_parameter("robot.init_x", 0.0);
+    double init_y = declare_parameter("robot.init_y", 0.0);
+    double init_z = declare_parameter("robot.init_z", 5.0);  // 5 m 正前方
     double init_yaw = declare_parameter("robot.init_yaw", M_PI / 2.0);
 
     // 车体坐标系速度 (常量, 可通过参数调节)
-    double vx    = declare_parameter("robot.vx", 0.0);     // 横移 (右)
-    double vy    = declare_parameter("robot.vy", 0.0);     // 升降 (下)
-    double vz    = declare_parameter("robot.vz", 0.0);     // 前进
-    double omega = declare_parameter("robot.omega", 2.0);   // 偏航角速度 (rad/s)
+    double vx = declare_parameter("robot.vx", 0.0);        // 横移 (右)
+    double vy = declare_parameter("robot.vy", 0.0);        // 升降 (下)
+    double vz = declare_parameter("robot.vz", 0.0);        // 前进
+    double omega = declare_parameter("robot.omega", 0.0);  // 偏航角速度 (rad/s)
 
     // 装甲板配置
-    int    armor_count     = declare_parameter("robot.armor_count", 4);
+    int armor_count = declare_parameter("robot.armor_count", 4);
     double horizontal_dist = declare_parameter("robot.horizontal_dist", 0.20);
-    double height_offset   = declare_parameter("robot.height_offset", 0.0);
-    double armor_pitch     = declare_parameter("robot.armor_pitch", M_PI / 12.0);
+    double height_offset = declare_parameter("robot.height_offset", 0.0);
+    double armor_pitch = declare_parameter("robot.armor_pitch", M_PI / 12.0);
 
     // 线性噪声: sigma = k0 + k1 * distance
     double k0_pos = declare_parameter("noise.k0_pos", 0.000);
-    double k1_pos = declare_parameter("noise.k1_pos", 0.000);
+    double k1_pos = declare_parameter("noise.k1_pos", 0.0);
     double k0_ori = declare_parameter("noise.k0_ori", 0.0);
-    double k1_ori = declare_parameter("noise.k1_ori", 0.00);
+    double k1_ori = declare_parameter("noise.k1_ori", 0.0);
     int noise_seed = declare_parameter("noise.seed", -1);  // <0 则不固定
 
     // 相机外参 (对应 URDF 中 camera_joint 的 xyz)
@@ -92,15 +91,14 @@ class RmSimulatorNode : public rclcpp::Node
     else
       robot_.setupDefaultArmors(horizontal_dist, height_offset, armor_pitch);
 
-    robot_.setVelocityX([vx](double) { return vx; });
+    robot_.setVelocityX([vx](double t) { return 0.0; });//M_PI * cos(M_PI / 5 * t); });
     robot_.setVelocityY([vy](double) { return vy; });
     robot_.setVelocityZ([vz](double) { return vz; });
     robot_.setAngularVelocity([omega](double) { return omega; });
 
     noise_ = NoiseConfig::LinearNoise(k0_pos, k1_pos, k0_ori, k1_ori);
 
-    if (noise_seed >= 0)
-      robot_.setNoiseSeed(static_cast<unsigned int>(noise_seed));
+    if (noise_seed >= 0) robot_.setNoiseSeed(static_cast<unsigned int>(noise_seed));
 
     // ---------- 发布者 ----------
 
@@ -109,12 +107,12 @@ class RmSimulatorNode : public rclcpp::Node
         "/detector/armors", rclcpp::SensorDataQoS());
 
     // 真值对比用
-    gt_armors_pub_ = create_publisher<auto_aim_interfaces::msg::Armors>(
-        "/ground_truth/armors", 10);
+    gt_armors_pub_ =
+        create_publisher<auto_aim_interfaces::msg::Armors>("/ground_truth/armors", 10);
     noisy_armors_pub_ = create_publisher<auto_aim_interfaces::msg::Armors>(
         "/ground_truth/noisy_armors", 10);
-    gt_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
-        "/ground_truth/robot_pose", 10);
+    gt_pose_pub_ =
+        create_publisher<geometry_msgs::msg::PoseStamped>("/ground_truth/robot_pose", 10);
 
     // ---------- 可选静态 TF ----------
 
@@ -125,16 +123,16 @@ class RmSimulatorNode : public rclcpp::Node
     }
     else
     {
-      RCLCPP_INFO(get_logger(),
-                  "TF publishing disabled (expecting robot_state_publisher + serial_driver)");
+      RCLCPP_INFO(
+          get_logger(),
+          "TF publishing disabled (expecting robot_state_publisher + serial_driver)");
     }
 
     // ---------- 定时器 ----------
 
     dt_ = 1.0 / rate;
-    timer_ = create_wall_timer(
-        std::chrono::duration<double>(dt_),
-        std::bind(&RmSimulatorNode::timerCallback, this));
+    timer_ = create_wall_timer(std::chrono::duration<double>(dt_),
+                               std::bind(&RmSimulatorNode::timerCallback, this));
 
     RCLCPP_INFO(get_logger(),
                 "Armor simulator started: rate=%.0f Hz, robot=(%.2f,%.2f,%.2f), "
@@ -162,9 +160,12 @@ class RmSimulatorNode : public rclcpp::Node
     auto noisy_msg = toArmorsMsg(noisy, stamp);
     armors_pub_->publish(noisy_msg);
 
+    gt.armors[0].pose.position.x = -gt.armors[0].pose.position.x;
+    noisy.armors[0].pose.position.x = -noisy.armors[0].pose.position.x;
+
     // 真值对比
     gt_armors_pub_->publish(toArmorsMsg(gt, stamp));
-    noisy_armors_pub_->publish(noisy_msg);
+    noisy_armors_pub_->publish(toArmorsMsg(noisy, stamp));
 
     // 车体中心真值 (camera_optical_frame 下)
     publishRobotPose(stamp);
@@ -184,7 +185,7 @@ class RmSimulatorNode : public rclcpp::Node
     {
       auto_aim_interfaces::msg::Armor armor_msg;
       armor_msg.number = a.number;
-      armor_msg.type   = a.type;
+      armor_msg.type = a.type;
       armor_msg.distance_to_image_center = a.distance_to_image_center;
 
       armor_msg.pose.position.x = a.pose.position.x;
@@ -207,7 +208,7 @@ class RmSimulatorNode : public rclcpp::Node
   void publishRobotPose(const rclcpp::Time& stamp)
   {
     geometry_msgs::msg::PoseStamped msg;
-    msg.header.stamp    = stamp;
+    msg.header.stamp = stamp;
     msg.header.frame_id = "camera_optical_frame";
 
     msg.pose.position.x = robot_.x();
@@ -245,9 +246,9 @@ class RmSimulatorNode : public rclcpp::Node
     auto make_identity = [&](const std::string& parent, const std::string& child)
     {
       geometry_msgs::msg::TransformStamped t;
-      t.header.stamp    = stamp;
+      t.header.stamp = stamp;
       t.header.frame_id = parent;
-      t.child_frame_id  = child;
+      t.child_frame_id = child;
       t.transform.rotation.w = 1.0;
       return t;
     };
@@ -275,13 +276,13 @@ class RmSimulatorNode : public rclcpp::Node
     //   对应四元数 q = (-0.5, 0.5, -0.5, 0.5)
     {
       geometry_msgs::msg::TransformStamped t;
-      t.header.stamp    = stamp;
+      t.header.stamp = stamp;
       t.header.frame_id = "camera_link";
-      t.child_frame_id  = "camera_optical_frame";
+      t.child_frame_id = "camera_optical_frame";
       t.transform.rotation.x = -0.5;
-      t.transform.rotation.y =  0.5;
+      t.transform.rotation.y = 0.5;
       t.transform.rotation.z = -0.5;
-      t.transform.rotation.w =  0.5;
+      t.transform.rotation.w = 0.5;
       tfs.push_back(t);
     }
 
@@ -294,15 +295,15 @@ class RmSimulatorNode : public rclcpp::Node
   // ==========================================================================
   //  成员
   // ==========================================================================
-  RoboMaster  robot_;
+  RoboMaster robot_;
   NoiseConfig noise_;
-  double      dt_ = 0.01;
-  double      cam_x_ = 0.10, cam_y_ = 0.0, cam_z_ = 0.05;
+  double dt_ = 0.01;
+  double cam_x_ = 0.10, cam_y_ = 0.0, cam_z_ = 0.05;
 
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr armors_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr gt_armors_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr noisy_armors_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  gt_pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr gt_pose_pub_;
 
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr timer_;
@@ -312,4 +313,3 @@ class RmSimulatorNode : public rclcpp::Node
 
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(rm_auto_aim::RmSimulatorNode)
-

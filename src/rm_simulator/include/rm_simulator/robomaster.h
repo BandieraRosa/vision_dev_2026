@@ -297,7 +297,7 @@ class RoboMaster
 
     p.position.x = x_ + cfg.horizontal_distance * std::sin(armor_yaw);
     p.position.y = y_ + cfg.height_offset;
-    p.position.z = z_ + cfg.horizontal_distance * std::cos(armor_yaw);
+    p.position.z = z_ - cfg.horizontal_distance * std::cos(armor_yaw);
 
     auto q_y = quatFromAxisAngle(0, 1, 0, armor_yaw);
     auto q_x = quatFromAxisAngle(1, 0, 0, cfg.pitch);
@@ -312,24 +312,24 @@ class RoboMaster
   // -----------------------------------------------------------------------
   //  装甲板是否朝向原点
   //  观测点 = (0,0,0) ⇒ to_observer = -position
-  //  原条件 normal · to_observer > 0  ⇔  normal · position < 0
   // -----------------------------------------------------------------------
   // 可视半角 (rad), 四块板 90° 间隔时取 ~40° 保证大部分时间只看到一块
-static constexpr double kVisibleHalfAngle = 60.0 * M_PI / 180.0;
+  static constexpr double kVisibleHalfAngle = 60.0 * M_PI / 180.0;
 
-static bool isVisibleFromOrigin(const Pose& pose)
-{
-    Pose::Point n = rotateVec(pose.orientation, {1.0, 0.0, 0.0});
+  static bool isVisibleFromOrigin(const Pose& pose)
+  {
+      Pose::Point n = rotateVec(pose.orientation, {1.0, 0.0, 0.0});
 
-    double dist = std::sqrt(pose.position.x * pose.position.x +
-                            pose.position.y * pose.position.y +
-                            pose.position.z * pose.position.z);
-    if (dist < 1e-9) return false;
+      double dist = std::sqrt(pose.position.x * pose.position.x +
+                              pose.position.y * pose.position.y +
+                              pose.position.z * pose.position.z);
+      if (dist < 1e-9) return false;
 
-    // 法线 · 观测方向(从装甲板指向原点 = -position)
-    double cos_angle = -(n.x * pose.position.x + n.y * pose.position.y +
-                         n.z * pose.position.z) / dist;
+      // 原点 -> 装甲板方向 = position
+      // 正对着时，法线 n 与 position 同向，夹角为 0
+      double cos_angle = (n.x * pose.position.x + n.y * pose.position.y +
+                          n.z * pose.position.z) / dist;
 
-    return cos_angle > std::cos(kVisibleHalfAngle);
-}
+      return cos_angle > std::cos(kVisibleHalfAngle);
+  }
 };
