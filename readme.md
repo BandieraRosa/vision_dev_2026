@@ -215,6 +215,10 @@ ros2 service call /rm_hand_eye/solve std_srvs/srv/Trigger "{}"
 
 ## 将 IR 转换为 onnx / engine
 
+注意：目前持有的 Orin 计算能力为 8.7，环境为 TensorRT 10.3、CUDA 12.6。个人电脑上配置环境注意尽量保持一致。
+
+此版本 CUDA 最高支持的编译器版本为 gcc 13 / clang 17.
+
 使用如下命令：
 
 ```bash
@@ -249,3 +253,4 @@ trtexec --onnx=yolo11_fixed.onnx --saveEngine=yolo11.engine
 trtexec --onnx=yolo11_fixed.onnx --saveEngine=yolo11.engine --fp16 --builderOptimizationLevel=5 --timingCacheFile=trt_timing.cache --useSpinWait
 ```
 
+可使用 `build_end2end`、`build_trt_engine` 脚本在 onnx 模型后插入 `EfficientNMS_TRT`，使其直接输出关键点、类别、置信度， 目前仅限 trt。
