@@ -13,6 +13,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "CameraParams.h"
 #include "MvCameraControl.h"
@@ -39,7 +40,9 @@ class HikCameraNode : public rclcpp::Node
     bool autocap;
     bool frame_rate_enable;
     double frame_rate;
-    double fps_stat_period;  // s
+    double fps_stat_period;    // s
+    uint32_t grab_timeout_ms;  // ms, timeout for MV_CC_GetImageBuffer
+    uint32_t image_node_num;   // SDK output buffer nodes, lower means lower latency
     std::string frame_id;
     std::string frame_id_lob;
     std::string camera_name;
@@ -77,6 +80,7 @@ class HikCameraNode : public rclcpp::Node
   sensor_msgs::msg::Image image_msg_;
   sensor_msgs::msg::CameraInfo camera_info_msg_;
   MV_IMAGE_BASIC_INFO img_info_;
+  std::vector<uint8_t> rotate_buffer_;
 
   // === SDK 句柄 ===
   void* handle_{nullptr};

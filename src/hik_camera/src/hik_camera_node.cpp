@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
-#include <unordered_map>
 
 using namespace std::chrono_literals;
 
@@ -18,6 +18,22 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.frame_rate_enable = this->declare_parameter<bool>("frame_rate_enable", false);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
   params_.fps_stat_period = this->declare_parameter<double>("fps_stat_period", 1.0);
+  const int grab_timeout_ms_param = this->declare_parameter<int>("grab_timeout_ms", 20);
+  const int image_node_num_param = this->declare_parameter<int>("image_node_num", 1);
+  params_.grab_timeout_ms = static_cast<uint32_t>(std::max(1, grab_timeout_ms_param));
+  params_.image_node_num = static_cast<uint32_t>(std::max(1, image_node_num_param));
+  if (grab_timeout_ms_param <= 0)
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "grab_timeout_ms must be greater than 0. Use 20 ms instead.");
+    params_.grab_timeout_ms = 20;
+  }
+  if (image_node_num_param <= 0)
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "image_node_num must be greater than 0. Use 1 instead.");
+    params_.image_node_num = 1;
+  }
   if (params_.fps_stat_period <= 0.0)
   {
     RCLCPP_WARN(this->get_logger(),
@@ -58,11 +74,18 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   // 创建守护线程，负责自动重启
   guard_.protect_thread = std::thread(&HikCameraNode::ProtectRunning, this);
 
-  MV_CC_GetImageInfo(handle_, &img_info_);
-  image_msg_.data.reserve(
-      static_cast<size_t>(img_info_.nHeightMax * img_info_.nWidthMax) * 3);
-  image_msg_.height = img_info_.nHeightMax;
-  image_msg_.width = img_info_.nWidthMax;
+  if (handle_ != nullptr && MV_CC_GetImageInfo(handle_, &img_info_) == MV_OK)
+  {
+    image_msg_.data.reserve(
+        static_cast<size_t>(img_info_.nHeightMax * img_info_.nWidthMax) * 3);
+    image_msg_.height = img_info_.nHeightMax;
+    image_msg_.width = img_info_.nWidthMax;
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "Get camera image info failed; message buffer will grow on first frame.");
+  }
   camera_info_manager_ =
       std::make_unique<camera_info_manager::CameraInfoManager>(this, params_.camera_name);
   current_camera_info_url_ = params_.camera_info_url = this->declare_parameter(
@@ -131,34 +154,48 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             continue;
           }
 
+          uint32_t publish_height = static_cast<uint32_t>(image.rows);
+          uint32_t publish_width = static_cast<uint32_t>(image.cols);
+          uint32_t publish_step = static_cast<uint32_t>(image.cols * image.elemSize());
+
           switch (params_.rotate)
           {
             case 1:
-              cv::rotate(image, image, cv::ROTATE_90_CLOCKWISE);
-              break;
-            case 2:
-              cv::rotate(image, image, cv::ROTATE_180);
-              break;
             case 3:
-              cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+            {
+              const size_t byte_count = image.total() * image.elemSize();
+              rotate_buffer_.resize(byte_count);
+              cv::Mat rotated(image.cols, image.rows, image.type(), rotate_buffer_.data(),
+                              static_cast<size_t>(image.rows) * image.elemSize());
+              cv::rotate(image, rotated,
+                         params_.rotate == 1 ? cv::ROTATE_90_CLOCKWISE
+                                             : cv::ROTATE_90_COUNTERCLOCKWISE);
+              image_msg_.data.swap(rotate_buffer_);
+              publish_height = static_cast<uint32_t>(rotated.rows);
+              publish_width = static_cast<uint32_t>(rotated.cols);
+              publish_step = static_cast<uint32_t>(rotated.cols * rotated.elemSize());
+              break;
+            }
+            case 2:
+              // 180 度可原地翻转，不再额外分配/复制。
+              cv::flip(image, image, -1);
               break;
             default:
               break;
           }
-          image_msg_.height = image.rows;
-          image_msg_.width = image.cols;
-          camera_info_msg_.height = image.rows;
-          camera_info_msg_.width = image.cols;
-          camera_info_msg_.header.stamp = stamp;
-          camera_info_msg_.header.frame_id = current_frame_id_;
 
-          // 将 cv::Mat 转成 sensor_msgs::msg::Image
-          image_msg_.header.stamp = stamp;
-          image_msg_.header.frame_id = current_frame_id_;
+          image_msg_.height = publish_height;
+          image_msg_.width = publish_width;
           image_msg_.encoding = "rgb8";
           image_msg_.is_bigendian = false;
-          image_msg_.step = static_cast<uint32_t>(image.cols * image.channels());
-          image_msg_.data.assign(image.datastart, image.dataend);
+          image_msg_.step = publish_step;
+          image_msg_.header.stamp = stamp;
+          image_msg_.header.frame_id = current_frame_id_;
+
+          camera_info_msg_.height = publish_height;
+          camera_info_msg_.width = publish_width;
+          camera_info_msg_.header.stamp = stamp;
+          camera_info_msg_.header.frame_id = current_frame_id_;
 
           camera_pub_.publish(image_msg_, camera_info_msg_);
           published_frame_count_.fetch_add(1, std::memory_order_relaxed);
@@ -197,79 +234,106 @@ HikCameraNode::~HikCameraNode()
 
 bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 {
-  in_read_.store(true, std::memory_order_seq_cst);
+  in_read_.store(true, std::memory_order_release);
 
-  if (hik_state_.load(std::memory_order_seq_cst) == HikStateEnum::STOPPED)
+  if (hik_state_.load(std::memory_order_acquire) == HikStateEnum::STOPPED ||
+      handle_ == nullptr)
   {
-    in_read_.store(false, std::memory_order_seq_cst);
+    in_read_.store(false, std::memory_order_release);
     return false;
   }
 
   MV_FRAME_OUT raw{};
-  unsigned int ret{};
-  unsigned int n_msec = 5000;
-
-  auto start = std::chrono::steady_clock::now();
-  ret = MV_CC_GetImageBuffer(handle_, &raw, n_msec);  // INFINITE
+  const unsigned int ret = MV_CC_GetImageBuffer(handle_, &raw, params_.grab_timeout_ms);
 
   if (ret != MV_OK)
   {
+    in_read_.store(false, std::memory_order_release);
+
+    // 短超时只表示当前没有新帧，不能作为掉线处理；否则会频繁重启相机。
+    if (ret == MV_E_NODATA || ret == MV_E_NOOUTBUF)
+    {
+      return false;
+    }
+
     RCLCPP_ERROR(this->get_logger(),
                  "MV_CC_GetImageBuffer failed: 0x%X, switching to Stopped.", ret);
-    in_read_.store(false, std::memory_order_seq_cst);
-    hik_state_.store(HikStateEnum::STOPPED);
+    hik_state_.store(HikStateEnum::STOPPED, std::memory_order_release);
     guard_.is_quit.notify_all();
-    return false;
-  }
-
-  auto now = std::chrono::steady_clock::now();
-  auto duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start);
-  if (duration_ns < std::chrono::nanoseconds(2'000'000))
-  {
-    MV_CC_FreeImageBuffer(handle_, &raw);
-    in_read_.store(false, std::memory_order_seq_cst);
     return false;
   }
 
   timestamp = this->now();
 
-  cv::Mat raw_img(cv::Size(raw.stFrameInfo.nWidth, raw.stFrameInfo.nHeight), CV_8U,
-                  raw.pBufAddr);
-
   const auto& frame_info = raw.stFrameInfo;
-  auto pixel_type = frame_info.enPixelType;
-
-  static const std::unordered_map<MvGvspPixelType, int> TYPE_MAP = {
-      {PixelType_Gvsp_BayerGR8, cv::COLOR_BayerGR2BGR},
-      {PixelType_Gvsp_BayerRG8, cv::COLOR_BayerRG2BGR},
-      {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2BGR},
-      {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2BGR}};
-  auto it = TYPE_MAP.find(pixel_type);
-  if (it == TYPE_MAP.end())
+  const int width = static_cast<int>(frame_info.nWidth);
+  const int height = static_cast<int>(frame_info.nHeight);
+  if (width <= 0 || height <= 0)
   {
     MV_CC_FreeImageBuffer(handle_, &raw);
-    in_read_.store(false, std::memory_order_seq_cst);
-    hik_state_.store(HikStateEnum::STOPPED);
+    in_read_.store(false, std::memory_order_release);
+    return false;
+  }
+
+  const size_t byte_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
+  image_msg_.data.resize(byte_count);
+  cv::Mat dst_image(height, width, CV_8UC3, image_msg_.data.data(),
+                    static_cast<size_t>(width) * 3);
+
+  bool convert_ok = true;
+  switch (frame_info.enPixelType)
+  {
+    case PixelType_Gvsp_BayerGR8:
+    {
+      cv::Mat raw_img(height, width, CV_8UC1, raw.pBufAddr);
+      cv::cvtColor(raw_img, dst_image, cv::COLOR_BayerGR2BGR);
+      break;
+    }
+    case PixelType_Gvsp_BayerRG8:
+    {
+      cv::Mat raw_img(height, width, CV_8UC1, raw.pBufAddr);
+      cv::cvtColor(raw_img, dst_image, cv::COLOR_BayerRG2BGR);
+      break;
+    }
+    case PixelType_Gvsp_BayerGB8:
+    {
+      cv::Mat raw_img(height, width, CV_8UC1, raw.pBufAddr);
+      cv::cvtColor(raw_img, dst_image, cv::COLOR_BayerGB2BGR);
+      break;
+    }
+    case PixelType_Gvsp_BayerBG8:
+    {
+      cv::Mat raw_img(height, width, CV_8UC1, raw.pBufAddr);
+      cv::cvtColor(raw_img, dst_image, cv::COLOR_BayerBG2BGR);
+      break;
+    }
+    default:
+      convert_ok = false;
+      break;
+  }
+
+  unsigned int free_ret = MV_CC_FreeImageBuffer(handle_, &raw);
+  in_read_.store(false, std::memory_order_release);
+
+  if (!convert_ok)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Unsupported pixel type: 0x%X",
+                 static_cast<unsigned int>(frame_info.enPixelType));
+    hik_state_.store(HikStateEnum::STOPPED, std::memory_order_release);
     guard_.is_quit.notify_all();
     return false;
   }
 
-  cv::Mat dst_image;
-  cv::cvtColor(raw_img, dst_image, it->second);
-  img = dst_image;
-
-  ret = MV_CC_FreeImageBuffer(handle_, &raw);
-  in_read_.store(false, std::memory_order_seq_cst);
-
-  if (ret != MV_OK)
+  if (free_ret != MV_OK)
   {
     RCLCPP_ERROR(this->get_logger(),
-                 "MV_CC_FreeImageBuffer failed: 0x%X, switching to Stopped.", ret);
-    hik_state_.store(HikStateEnum::STOPPED);
+                 "MV_CC_FreeImageBuffer failed: 0x%X, switching to Stopped.", free_ret);
+    hik_state_.store(HikStateEnum::STOPPED, std::memory_order_release);
     guard_.is_quit.notify_all();
     return false;
   }
 
+  img = dst_image;
   received_frame_count_.fetch_add(1, std::memory_order_relaxed);
   return true;
 }
@@ -339,7 +403,7 @@ void HikCameraNode::CaptureInit()
     return;
   }
 
-  unsigned int n_image_node_num = 3;
+  unsigned int n_image_node_num = params_.image_node_num;
   ret = MV_CC_SetImageNodeNum(handle_, n_image_node_num);
   if (MV_OK != ret)
   {
