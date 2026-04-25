@@ -99,7 +99,6 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
     if (jump_cooldown_ <= 0)
     {
       RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Armor Jump!");
-      // ArmManeuverBoost(4);
       HandleArmorJump(tracked_armor);
       jump_cooldown_ = JUMP_COOLDOWN_FRAMES;
     }
@@ -186,16 +185,9 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
     const auto& armor = target_id_armors[0];
     double match_yaw_diff =
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), target_state(6)));
-    // RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-    //             "Matching armors, target id nums == 1, current match yaw diff: %f, "
-    //             "current target yaw: %f",
-    //             match_yaw_diff, target_state(6));
     double jump_yaw_diff =
         abs(AngleDiff(OrientationToYaw(armor.pose.orientation), next_yaw));
-    // RCLCPP_WARN(
-    //     rclcpp::get_logger("armor_tracker"),
-    //     "Matching armors, target id nums == 1, current match yaw diff: %f, jump yaw
-    //     diff: %f", match_yaw_diff, jump_yaw_diff);
+
     auto p = armor.pose.position;
     Eigen::Vector3d position_vec(p.x, p.y, p.z);
     double match_position_diff = (predicted_position - position_vec).norm();
@@ -237,9 +229,9 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
     double yaw_diff021 = abs(AngleDiff(OrientationToYaw(armor0.pose.orientation),
                                        OrientationToYaw(armor1.pose.orientation)));
 
-    if (1.4 * target_state(8) * 0.5 > position_diff ||
+    if (position_diff021 < 1.4 * target_state(8) * 0.5 ||
         position_diff021 > 1.4 * target_state(8) * 1.5 ||
-        a2a_yaw_diff * 0.5 > yaw_diff021 || yaw_diff021 > a2a_yaw_diff * 1.5)
+        yaw_diff021 < a2a_yaw_diff * 0.5 || yaw_diff021 > a2a_yaw_diff * 1.5)
     {
       tracked_armor = armor0;
       is_jump = false;
@@ -274,9 +266,8 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
       is_jump = false;
       return false;
     }
-    //  position_diff = match_position_diff;
-    // yaw_diff = match_yaw_diff;
   }
+  is_jump = false;
   return false;
 }
 
@@ -303,19 +294,17 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     target_state(1) = 0;
     target_state(3) = 0;
     target_state(5) = 0;
-    // target_state(7) = 0.8 * ((target_state(7) > 0.5) - (target_state(7) < -0.5));\
 
     if (update_count_ <= 400)
     {
-      last_v_yaw_ += target_state(7)/400.0;
-      last_z_ += target_state(4)/400.0;
+      last_v_yaw_ += target_state(7) / 400.0;
+      last_z_ += target_state(4) / 400.0;
     }
     if (update_count_ > 400)
     {
       if (std::fabs(last_v_yaw_) > 1.5)
       {
-        target_state(7) =
-            std::copysign(0.8 * std::numbers::pi, last_v_yaw_);
+        target_state(7) = std::copysign(0.8 * std::numbers::pi, last_v_yaw_);
       }
       target_state(4) = std::clamp(target_state(4), last_z_ - 0.005, last_z_ + 0.01);
       last_v_yaw_ = target_state(7);
@@ -436,8 +425,6 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   UpdateArmorsNum(current_armor);
   UpdateJumpedState(position, yaw);
 
-  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
-
   Eigen::Vector3d current_p(position.x, position.y, position.z);
   Eigen::Vector3d infer_p = GetArmorPositionFromState(target_state);
   if ((current_p - infer_p).norm() > max_match_distance_)
@@ -451,7 +438,6 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
 
 void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
 {
-  // innovation_xy = measured_xy - predicted_xy
   double innovation_norm = innovation_xy.norm();
   if (innovation_norm < 0.03)
   {
@@ -546,33 +532,43 @@ void Tracker::UpdateArmorsNum(const Armor& armor)
 void Tracker::ResetState(double& yaw, const geometry_msgs::msg::Point& p)
 {
   double r = target_state(8);
-  // 位置：用观测重置
+
   target_state(0) = p.x + r * cos(yaw);
   target_state(2) = p.y + r * sin(yaw);
   target_state(4) = p.z;
   target_state(6) = yaw;
 
-  // if (tracked_armors_num == ArmorsNum::OUTPOST_3)
-  // {
-  //   outpost_idx = 0;
-  // }
+  // reset 时不要保留旧速度
+  target_state(1) = 0.0;
+  target_state(3) = 0.0;
+  target_state(5) = 0.0;
+
+  if (tracked_id == "outpost")
+  {
+    target_state(7) = std::clamp(target_state(7), -3.0, 3.0);
+  }
+  else
+  {
+    target_state(7) = 0.0;
+  }
 
   Eigen::MatrixXd p_reset = Eigen::MatrixXd::Zero(9, 9);
-  p_reset(0, 0) = 0.05;  // xc
-  p_reset(1, 1) = 0.5;   // v_xc   保留了旧值，但不完全信任
-  p_reset(2, 2) = 0.05;  // yc
-  p_reset(3, 3) = 0.5;   // v_yc
-  p_reset(4, 4) = 0.05;  // za
-  p_reset(5, 5) = 0.5;   // v_za
-  p_reset(6, 6) = 0.1;   // yaw
-  p_reset(7, 7) = 2.0;   // v_yaw  保留但给较大不确定性
-  p_reset(8, 8) = 1.0;   // r
+  p_reset(0, 0) = 0.03;
+  p_reset(1, 1) = 2.0;
+  p_reset(2, 2) = 0.03;
+  p_reset(3, 3) = 2.0;
+  p_reset(4, 4) = 0.03;
+  p_reset(5, 5) = 1.0;
+  p_reset(6, 6) = 0.05;
+  p_reset(7, 7) = 4.0;
+  p_reset(8, 8) = 0.2;
 
   ekf.SetState(target_state, p_reset);
 
-  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with P!");
+  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with velocity and P!");
 }
-                                                          
+
+
 void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw)
 {
   target_state(6) = yaw;
@@ -599,6 +595,12 @@ void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, doubl
     RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
                 "Outpost Jump: z_diff=%.3f, current_idx=%d", z_diff, outpost_idx);
   }
+
+  const double r = target_state(8);
+
+  target_state(0) = position.x + r * std::cos(yaw);
+  target_state(2) = position.y + r * std::sin(yaw);
+  target_state(4) = position.z;
 }
 
 double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
@@ -607,6 +609,7 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
   tf2::fromMsg(q, tf_q);
   double roll = NAN, pitch = NAN, yaw = NAN;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
+  yaw += M_PI;
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
   last_yaw_ = yaw;
   return yaw;

@@ -164,12 +164,14 @@ class RoboMaster
     yaw_ = yaw;
   }
 
-  // ---- 核心接口: 获取相机系下可见的装甲板 ----
+  // ---- 核心接口: 获取相机系下装甲板 ----
   //
-  //  观测点固定为相机原点, 仅返回正面朝向原点的装甲板。
+  //  观测点固定为相机原点。默认仅返回正面朝向原点的可见装甲板；
+  //  当 visible_only=false 时返回所有配置的装甲板，可用于真值/可视化。
   //  若传入 noise_cfg, 则根据装甲板到原点的距离叠加高斯噪声。
   //
-  Armors getArmors(const NoiseConfig* noise_cfg = nullptr) const
+  Armors getArmors(const NoiseConfig* noise_cfg = nullptr,
+                   bool visible_only = true) const
   {
     Armors result;
     result.armors.reserve(armor_configs_.size());
@@ -179,7 +181,7 @@ class RoboMaster
     for (const auto& cfg : armor_configs_)
     {
       Pose pose = computeArmorPose(cfg);
-      if (!isVisibleFromOrigin(pose)) continue;
+      if (visible_only && !isVisibleFromOrigin(pose)) continue;
 
       Armor a;
       a.number = cfg.number;
@@ -224,10 +226,11 @@ class RoboMaster
     return result;
   }
 
-  /// 便捷接口 (语义与旧版一致)
-  Armors getArmorsWithNoise(const NoiseConfig& noise_cfg) const
+  /// 便捷接口 (语义与旧版一致，默认只返回可见装甲板)
+  Armors getArmorsWithNoise(const NoiseConfig& noise_cfg,
+                            bool visible_only = true) const
   {
-    return getArmors(&noise_cfg);
+    return getArmors(&noise_cfg, visible_only);
   }
 
   void setNoiseSeed(unsigned int seed) { rng_.seed(seed); }
@@ -295,9 +298,10 @@ class RoboMaster
     Pose p;
     double armor_yaw = yaw_ + cfg.angular_offset;
 
+
     p.position.x = x_ + cfg.horizontal_distance * std::sin(armor_yaw);
     p.position.y = y_ + cfg.height_offset;
-    p.position.z = z_ - cfg.horizontal_distance * std::cos(armor_yaw);
+    p.position.z = z_ + cfg.horizontal_distance * std::cos(armor_yaw);
 
     auto q_y = quatFromAxisAngle(0, 1, 0, armor_yaw);
     auto q_x = quatFromAxisAngle(1, 0, 0, cfg.pitch);
@@ -316,7 +320,7 @@ class RoboMaster
   // 可视半角 (rad), 四块板 90° 间隔时取 ~40° 保证大部分时间只看到一块
   static constexpr double kVisibleHalfAngle = 60.0 * M_PI / 180.0;
 
-  static bool isVisibleFromOrigin(const Pose& pose)
+  static bool isVisibleFromOrigin(const Pose& pose) 
   {
       Pose::Point n = rotateVec(pose.orientation, {1.0, 0.0, 0.0});
 
@@ -327,9 +331,10 @@ class RoboMaster
 
       // 原点 -> 装甲板方向 = position
       // 正对着时，法线 n 与 position 同向，夹角为 0
-      double cos_angle = (n.x * pose.position.x + n.y * pose.position.y +
+      double cos_angle = -(n.x * pose.position.x + n.y * pose.position.y +
                           n.z * pose.position.z) / dist;
 
       return cos_angle > std::cos(kVisibleHalfAngle);
   }
 };
+                                                                                                                                                               

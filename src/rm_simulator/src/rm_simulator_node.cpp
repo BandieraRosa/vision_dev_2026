@@ -5,8 +5,8 @@
 //
 //  发布:
 //    /detector/armors           带噪声的装甲板 (SensorDataQoS, 供 tracker 订阅)
-//    /ground_truth/armors       无噪声的装甲板 (供对比)
-//    /ground_truth/noisy_armors 带噪声的装甲板 (与 /detector/armors 数据一致, 供对比)
+//    /ground_truth/armors       无噪声真值装甲板 (可选全部装甲板, 供对比/可视化)
+//    /ground_truth/noisy_armors 带噪声真值装甲板 (可选全部装甲板, 供对比/可视化)
 //    /ground_truth/robot_pose   车体中心真值 (camera_optical_frame 下)
 //
 //  可选静态 TF (publish_tf=true 时发布, 匹配 rm_gimbal.urdf.xacro, 关节角归零):
@@ -52,17 +52,21 @@ class RmSimulatorNode : public rclcpp::Node
     // 是否发布静态 TF (纯仿真=true, 真云台=false 由 robot_state_publisher 负责)
     bool publish_tf = declare_parameter("publish_tf", true);
 
+    // ground_truth 话题是否发布所有装甲板（包括不可见板）。
+    // /detector/armors 仍只发布可见板，避免影响 tracker。
+    gt_publish_all_armors_ = declare_parameter("ground_truth.publish_all_armors", true);
+
     // 机器人初始位姿 (相机光学坐标系: X 右, Y 下, Z 前)
     double init_x = declare_parameter("robot.init_x", 0.0);
     double init_y = declare_parameter("robot.init_y", 0.0);
-    double init_z = declare_parameter("robot.init_z", 5.0);  // 5 m 正前方
+    double init_z = declare_parameter("robot.init_z", 3.0);  // 5 m 正前方
     double init_yaw = declare_parameter("robot.init_yaw", M_PI / 2.0);
 
     // 车体坐标系速度 (常量, 可通过参数调节)
     double vx = declare_parameter("robot.vx", 0.0);        // 横移 (右)
     double vy = declare_parameter("robot.vy", 0.0);        // 升降 (下)
     double vz = declare_parameter("robot.vz", 0.0);        // 前进
-    double omega = declare_parameter("robot.omega", 0.0);  // 偏航角速度 (rad/s)
+    double omega = declare_parameter("robot.omega", 2.0);  // 偏航角速度 (rad/s)
 
     // 装甲板配置
     int armor_count = declare_parameter("robot.armor_count", 4);
@@ -91,7 +95,8 @@ class RmSimulatorNode : public rclcpp::Node
     else
       robot_.setupDefaultArmors(horizontal_dist, height_offset, armor_pitch);
 
-    robot_.setVelocityX([vx](double t) { return 0.0; });//M_PI * cos(M_PI / 5 * t); });
+    robot_.setVelocityX([vx](double t) { return M_PI / 2 * cos(M_PI / 6 * t); });
+    //  robot_.setVelocityX([vx](double t) { return vx; });
     robot_.setVelocityY([vy](double) { return vy; });
     robot_.setVelocityZ([vz](double) { return vz; });
     robot_.setAngularVelocity([omega](double) { return omega; });
@@ -136,9 +141,11 @@ class RmSimulatorNode : public rclcpp::Node
 
     RCLCPP_INFO(get_logger(),
                 "Armor simulator started: rate=%.0f Hz, robot=(%.2f,%.2f,%.2f), "
-                "omega=%.2f rad/s, armor_count=%d, publish_tf=%s",
+                "omega=%.2f rad/s, armor_count=%d, publish_tf=%s, "
+                "ground_truth.publish_all_armors=%s",
                 rate, init_x, init_y, init_z, omega, armor_count,
-                publish_tf ? "true" : "false");
+                publish_tf ? "true" : "false",
+                gt_publish_all_armors_ ? "true" : "false");
   }
 
  private:
@@ -151,21 +158,18 @@ class RmSimulatorNode : public rclcpp::Node
 
     auto stamp = now();
 
-    // 无噪声真值
-    Armors gt = robot_.getArmors();
-    // 带噪声观测
-    Armors noisy = robot_.getArmorsWithNoise(noise_);
+    // detector 输入仍然只发布可见板，避免不可见板进入 tracker。
+    Armors detector_noisy = robot_.getArmorsWithNoise(noise_);
+    armors_pub_->publish(toArmorsMsg(detector_noisy, stamp));
 
-    // 发布给 tracker
-    auto noisy_msg = toArmorsMsg(noisy, stamp);
-    armors_pub_->publish(noisy_msg);
+    // ground_truth 话题可选发布所有板，供 RViz/Marker 可视化使用。
+    const bool gt_visible_only = !gt_publish_all_armors_;
+    Armors gt = robot_.getArmors(nullptr, false);
+    Armors noisy_gt = robot_.getArmorsWithNoise(noise_, false);
 
-    gt.armors[0].pose.position.x = -gt.armors[0].pose.position.x;
-    noisy.armors[0].pose.position.x = -noisy.armors[0].pose.position.x;
-
-    // 真值对比
+    // 真值对比/可视化
     gt_armors_pub_->publish(toArmorsMsg(gt, stamp));
-    noisy_armors_pub_->publish(toArmorsMsg(noisy, stamp));
+    noisy_armors_pub_->publish(toArmorsMsg(noisy_gt, stamp));
 
     // 车体中心真值 (camera_optical_frame 下)
     publishRobotPose(stamp);
@@ -299,6 +303,7 @@ class RmSimulatorNode : public rclcpp::Node
   NoiseConfig noise_;
   double dt_ = 0.01;
   double cam_x_ = 0.10, cam_y_ = 0.0, cam_z_ = 0.05;
+  bool gt_publish_all_armors_ = true;
 
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr armors_pub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr gt_armors_pub_;

@@ -1,6 +1,7 @@
 #include "armor_marker/armor_marker_node.hpp"
 
 #include <cmath>
+#include <string>
 
 namespace rm_auto_aim
 {
@@ -43,9 +44,18 @@ ArmorMarkerNode::ArmorMarkerNode(const rclcpp::NodeOptions& options)
   detector_marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "/detector/marker", 10);
 
+  // 默认保持原逻辑：显示 /detector/armors（只含可见板）。
+  // 若要显示仿真中的所有板，可将该参数设为 /ground_truth/armors。
+  const std::string detector_armors_topic =
+      this->declare_parameter("detector_marker.armors_topic",
+                              std::string("/ground_truth/armors"));
+
   armors_sub_ = this->create_subscription<auto_aim_interfaces::msg::Armors>(
-      "/detector/armors", rclcpp::SensorDataQoS(),
+      detector_armors_topic, rclcpp::SensorDataQoS(),
       std::bind(&ArmorMarkerNode::DetectorArmorsCallback, this, std::placeholders::_1));
+
+  RCLCPP_INFO(this->get_logger(), "Detector marker subscribes to: %s",
+              detector_armors_topic.c_str());
 
   // ===================== Tracker Marker 初始化 =====================
   // 从 tracker_node 中分离：可视化跟踪状态
