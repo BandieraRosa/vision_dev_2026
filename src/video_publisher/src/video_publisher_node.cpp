@@ -97,6 +97,7 @@ class VideoPublisherNode : public rclcpp::Node
     }
 
     playback_start_time_ = std::chrono::steady_clock::now();
+    last_published_timeline_frame_index_ = -1;
     last_published_frame_index_ = -1;
 
     auto period = std::chrono::duration<double>(1.0 / output_publish_fps_);
@@ -264,6 +265,82 @@ class VideoPublisherNode : public rclcpp::Node
     return true;
   }
 
+  bool ReadFrameAt(int64_t frame_index, cv::Mat& frame)
+  {
+    if (frame_index < 0)
+    {
+      return false;
+    }
+
+    if (last_published_frame_index_ >= 0 &&
+        frame_index == last_published_frame_index_ + 1)
+    {
+      if (cap_.read(frame) && !frame.empty())
+      {
+        return true;
+      }
+
+      RCLCPP_WARN(this->get_logger(), "Failed to read next sequential frame %lld.",
+                  static_cast<long long>(frame_index));
+      return false;
+    }
+
+    return SeekAndReadFrame(frame_index, frame);
+  }
+
+  bool ReopenVideoCapture()
+  {
+    try
+    {
+      OpenVideo(video_path_);
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(this->get_logger(), "Failed to reopen video '%s': %s",
+                   video_path_.c_str(), e.what());
+      return false;
+    }
+
+    return true;
+  }
+
+  bool ReadFirstFrameForLoop(cv::Mat& frame)
+  {
+    if (cap_.set(cv::CAP_PROP_POS_FRAMES, 0.0) && cap_.read(frame) && !frame.empty())
+    {
+      return true;
+    }
+
+    RCLCPP_WARN(this->get_logger(),
+                "Failed to rewind the current capture, trying to reopen video.");
+
+    if (!ReopenVideoCapture())
+    {
+      return false;
+    }
+
+    if (!cap_.set(cv::CAP_PROP_POS_FRAMES, 0.0))
+    {
+      RCLCPP_WARN(this->get_logger(), "Failed to seek reopened video to frame 0.");
+    }
+
+    if (!cap_.read(frame) || frame.empty())
+    {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Failed to read the first frame after reopening video.");
+      return false;
+    }
+
+    return true;
+  }
+
+  void ResetPlaybackClockForLoop()
+  {
+    playback_start_time_ = std::chrono::steady_clock::now();
+    last_published_timeline_frame_index_ = -1;
+    last_published_frame_index_ = -1;
+  }
+
   bool ResolveFrameIndex(int64_t& target_frame_index)
   {
     if (total_frames_ <= 0)
@@ -291,8 +368,14 @@ class VideoPublisherNode : public rclcpp::Node
 
   void PublishFrame()
   {
-    int64_t target_frame_index = ComputeTargetFrameIndex();
+    int64_t timeline_frame_index = ComputeTargetFrameIndex();
 
+    if (timeline_frame_index == last_published_timeline_frame_index_)
+    {
+      return;
+    }
+
+    int64_t target_frame_index = timeline_frame_index;
     if (!ResolveFrameIndex(target_frame_index))
     {
       RCLCPP_INFO(this->get_logger(),
@@ -301,29 +384,31 @@ class VideoPublisherNode : public rclcpp::Node
       return;
     }
 
-    if (target_frame_index == last_published_frame_index_)
+    if (last_published_timeline_frame_index_ >= 0 &&
+        timeline_frame_index > last_published_timeline_frame_index_ + 1)
     {
-      return;
-    }
-
-    if (last_published_frame_index_ >= 0 &&
-        target_frame_index > last_published_frame_index_ + 1)
-    {
-      RCLCPP_DEBUG(this->get_logger(), "Skipping frames from %lld to %lld.",
-                   static_cast<long long>(last_published_frame_index_ + 1),
-                   static_cast<long long>(target_frame_index - 1));
+      RCLCPP_DEBUG(this->get_logger(), "Skipping timeline frames from %lld to %lld.",
+                   static_cast<long long>(last_published_timeline_frame_index_ + 1),
+                   static_cast<long long>(timeline_frame_index - 1));
     }
 
     cv::Mat bgr_frame;
-    if (!SeekAndReadFrame(target_frame_index, bgr_frame))
+    if (!ReadFrameAt(target_frame_index, bgr_frame))
     {
-      if (loop_ && total_frames_ > 0)
+      if (loop_)
       {
-        target_frame_index %= total_frames_;
-        if (!SeekAndReadFrame(target_frame_index, bgr_frame))
+        RCLCPP_WARN(this->get_logger(),
+                    "Unable to read frame %lld while loop=true; restarting from frame 0.",
+                    static_cast<long long>(target_frame_index));
+
+        ResetPlaybackClockForLoop();
+        timeline_frame_index = 0;
+        target_frame_index = 0;
+
+        if (!ReadFirstFrameForLoop(bgr_frame))
         {
           RCLCPP_WARN(this->get_logger(),
-                      "Unable to read target frame after retry, stop publishing.");
+                      "Unable to restart video loop, stop publishing.");
           timer_->cancel();
           return;
         }
@@ -351,6 +436,7 @@ class VideoPublisherNode : public rclcpp::Node
 
     camera_pub_.publish(*image_msg, camera_info_msg_);
 
+    last_published_timeline_frame_index_ = timeline_frame_index;
     last_published_frame_index_ = target_frame_index;
 
     ++published_frame_count_;
@@ -387,7 +473,6 @@ class VideoPublisherNode : public rclcpp::Node
       return;
     }
 
-    // 确保输出目录存在
     try
     {
       std::filesystem::path out_path(result_video_path_);
@@ -403,7 +488,6 @@ class VideoPublisherNode : public rclcpp::Node
                   result_video_path_.c_str(), e.what());
     }
 
-    // 使用 image_transport 订阅，支持 raw / compressed 等多种传输
     result_img_sub_ = image_transport::create_subscription(
         this, result_img_topic_,
         std::bind(&VideoPublisherNode::ResultImageCallback, this, std::placeholders::_1),
@@ -426,7 +510,6 @@ class VideoPublisherNode : public rclcpp::Node
     cv::Mat frame;
     try
     {
-      // VideoWriter 默认写入 BGR
       auto cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
       frame = cv_ptr->image;
     }
@@ -476,7 +559,6 @@ class VideoPublisherNode : public rclcpp::Node
 
   bool OpenResultVideoWriter(const cv::Size& incoming_size)
   {
-    // 目标尺寸
     cv::Size target_size;
     if (result_video_auto_size_ || result_video_width_ <= 0 || result_video_height_ <= 0)
     {
@@ -487,7 +569,6 @@ class VideoPublisherNode : public rclcpp::Node
       target_size = cv::Size(result_video_width_, result_video_height_);
     }
 
-    // 帧率退化策略：result_video_fps_ -> output_publish_fps_ -> 30
     double writer_fps = result_video_fps_;
     if (!std::isfinite(writer_fps) || writer_fps <= 1e-6)
     {
@@ -498,7 +579,6 @@ class VideoPublisherNode : public rclcpp::Node
       writer_fps = 30.0;
     }
 
-    // FourCC 校验
     if (result_video_fourcc_.size() != 4)
     {
       RCLCPP_WARN(this->get_logger(),
@@ -554,6 +634,7 @@ class VideoPublisherNode : public rclcpp::Node
   double source_timeline_fps_{30.0};
   double output_publish_fps_{30.0};
   int64_t total_frames_{0};
+  int64_t last_published_timeline_frame_index_{-1};
   int64_t last_published_frame_index_{-1};
 
   cv::VideoCapture cap_;
