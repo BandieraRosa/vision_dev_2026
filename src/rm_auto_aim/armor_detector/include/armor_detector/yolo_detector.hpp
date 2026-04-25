@@ -70,6 +70,10 @@ class YoloDetector : public DetectorBase
   void InitTrtEnd2End();
   DetectionResult DetectTrtRaw(const cv::Mat& rgb_img);
   DetectionResult DetectTrtEnd2End(const cv::Mat& rgb_img);
+#elif ARMOR_DETECTOR_HAS_OPENVINO
+  std::vector<Armor> ParseOpenVinoEnd2End(double scale, int n, const float* scores,
+                                          const int* classes, const float* kpts,
+                                          int kpt_channels);
 #endif
   void SortKeypoints(std::vector<cv::Point2f>& keypoints);
   ArmorType DetermineArmorType(const Light& light_1, const Light& light_2);
@@ -132,6 +136,9 @@ class YoloDetector : public DetectorBase
   bool graph_ready_ = false;
 
   std::unique_ptr<GpuPreprocessor> preprocessor_;
+
+  // cudaEvent_t ev_start_ = nullptr;
+  // cudaEvent_t ev_end_ = nullptr;
 
 #elif ARMOR_DETECTOR_HAS_OPENVINO
   ov::Core core_;

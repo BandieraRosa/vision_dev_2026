@@ -120,7 +120,7 @@ class TRTLogger : public nvinfer1::ILogger
     // 只打印 WARNING 及以上，避免 INFO 刷屏
     if (severity <= Severity::kWARNING)
     {
-      RCLCPP_WARN(rclcpp::get_logger("yolo_detector_trt"), "[TensorRT] %s", msg);
+      RCLCPP_WARN(rclcpp::get_logger("armor_detector"), "[TensorRT] %s", msg);
     }
   }
 };
@@ -156,7 +156,7 @@ inline void ensure_trt_plugins_initialized()
 
   initialized = true;
 
-  RCLCPP_INFO(rclcpp::get_logger("yolo_detector_trt"),
+  RCLCPP_INFO(rclcpp::get_logger("armor_detector"),
               "TensorRT plugins initialized, EfficientNMS_TRT found");
 }
 
@@ -359,7 +359,7 @@ void YoloDetector::InitTrtRaw()
   trt_input_dims_ = trt_context_->getTensorShape(trt_input_name_.c_str());
   trt_output_dims_ = trt_context_->getTensorShape(trt_output_name_.c_str());
 
-  RCLCPP_INFO(rclcpp::get_logger("yolo_detector_trt"), "TensorRT input = %s, output = %s",
+  RCLCPP_INFO(rclcpp::get_logger("armor_detector"), "TensorRT input = %s, output = %s",
               dims_to_string(trt_input_dims_).c_str(),
               dims_to_string(trt_output_dims_).c_str());
 
@@ -417,7 +417,12 @@ void YoloDetector::InitTrtRaw()
 
 void YoloDetector::InitTrtEnd2End()
 {
-  ARMOR_DETECTOR_CHECK_CUDA(cudaSetDeviceFlags(cudaDeviceScheduleSpin));
+  cudaError_t err = cudaSetDeviceFlags(cudaDeviceScheduleSpin);
+  unsigned int flags = 0;
+  cudaGetDeviceFlags(&flags);
+  RCLCPP_INFO(rclcpp::get_logger("armor_detector"),
+              "setDeviceFlags=%s, current flags=0x%x, spin=%d", cudaGetErrorString(err),
+              flags, (flags & cudaDeviceScheduleMask) == cudaDeviceScheduleSpin);
   ensure_trt_plugins_initialized();
   auto engine_data = read_binary_file(params_.model_path);
 
@@ -503,7 +508,7 @@ void YoloDetector::InitTrtEnd2End()
   keep_topk_ = static_cast<int>(boxes_dims.d[1]);
   kpt_channels_ = static_cast<int>(kpts_dims.d[2]);
 
-  RCLCPP_INFO(rclcpp::get_logger("yolo_detector_trt"),
+  RCLCPP_INFO(rclcpp::get_logger("armor_detector"),
               "Engine: input=%s, keep_topk=%d, kpt_channels=%d",
               dims_to_string(in_dims).c_str(), keep_topk_, kpt_channels_);
 
@@ -545,30 +550,74 @@ void YoloDetector::InitTrtEnd2End()
   pp_cfg.dst_size = params_.input_size;
   pp_cfg.swap_rb = false;
   preprocessor_ = std::make_unique<GpuPreprocessor>(pp_cfg);
+
+  // cudaEventCreateWithFlags(&ev_start_, cudaEventDefault);
+  // cudaEventCreateWithFlags(&ev_end_, cudaEventDefault);
 }
 
 YoloDetector::~YoloDetector()
 {
-  if (graph_exec_) cudaGraphExecDestroy(graph_exec_);
-  if (graph_) cudaGraphDestroy(graph_);
+  if (graph_exec_)
+  {
+    cudaGraphExecDestroy(graph_exec_);
+  }
+  if (graph_)
+  {
+    cudaGraphDestroy(graph_);
+  }
 
   trt_context_.reset();
   trt_engine_.reset();
   trt_runtime_.reset();
 
-  if (stream_) cudaStreamDestroy(stream_);
-  if (d_input_) cudaFree(d_input_);
-  if (d_num_) cudaFree(d_num_);
-  if (d_boxes_) cudaFree(d_boxes_);
-  if (d_scores_) cudaFree(d_scores_);
-  if (d_classes_) cudaFree(d_classes_);
-  if (d_kpts_) cudaFree(d_kpts_);
-  // h_input_ 已移除
-  if (h_num_) cudaFreeHost(h_num_);
-  if (h_boxes_) cudaFreeHost(h_boxes_);
-  if (h_scores_) cudaFreeHost(h_scores_);
-  if (h_classes_) cudaFreeHost(h_classes_);
-  if (h_kpts_) cudaFreeHost(h_kpts_);
+  if (stream_)
+  {
+    cudaStreamDestroy(stream_);
+  }
+  if (d_input_)
+  {
+    cudaFree(d_input_);
+  }
+  if (d_num_)
+  {
+    cudaFree(d_num_);
+  }
+  if (d_boxes_)
+  {
+    cudaFree(d_boxes_);
+  }
+  if (d_scores_)
+  {
+    cudaFree(d_scores_);
+  }
+  if (d_classes_)
+  {
+    cudaFree(d_classes_);
+  }
+  if (d_kpts_)
+  {
+    cudaFree(d_kpts_);
+  }
+  if (h_num_)
+  {
+    cudaFreeHost(h_num_);
+  }
+  if (h_boxes_)
+  {
+    cudaFreeHost(h_boxes_);
+  }
+  if (h_scores_)
+  {
+    cudaFreeHost(h_scores_);
+  }
+  if (h_classes_)
+  {
+    cudaFreeHost(h_classes_);
+  }
+  if (h_kpts_)
+  {
+    cudaFreeHost(h_kpts_);
+  }
 
   if (trt_stream_ != nullptr)
   {
@@ -611,11 +660,14 @@ DetectionResult YoloDetector::DetectTrtRaw(const cv::Mat& rgb_img)
 {
   debug_latencies_.clear();
   DetectionResult result;
-  if (rgb_img.empty()) return result;
+  if (rgb_img.empty())
+  {
+    return result;
+  }
 
   auto infer_start_time = std::chrono::steady_clock::now();
 
-  const double scale =
+  const double SCALE =
       preprocessor_->Run(rgb_img, static_cast<float*>(trt_d_input_), trt_stream_);
 
   if (!trt_context_->enqueueV3(trt_stream_))
@@ -638,7 +690,7 @@ DetectionResult YoloDetector::DetectTrtRaw(const cv::Mat& rgb_img)
   cv::Mat output(static_cast<int>(trt_output_dims_.d[1]),
                  static_cast<int>(trt_output_dims_.d[2]), CV_32F,
                  trt_host_output_.data());
-  last_armors_ = Parse(scale, output);
+  last_armors_ = Parse(SCALE, output);
   result.armors = last_armors_;
   auto parse_end_time = std::chrono::steady_clock::now();
   auto parse_latency = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -651,6 +703,7 @@ DetectionResult YoloDetector::DetectTrtRaw(const cv::Mat& rgb_img)
 
 DetectionResult YoloDetector::DetectTrtEnd2End(const cv::Mat& rgb_img)
 {
+  // auto t0 = std::chrono::steady_clock::now();
   debug_latencies_.clear();
   DetectionResult result;
   if (rgb_img.empty())
@@ -662,10 +715,13 @@ DetectionResult YoloDetector::DetectTrtEnd2End(const cv::Mat& rgb_img)
 
   preprocessor_->EnsureInitialized(rgb_img.rows, rgb_img.cols);
   preprocessor_->StageHost(rgb_img);
-  const double scale = preprocessor_->GetScale();
+  // auto t1 = std::chrono::steady_clock::now();
+  const double SCALE = preprocessor_->GetScale();
 
   auto t_infer_start = std::chrono::steady_clock::now();
 
+  // auto t2 = std::chrono::steady_clock::now();
+  // auto t3 = std::chrono::steady_clock::now();
   if (!graph_ready_)
   {
     preprocessor_->Launch(static_cast<float*>(d_input_), stream_);
@@ -688,8 +744,9 @@ DetectionResult YoloDetector::DetectTrtEnd2End(const cv::Mat& rgb_img)
         h_kpts_, d_kpts_,
         static_cast<std::size_t>(keep_topk_) * kpt_channels_ * sizeof(float),
         cudaMemcpyDeviceToHost, stream_));
+    // t2 = std::chrono::steady_clock::now();
     ARMOR_DETECTOR_CHECK_CUDA(cudaStreamSynchronize(stream_));
-
+    // t3 = std::chrono::steady_clock::now();
     preprocessor_->StageHost(rgb_img);
 
     // capture
@@ -718,19 +775,28 @@ DetectionResult YoloDetector::DetectTrtEnd2End(const cv::Mat& rgb_img)
         cudaGraphInstantiate(&graph_exec_, graph_, nullptr, nullptr, 0));
     graph_ready_ = true;
 
-    RCLCPP_INFO(rclcpp::get_logger("yolo_detector_trt"),
+    RCLCPP_INFO(rclcpp::get_logger("armor_detector"),
                 "CUDA Graph captured and instantiated");
   }
   else
   {
-    ARMOR_DETECTOR_CHECK_CUDA(cudaGraphLaunch(graph_exec_, stream_));
-    ARMOR_DETECTOR_CHECK_CUDA(cudaStreamSynchronize(stream_));
+    // cudaEventRecord(ev_start_, stream_);
+    cudaGraphLaunch(graph_exec_, stream_);
+    // cudaEventRecord(ev_end_, stream_);
+    // t2 = std::chrono::steady_clock::now();
+    cudaStreamSynchronize(stream_);
+    // t3 = std::chrono::steady_clock::now();
+    // float gpu_ms = 0.f;
+    // cudaEventElapsedTime(&gpu_ms, ev_start_, ev_end_);
+    // RCLCPP_WARN(rclcpp::get_logger("armor_detector"), "GPU time (CUDA Graph): %.2f ms",
+    //             gpu_ms);
   }
 
   auto t_infer_end = std::chrono::steady_clock::now();
 
   auto t_parse_start = std::chrono::steady_clock::now();
-  last_armors_ = ParseEnd2End(scale);
+  last_armors_ = ParseEnd2End(SCALE);
+  // auto t4 = std::chrono::steady_clock::now();
   result.armors = last_armors_;
   auto t_parse_end = std::chrono::steady_clock::now();
 
@@ -747,7 +813,12 @@ DetectionResult YoloDetector::DetectTrtEnd2End(const cv::Mat& rgb_img)
       "Parse Output",
       static_cast<uint64_t>(
           std::chrono::duration_cast<us>(t_parse_end - t_parse_start).count()));
-
+  // RCLCPP_INFO(rclcpp::get_logger("armor_detector"),
+  //             "t1-t0: %lu us, t2-t1: %lu us, t3-t2: %lu us, t4-t3: %lu us",
+  //             static_cast<uint64_t>(std::chrono::duration_cast<us>(t1 - t0).count()),
+  //             static_cast<uint64_t>(std::chrono::duration_cast<us>(t2 - t1).count()),
+  //             static_cast<uint64_t>(std::chrono::duration_cast<us>(t3 - t2).count()),
+  //             static_cast<uint64_t>(std::chrono::duration_cast<us>(t4 - t3).count()));
   return result;
 }
 
@@ -887,11 +958,6 @@ DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
   infer_request_.set_input_tensor(input_tensor);
   infer_request_.infer();
 
-  // 输出
-  auto output_tensor = infer_request_.get_output_tensor();
-  const auto& output_shape = output_tensor.get_shape();
-  cv::Mat output(static_cast<int>(output_shape[1]), static_cast<int>(output_shape[2]),
-                 CV_32F, output_tensor.data());
   auto infer_end_time = std::chrono::steady_clock::now();
   auto infer_latency = std::chrono::duration_cast<std::chrono::microseconds>(
                            infer_end_time - infer_start_time)
@@ -899,8 +965,49 @@ DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
   debug_latencies_.emplace_back("Inference", static_cast<uint64_t>(infer_latency));
 
   auto parse_start_time = std::chrono::steady_clock::now();
-  // 后处理
-  last_armors_ = Parse(scale, output);
+
+  if (params_.end_to_end)
+  {
+    auto num_tensor = infer_request_.get_tensor("num_dets");
+    auto scores_tensor = infer_request_.get_tensor("det_scores");
+    auto classes_tensor = infer_request_.get_tensor("det_classes");
+    auto kpts_tensor = infer_request_.get_tensor("det_kpts");
+
+    const int* num = static_cast<const int*>(num_tensor.data());
+    const float* scores = static_cast<const float*>(scores_tensor.data());
+    const int* classes = static_cast<const int*>(classes_tensor.data());
+    const float* kpts = static_cast<const float*>(kpts_tensor.data());
+
+    const auto& scores_shape = scores_tensor.get_shape();
+    const auto& kpts_shape = kpts_tensor.get_shape();
+
+    int n = num[0];
+    int keep_topk = scores_shape.size() >= 2 ? static_cast<int>(scores_shape[1]) : 0;
+    int kpt_channels = kpts_shape.size() >= 3 ? static_cast<int>(kpts_shape[2]) : 0;
+
+    if (n < 0)
+    {
+      n = 0;
+    }
+    if (n > keep_topk)
+    {
+      n = keep_topk;
+    }
+
+    last_armors_ = ParseOpenVinoEnd2End(scale, n, scores, classes, kpts, kpt_channels);
+  }
+  else
+  {
+    // 输出
+    auto output_tensor = infer_request_.get_output_tensor();
+    const auto& output_shape = output_tensor.get_shape();
+    cv::Mat output(static_cast<int>(output_shape[1]), static_cast<int>(output_shape[2]),
+                   CV_32F, output_tensor.data());
+
+    // 后处理
+    last_armors_ = Parse(scale, output);
+  }
+
   result.armors = last_armors_;
   auto parse_end_time = std::chrono::steady_clock::now();
   auto parse_latency = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -908,6 +1015,85 @@ DetectionResult YoloDetector::Detect(const cv::Mat& rgb_img)
                            .count();
   debug_latencies_.emplace_back("Parse Output", static_cast<uint64_t>(parse_latency));
   return result;
+}
+
+std::vector<Armor> YoloDetector::ParseOpenVinoEnd2End(double scale, int n,
+                                                      const float* scores,
+                                                      const int* classes,
+                                                      const float* kpts, int kpt_channels)
+{
+  std::vector<Armor> armors;
+  if (n <= 0 || scores == nullptr || classes == nullptr || kpts == nullptr ||
+      kpt_channels < params_.num_keypoints * 2)
+  {
+    return armors;
+  }
+
+  armors.reserve(static_cast<std::size_t>(n));
+
+  float inv_scale = static_cast<float>(1.0 / scale);
+  int kp_dim = (kpt_channels >= params_.num_keypoints * 3) ? 3 : 2;
+
+  for (int i = 0; i < n; ++i)
+  {
+    float conf = scores[i];
+
+    // build_openvino_end2end.py 会把 padding/无效行的 score/class 标成 -1。
+    if (conf < params_.min_confidence)
+    {
+      continue;
+    }
+
+    int cls = classes[i];
+    if (cls < 0 || cls >= class_num_)
+    {
+      continue;
+    }
+
+    const auto& raw_label = YOLO11_MODEL_LABELS[cls];
+
+    int color = (raw_label[0] == 'R')   ? RED
+                : (raw_label[0] == 'B') ? BLUE
+                                        : params_.detect_color;
+    if (color != params_.detect_color)
+    {
+      continue;
+    }
+
+    std::string label = map_label(raw_label);
+    if (std::find(params_.ignore_classes.begin(), params_.ignore_classes.end(), label) !=
+        params_.ignore_classes.end())
+    {
+      continue;
+    }
+
+    const float* kp = kpts + static_cast<std::size_t>(i) * kpt_channels;
+
+    std::vector<cv::Point2f> keypoints;
+    keypoints.reserve(static_cast<std::size_t>(params_.num_keypoints));
+    for (int k = 0; k < params_.num_keypoints; ++k)
+    {
+      keypoints.emplace_back(kp[k * kp_dim] * inv_scale, kp[k * kp_dim + 1] * inv_scale);
+    }
+
+    SortKeypoints(keypoints);
+
+    Light ll(keypoints[0], keypoints[1], color);
+    Light rl(keypoints[2], keypoints[3], color);
+
+    Armor armor(ll, rl);
+    armor.type = DetermineArmorType(ll, rl);
+    armor.number = label;
+    armor.confidence = conf;
+
+    std::ostringstream oss;
+    oss << label << ": " << std::fixed << std::setprecision(2) << conf;
+    armor.classfication_result = oss.str();
+
+    armors.emplace_back(std::move(armor));
+  }
+
+  return armors;
 }
 
 #endif  // ARMOR_DETECTOR_HAS_TENSORRT / ARMOR_DETECTOR_HAS_OPENVINO
