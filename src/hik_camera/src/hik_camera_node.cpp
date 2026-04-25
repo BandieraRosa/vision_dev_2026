@@ -1,5 +1,10 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <unordered_map>
+
 using namespace std::chrono_literals;
 
 namespace HikCamera
@@ -10,7 +15,16 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);  // us
   params_.gain = this->declare_parameter<double>("gain", 15.0);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
+  params_.frame_rate_enable = this->declare_parameter<bool>("frame_rate_enable", false);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
+  params_.fps_stat_period = this->declare_parameter<double>("fps_stat_period", 1.0);
+  if (params_.fps_stat_period <= 0.0)
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "fps_stat_period must be greater than 0. Use 1.0 s instead.");
+    params_.fps_stat_period = 1.0;
+  }
+
   current_frame_id_ = params_.frame_id =
       this->declare_parameter<std::string>("frame_id", "camera_optical_frame");
   current_camera_name_ = params_.camera_name =
@@ -27,6 +41,16 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   camera_pub_ = image_transport::create_camera_publisher(this, "image_raw",
                                                          rmw_qos_profile_sensor_data);
   RCLCPP_INFO(this->get_logger(), "Camera publisher created.");
+
+  // 创建 FPS 统计定时器，分别统计 SDK 成功取到的帧和成功 publish 的帧
+  fps_stat_last_time_ = std::chrono::steady_clock::now();
+  const auto fps_stat_period = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::duration<double>(std::max(0.001, params_.fps_stat_period)));
+  fps_stat_timer_ = this->create_wall_timer(
+      fps_stat_period, std::bind(&HikCameraNode::ReportFpsStats, this));
+  RCLCPP_INFO(this->get_logger(), "FPS statistics enabled, period: %.3f s.",
+              params_.fps_stat_period);
+
   // 初始化相机
   CaptureInit();
   RCLCPP_INFO(this->get_logger(), "Camera initialized.");
@@ -117,6 +141,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
               break;
             case 3:
               cv::rotate(image, image, cv::ROTATE_90_COUNTERCLOCKWISE);
+              break;
             default:
               break;
           }
@@ -136,6 +161,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
           image_msg_.data.assign(image.datastart, image.dataend);
 
           camera_pub_.publish(image_msg_, camera_info_msg_);
+          published_frame_count_.fetch_add(1, std::memory_order_relaxed);
         }
 
         RCLCPP_INFO(this->get_logger(), "Hik SDK capture thread exit.");
@@ -181,10 +207,10 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 
   MV_FRAME_OUT raw{};
   unsigned int ret{};
-  unsigned int n_msec = 100;
+  unsigned int n_msec = 5000;
 
   auto start = std::chrono::steady_clock::now();
-  ret = MV_CC_GetImageBuffer(handle_, &raw, n_msec); // INFINITE
+  ret = MV_CC_GetImageBuffer(handle_, &raw, n_msec);  // INFINITE
 
   if (ret != MV_OK)
   {
@@ -244,7 +270,31 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
     return false;
   }
 
+  received_frame_count_.fetch_add(1, std::memory_order_relaxed);
   return true;
+}
+
+void HikCameraNode::ReportFpsStats()
+{
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed = std::chrono::duration<double>(now - fps_stat_last_time_).count();
+  fps_stat_last_time_ = now;
+
+  if (elapsed <= 0.0)
+  {
+    return;
+  }
+
+  const auto received = received_frame_count_.exchange(0, std::memory_order_relaxed);
+  const auto published = published_frame_count_.exchange(0, std::memory_order_relaxed);
+  const double received_fps = static_cast<double>(received) / elapsed;
+  const double published_fps = static_cast<double>(published) / elapsed;
+
+  RCLCPP_INFO(this->get_logger(),
+              "Camera FPS stats: received %.2f Hz (%lu frames), published %.2f Hz (%lu "
+              "frames), period %.3f s",
+              received_fps, static_cast<unsigned long>(received), published_fps,
+              static_cast<unsigned long>(published), elapsed);
 }
 
 void HikCameraNode::CaptureInit()
@@ -375,13 +425,24 @@ void HikCameraNode::CaptureInit()
     RCLCPP_WARN(this->get_logger(), "Get ADCBitDepth failed: 0x%X, skip", ret);
   }
 
-  // 帧率
-  ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate", 249.0);
+  ret = MV_CC_SetBoolValue(handle_, "AcquisitionFrameRateEnable",
+                           params_.frame_rate_enable);
   if (ret != MV_OK)
   {
-    RCLCPP_ERROR(this->get_logger(), "MV_CC_SetFloatValue(set framerate) failed: 0x%X",
-                 ret);
+    RCLCPP_ERROR(this->get_logger(),
+                 "MV_CC_SetBoolValue(set frame rate enable) failed: 0x%X", ret);
     return;
+  }
+  if (params_.frame_rate_enable)
+  {
+    // 帧率
+    ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate", params_.frame_rate);
+    if (ret != MV_OK)
+    {
+      RCLCPP_ERROR(this->get_logger(), "MV_CC_SetFloatValue(set framerate) failed: 0x%X",
+                   ret);
+      return;
+    }
   }
   ret = MV_CC_StartGrabbing(handle_);
   if (ret != MV_OK)

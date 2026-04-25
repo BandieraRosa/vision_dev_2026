@@ -1,9 +1,18 @@
 #pragma once
 
+#include <atomic>
 #include <camera_info_manager/camera_info_manager.hpp>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <image_transport/image_transport.hpp>
+#include <memory>
+#include <mutex>
 #include <opencv2/imgproc.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <string>
+#include <thread>
 
 #include "CameraParams.h"
 #include "MvCameraControl.h"
@@ -28,7 +37,9 @@ class HikCameraNode : public rclcpp::Node
     double exposure_time;  // us
     double gain;
     bool autocap;
+    bool frame_rate_enable;
     double frame_rate;
+    double fps_stat_period;  // s
     std::string frame_id;
     std::string frame_id_lob;
     std::string camera_name;
@@ -53,6 +64,7 @@ class HikCameraNode : public rclcpp::Node
   void CaptureStop();
   void ProtectRunning();
   void SwitchCamera(bool to_lob);
+  void ReportFpsStats();
 
   void SetFloatValue(const std::string& name, double value);
   void SetEnumValue(const std::string& name, unsigned int value);
@@ -92,5 +104,11 @@ class HikCameraNode : public rclcpp::Node
   std::atomic<bool> is_switching_{false};  // SwitchCamera 期间为 true，防止守护线程误重启
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lob_shot_sub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr camera_switch_done_pub_;
+
+  // FPS statistics
+  std::atomic<uint64_t> received_frame_count_{0};
+  std::atomic<uint64_t> published_frame_count_{0};
+  std::chrono::steady_clock::time_point fps_stat_last_time_;
+  rclcpp::TimerBase::SharedPtr fps_stat_timer_;
 };
 }  // namespace HikCamera
