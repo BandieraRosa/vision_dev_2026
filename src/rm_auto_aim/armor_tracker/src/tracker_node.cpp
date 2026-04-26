@@ -102,38 +102,23 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     add_cv_block(4, 5, z_scale * s2_q_z_);
     add_cv_block(6, 7, yaw_scale * s2_q_yaw_);
 
-    q(8, 8) = std::max(1e-8, t * s2_q_r_);
-    return q;
+    double radius_q_scale = 1.0;
+    // const int updates = tracker_->GetUpdateCount();
+    // if (updates >= q_radius_stable_update_count_ && !boost_on)
+    // {
+    //   radius_q_scale = 100.0;
+    // }
 
-    // Eigen::MatrixXd q(9, 9);
-    // double t = dt_, x = s2_q_x_, y = s2_q_y_, z = s2_q_z_, yaw = s2_q_yaw_, r =
-    // s2_q_r_; double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx =
-    // pow(t, 2) * x; double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y,
-    // q_vy_vy = pow(t, 2) * y; double q_z_z = pow(t, 4) / 4 * z, q_z_vz = pow(t, 3) / 2 *
-    // z, q_vz_vz = pow(t, 2) * z; double q_yaw_yaw = pow(t, 4) / 4 * yaw, q_yaw_vyaw =
-    // pow(t, 3) / 2 * yaw,
-    //        q_vyaw_vyaw = pow(t, 2) * yaw;
-    // double q_r_r = pow(t, 4) / 4 * r;
-    // // clang-format off
-    // q <<  q_x_x,  q_x_vx,  0,      0,       0,      0,       0,          0, 0,
-    //       q_x_vx, q_vx_vx, 0,      0,       0,      0,       0,          0, 0, 0, 0,
-    //       q_y_y,  q_y_vy,  0,      0,       0,          0,           0, 0,      0,
-    //       q_y_vy, q_vy_vy, 0,      0,       0,          0,           0, 0,      0, 0,
-    //       0,       q_z_z,  q_z_vz,  0,          0,           0, 0,      0,       0, 0,
-    //       q_z_vz, q_vz_vz, 0,          0,           0, 0,      0,       0,      0, 0,
-    //       0,       q_yaw_yaw,  q_yaw_vyaw,  0, 0,      0,       0,      0,       0, 0,
-    //       q_yaw_vyaw, q_vyaw_vyaw, 0, 0,      0,       0,      0,       0,      0, 0,
-    //       0,           q_r_r;
-    // // clang-format on
-    // return q;
+    q(8, 8) = std::max(1e-10, t * s2_q_r_ * radius_q_scale);
+    return q;
   };
   // update_R - measurement noise covariance matrix
   auto u_r = [this](const Eigen::VectorXd& x)
   {
-    Eigen::DiagonalMatrix<double, 4> r;
-    double factor = r_xyz_factor_;
-    r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
-    return r;
+    // Eigen::DiagonalMatrix<double, 4> r;
+    // double factor = r_xyz_factor_;
+    // r.diagonal() << abs(factor * x[0]), abs(factor * x[2]), abs(factor * x[4]), r_yaw_;
+    // return r;
 
     // -----------------------------------------------------------------------------------------------------------
 
@@ -193,49 +178,49 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     // return r;
     // -----------------------------------------------------------------------------------------------------------
 
-    // Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
+    Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
 
-    // // 先从状态恢复“预测装甲板位置”（世界系）
-    // const double xc = x(0);
-    // const double yc = x(2);
-    // const double za = x(4);
-    // const double armor_yaw = x(6);
-    // const double radius = x(8);
+    // 先从状态恢复“预测装甲板位置”（世界系）
+    const double xc = x(0);
+    const double yc = x(2);
+    const double za = x(4);
+    const double armor_yaw = x(6);
+    const double radius = x(8);
 
-    // const Eigen::Vector3d p_world(xc - radius * std::cos(armor_yaw),
-    //                               yc - radius * std::sin(armor_yaw), za);
+    const Eigen::Vector3d p_world(xc - radius * std::cos(armor_yaw),
+                                  yc - radius * std::sin(armor_yaw), za);
 
-    // // 世界系 -> 相机系
-    // // p_cam = R_wc^T * (p_world - t_wc)
-    // const Eigen::Vector3d p_cam =
-    //     camera_to_world_rot_.transpose() * (p_world - camera_origin_world_);
+    // 世界系 -> 相机系
+    // p_cam = R_wc^T * (p_world - t_wc)
+    const Eigen::Vector3d p_cam =
+        camera_to_world_rot_.transpose() * (p_world - camera_origin_world_);
 
-    // const double dist = std::max(1e-6, p_cam.norm());
+    const double dist = std::max(1e-6, p_cam.norm());
 
-    // // ypd 各向异性标准差
-    // const double sigma_yaw = r_ypd_yaw_std_;
-    // const double sigma_pitch = r_ypd_pitch_std_;
-    // const double sigma_distance = r_ypd_distance_std_scale_ * dist * dist;
+    // ypd 各向异性标准差
+    const double sigma_yaw = r_ypd_yaw_std_;
+    const double sigma_pitch = r_ypd_pitch_std_;
+    const double sigma_distance = r_ypd_distance_std_scale_ * dist * dist;
 
-    // // ypd 对角协方差
-    // Eigen::Matrix3d cov_ypd = Eigen::Matrix3d::Zero();
-    // cov_ypd(0, 0) = sigma_yaw * sigma_yaw;
-    // cov_ypd(1, 1) = sigma_pitch * sigma_pitch;
-    // cov_ypd(2, 2) = sigma_distance * sigma_distance;
+    // ypd 对角协方差
+    Eigen::Matrix3d cov_ypd = Eigen::Matrix3d::Zero();
+    cov_ypd(0, 0) = sigma_yaw * sigma_yaw;
+    cov_ypd(1, 1) = sigma_pitch * sigma_pitch;
+    cov_ypd(2, 2) = sigma_distance * sigma_distance;
 
-    // // ypd -> camera xyz
-    // const Eigen::Matrix3d j_ypd_to_cam = BuildJacobianYpdToCameraXyz(p_cam);
-    // const Eigen::Matrix3d cov_cam = j_ypd_to_cam * cov_ypd * j_ypd_to_cam.transpose();
+    // ypd -> camera xyz
+    const Eigen::Matrix3d j_ypd_to_cam = BuildJacobianYpdToCameraXyz(p_cam);
+    const Eigen::Matrix3d cov_cam = j_ypd_to_cam * cov_ypd * j_ypd_to_cam.transpose();
 
-    // // camera xyz -> world xyz
-    // const Eigen::Matrix3d cov_world =
-    //     camera_to_world_rot_ * cov_cam * camera_to_world_rot_.transpose();
+    // camera xyz -> world xyz
+    const Eigen::Matrix3d cov_world =
+        camera_to_world_rot_ * cov_cam * camera_to_world_rot_.transpose();
 
-    // r.block<3, 3>(0, 0) = cov_world;
+    r.block<3, 3>(0, 0) = cov_world;
 
-    // r(3, 3) = 0.005 * std::log1p(dist) + 0.09;
+    r(3, 3) = 0.005 * std::log1p(dist) + 0.09;
 
-    // return r;
+    return r;
   };
   // P - error estimate covariance matrix
   // Eigen::DiagonalMatrix<double, 9> p0;
@@ -335,6 +320,13 @@ void ArmorTrackerNode::InitParameters()
   q_boost_xy_ = this->declare_parameter("ekf.q_boost_xy", 4.0);
   q_boost_z_ = this->declare_parameter("ekf.q_boost_z", 1.0);
   q_boost_yaw_ = this->declare_parameter("ekf.q_boost_yaw", 3.0);
+
+  q_radius_stable_update_count_ =
+      this->declare_parameter("ekf.q_radius_stable_update_count", 40);
+  q_radius_locked_update_count_ =
+      this->declare_parameter("ekf.q_radius_locked_update_count", 120);
+  q_radius_stable_scale_ = this->declare_parameter("ekf.q_radius_stable_scale", 0.08);
+  q_radius_locked_scale_ = this->declare_parameter("ekf.q_radius_locked_scale", 0.01);
 
   // ypd
   r_ypd_yaw_std_ = this->declare_parameter("ekf.r_ypd_yaw_std", 0.008);

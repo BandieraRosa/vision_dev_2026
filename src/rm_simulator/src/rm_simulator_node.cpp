@@ -66,7 +66,7 @@ class RmSimulatorNode : public rclcpp::Node
     double vx = declare_parameter("robot.vx", 0.0);        // 横移 (右)
     double vy = declare_parameter("robot.vy", 0.0);        // 升降 (下)
     double vz = declare_parameter("robot.vz", 0.0);        // 前进
-    double omega = declare_parameter("robot.omega", 2.0);  // 偏航角速度 (rad/s)
+    double omega = declare_parameter("robot.omega", 0.0);  // 偏航角速度 (rad/s)
 
     // 装甲板配置
     int armor_count = declare_parameter("robot.armor_count", 4);

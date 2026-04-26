@@ -61,6 +61,11 @@ class ArmorTrackerNode : public rclcpp::Node
   double q_boost_z_;
   double q_boost_yaw_;
 
+  int q_radius_stable_update_count_;
+  int q_radius_locked_update_count_;
+  double q_radius_stable_scale_;
+  double q_radius_locked_scale_;
+
   double lost_time_thres_;
   double change_time_thres_;
   std::unique_ptr<Tracker> tracker_;

@@ -6,6 +6,8 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <optional>
+
 #include "armor_tracker/extended_kalman_filter.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
 
@@ -43,6 +45,9 @@ class Tracker  // 整车观测
   bool MatchArmor(const std::vector<Armor>& target_id_armors, double& position_diff,
                   double& yaw_diff, bool& is_jump);
 
+  std::vector<Armor> FilterSameIdArmorsYaw(const std::vector<Armor>& target_id_armors,
+                                           bool& allow_jump_candidate);
+
   /// @brief 匹配成功后，执行 EKF update 并做速度约束
   void UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& p);
 
@@ -52,6 +57,7 @@ class Tracker  // 整车观测
   /// @brief 跟踪状态机转移
   void UpdateTrackerState(bool matched);
   bool NeedManeuverBoost() const { return maneuver_boost_count_ > 0; }
+  int GetUpdateCount() const { return update_count_; }
 
   void ArmManeuverBoost(int count = 4)
   {
@@ -127,6 +133,10 @@ class Tracker  // 整车观测
                          double yaw_coupling);
 
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
+  double RawOrientationToYaw(const geometry_msgs::msg::Quaternion& q) const;
+  std::optional<double> NormalizeArmorYawCandidate(double raw_yaw, double reference_yaw) const;
+  geometry_msgs::msg::Quaternion YawToOrientationLike(const geometry_msgs::msg::Quaternion& src,
+                                                      double yaw) const;
   Eigen::Vector3d GetArmorPositionFromState(const Eigen::VectorXd& x);
   void SwitchEKFParams();
   double max_match_distance_;

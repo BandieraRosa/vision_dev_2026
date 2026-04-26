@@ -255,59 +255,6 @@ double fast_atan(double x, double y)
   return x_y * (0.99997726f + x_y_2 * (-0.33262347f + x_y_2 * 0.19354346f));
 }
 
-// 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
-// bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fire)
-// {
-//   if (!HasValidSelection())
-//   {
-//     return false;
-//   }
-
-//   const double distance =
-//       std::sqrt(pre_position_[selected_idx_].x * pre_position_[selected_idx_].x +
-//                 pre_position_[selected_idx_].y * pre_position_[selected_idx_].y) +
-//       s_bias_;
-
-//   const double armor_half_length =
-//       (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
-
-//   const double max_yaw_diff = SolveYaw(distance, armor_half_length);
-
-//   const bool stable_tracking = std::fabs(target_.velocity.x - last_x_v_) < 0.4 &&
-//                                std::fabs(target_.velocity.y - last_y_v_) < 0.3 &&
-//                                std::fabs(target_.velocity.yaw - last_v_yaw_) < 0.3;
-
-//   if (!stable_tracking && !is_fast_fire && !should_last_shot_)
-//   {
-//     return false;
-//   }
-
-//   else
-//   {
-//     bool yaw_diff_exceeds = fabs(tar_yaw - gimbal_yaw_) > max_yaw_diff &&
-//                             fabs(tar_pitch - gimbal_pitch_) > 0.03;
-//     if (choose_next_)
-//     {
-//       if (yaw_diff_exceeds)
-//       {
-//         //RCLCPP_WARN(logger_, "云台和跟踪都未就位");
-//         return false;
-//       }
-//       //RCLCPP_WARN(logger_, "云台就位而跟踪未就位");
-//       return is_fast_fire;
-//     }
-//     else
-//     {
-//       if (yaw_diff_exceeds)
-//       {
-//         //RCLCPP_WARN(logger_, "跟踪就位而云台未就位");
-//         return is_fast_fire;
-//       }
-//       // RCLCPP_DEBUG(logger_, "云台和跟踪都就位");
-//       return true;
-//     }
-//   }
-// }
 std::pair<double, double> TrajectorySolver::ComputeFireYawWindow(
     const TarPostion& armor) const
 {
@@ -331,6 +278,7 @@ std::pair<double, double> TrajectorySolver::ComputeFireYawWindow(
   return {std::min(lo, hi), std::max(lo, hi)};
 }
 
+// 快速打击符号fast_fire为false时，只打云台和跟踪都就位的装甲板
 bool TrajectorySolver::CanFire(double tar_yaw, double tar_pitch, bool is_fast_fire)
 {
   if (!HasValidSelection())
@@ -706,7 +654,7 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   gimbal_pitch_ = -gimbal_pitch;
   gimbal_yaw_speed_ = gimbal_yaw_speed;
 
-  fire_logic_mode_ = FireLogicMode::SPIN;
+  fire_logic_mode_ = FireLogicMode::COMMON;
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);

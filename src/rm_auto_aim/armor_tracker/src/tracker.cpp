@@ -1,6 +1,9 @@
 #include "armor_tracker/tracker.hpp"
 
 #include <numbers>
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
 #include <rclcpp/logger.hpp>
 
 namespace rm_auto_aim
@@ -70,6 +73,9 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   std::copy_if(armors.begin(), armors.end(), std::back_inserter(target_id_armors),
                [id = tracked_id](const Armor& armor) { return armor.number == id; });
 
+  bool allow_jump_candidate = false;
+  //target_id_armors = FilterSameIdArmorsYaw(target_id_armors, allow_jump_candidate);
+
   if (target_id_armors.size() != armors.size())
   {
     DoYouWantToChangeTarget(armors_msg);
@@ -77,6 +83,10 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
 
   if (target_id_armors.empty())
   {
+    if (allow_jump_candidate)
+    {
+      ArmManeuverBoost();
+    }
     UpdateTrackerState(matched);
     return;
   }
@@ -171,6 +181,99 @@ void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
 
   last_closest_id = closest_armor.number;
 }
+
+// std::vector<Tracker::Armor> Tracker::FilterSameIdArmorsYaw(
+//     const std::vector<Armor>& target_id_armors, bool& allow_jump_candidate)
+// {
+//   allow_jump_candidate = false;
+//   if (target_id_armors.empty() || target_state.size() < 9)
+//   {
+//     return target_id_armors;
+//   }
+
+//   const double sign = target_state(7) >= 0.0 ? 1.0 : -1.0;
+//   const double a2a_yaw_diff =
+//       2.0 * std::numbers::pi_v<double> / static_cast<double>(tracked_armors_num);
+//   const double current_phase = target_state(6);
+//   const double jump_phase = target_state(6) - sign * a2a_yaw_diff;
+
+//   const bool fast_rotation = std::fabs(target_state(7)) > 8.0 || NeedManeuverBoost();
+//   const double normal_gate = std::max(max_match_yaw_diff_ * 1.25, a2a_yaw_diff * 0.32);
+//   const double fast_gate = std::max(normal_gate, a2a_yaw_diff * 0.72);
+//   const double fallback_gate = std::max(fast_gate, a2a_yaw_diff * 0.90);
+
+//   std::vector<Armor> filtered;
+//   filtered.reserve(target_id_armors.size());
+
+//   double best_score = DBL_MAX;
+//   Armor best_adjusted{};
+//   bool has_best = false;
+//   bool best_is_jump = false;
+
+//   for (const auto& armor : target_id_armors)
+//   {
+//     const double raw_yaw = RawOrientationToYaw(armor.pose.orientation);
+//     const auto current_yaw_opt = NormalizeArmorYawCandidate(raw_yaw, current_phase);
+//     const auto jump_yaw_opt = NormalizeArmorYawCandidate(raw_yaw, jump_phase);
+//     if (!current_yaw_opt || !jump_yaw_opt)
+//     {
+//       continue;
+//     }
+
+//     const double current_yaw = *current_yaw_opt;
+//     const double jump_yaw = *jump_yaw_opt;
+//     const double current_diff = std::fabs(AngleDiff(current_yaw, current_phase));
+//     const double jump_diff = std::fabs(AngleDiff(jump_yaw, jump_phase));
+
+//     const bool prefer_jump = jump_diff < current_diff;
+//     const double chosen_yaw = prefer_jump ? jump_yaw : current_yaw;
+//     const double chosen_diff = prefer_jump ? jump_diff : current_diff;
+//     const double gate = fast_rotation ? fast_gate : normal_gate;
+
+//     Armor adjusted = armor;
+//     adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, chosen_yaw);
+
+//     if (chosen_diff < best_score)
+//     {
+//       best_score = chosen_diff;
+//       best_adjusted = adjusted;
+//       has_best = true;
+//       best_is_jump = prefer_jump;
+//     }
+
+//     if (current_diff <= normal_gate)
+//     {
+//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, current_yaw);
+//       filtered.push_back(adjusted);
+//     }
+//     else if (jump_diff <= normal_gate || (fast_rotation && jump_diff <= gate))
+//     {
+//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, jump_yaw);
+//       filtered.push_back(adjusted);
+//       allow_jump_candidate = true;
+//     }
+//     else if (fast_rotation && chosen_diff <= gate)
+//     {
+//       filtered.push_back(adjusted);
+//       allow_jump_candidate = allow_jump_candidate || prefer_jump;
+//     }
+//     else
+//     {
+//       RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"),
+//                    "Drop abnormal same-id armor yaw: current_diff=%.3f jump_diff=%.3f",
+//                    current_diff, jump_diff);
+//     }
+//   }
+
+//   if (filtered.empty() && has_best && best_score <= fallback_gate)
+//   {
+//     filtered.push_back(best_adjusted);
+//     allow_jump_candidate = best_is_jump;
+//     ArmManeuverBoost();
+//   }
+
+//   return filtered;
+// }
 
 bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
                          double& position_diff, double& yaw_diff, bool& is_jump)
@@ -597,10 +700,40 @@ void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, doubl
   }
 
   const double r = target_state(8);
+}
 
-  target_state(0) = position.x + r * std::cos(yaw);
-  target_state(2) = position.y + r * std::sin(yaw);
-  target_state(4) = position.z;
+double Tracker::RawOrientationToYaw(const geometry_msgs::msg::Quaternion& q) const
+{
+  tf2::Quaternion tf_q;
+  tf2::fromMsg(q, tf_q);
+  double roll = NAN, pitch = NAN, yaw = NAN;
+  tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
+  return NormalizeAngle(yaw);
+}
+
+std::optional<double> Tracker::NormalizeArmorYawCandidate(double raw_yaw,
+                                                           double reference_yaw) const
+{
+  if (!std::isfinite(raw_yaw) || !std::isfinite(reference_yaw) ||
+      static_cast<int>(tracked_armors_num) <= 0)
+  {
+    return std::nullopt;
+  }
+  return reference_yaw + angles::shortest_angular_distance(reference_yaw, raw_yaw);
+}
+
+geometry_msgs::msg::Quaternion Tracker::YawToOrientationLike(
+    const geometry_msgs::msg::Quaternion& src, double yaw) const
+{
+  tf2::Quaternion tf_q;
+  tf2::fromMsg(src, tf_q);
+  double roll = NAN, pitch = NAN, old_yaw = NAN;
+  tf2::Matrix3x3(tf_q).getRPY(roll, pitch, old_yaw);
+
+  tf2::Quaternion out;
+  out.setRPY(roll, pitch, NormalizeAngle(yaw));
+  out.normalize();
+  return tf2::toMsg(out);
 }
 
 double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
@@ -609,7 +742,8 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
   tf2::fromMsg(q, tf_q);
   double roll = NAN, pitch = NAN, yaw = NAN;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
-  yaw += M_PI;
+  // yaw += M_PI;
+  // yaw = NormalizeAngle(yaw);
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
   last_yaw_ = yaw;
   return yaw;

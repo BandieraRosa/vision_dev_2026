@@ -46,9 +46,12 @@ ArmorMarkerNode::ArmorMarkerNode(const rclcpp::NodeOptions& options)
 
   // 默认保持原逻辑：显示 /detector/armors（只含可见板）。
   // 若要显示仿真中的所有板，可将该参数设为 /ground_truth/armors。
-  const std::string detector_armors_topic =
+  // const std::string detector_armors_topic =
+  //     this->declare_parameter("detector_marker.armors_topic",
+  //                             std::string("/ground_truth/armors"));
+ const std::string detector_armors_topic =
       this->declare_parameter("detector_marker.armors_topic",
-                              std::string("/ground_truth/armors"));
+                              std::string("/detector/armors"));
 
   armors_sub_ = this->create_subscription<auto_aim_interfaces::msg::Armors>(
       detector_armors_topic, rclcpp::SensorDataQoS(),
