@@ -306,8 +306,8 @@ class RoboMaster
     auto q_y = quatFromAxisAngle(0, 1, 0, armor_yaw);
     auto q_x = quatFromAxisAngle(1, 0, 0, cfg.pitch);
     auto q_z = quatFromAxisAngle(0, 0, 1, cfg.roll);
-    // 修正: 右乘 Ry(-π/2), 使 +X 轴(正面法线) 指向径向外侧
-    auto q_face = quatFromAxisAngle(0, 1, 0, -M_PI_2);
+    // 修正: 右乘 Ry(+π/2), 使 -X 轴(正面法线) 指向径向外侧, 与 PnP 解算约定一致
+    auto q_face = quatFromAxisAngle(0, 1, 0, M_PI_2);
     p.orientation = quatNormalize(quatMul(quatMul(quatMul(q_y, q_x), q_z), q_face));
 
     return p;
@@ -322,7 +322,8 @@ class RoboMaster
 
   static bool isVisibleFromOrigin(const Pose& pose) 
   {
-      Pose::Point n = rotateVec(pose.orientation, {1.0, 0.0, 0.0});
+      // 法线方向: -X 轴为径向外侧 (与 q_face=Ry(+π/2) 配合)
+      Pose::Point n = rotateVec(pose.orientation, {-1.0, 0.0, 0.0});
 
       double dist = std::sqrt(pose.position.x * pose.position.x +
                               pose.position.y * pose.position.y +
