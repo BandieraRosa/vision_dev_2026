@@ -162,7 +162,7 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   // ms",
   //             duration);
   // last_send_time_ = timestamp1;
-
+  HostEulerTarget target{};
   target.rol = 0.0f;
   target.pit = static_cast<float>(msg->pitch);
   target.yaw = static_cast<float>(msg->yaw);
