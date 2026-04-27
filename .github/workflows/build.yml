@@ -34,14 +34,35 @@ jobs:
       - name: colcon build
         shell: bash
         run: |
+          set -euxo pipefail
+
           source /opt/ros/humble/setup.bash
+
+          export CUDA_HOME=/usr/local/cuda-12.5
+          export CUDAToolkit_ROOT=/usr/local/cuda-12.5
+          export CUDACXX=/usr/local/cuda-12.5/bin/nvcc
+          export CUDAHOSTCXX=/usr/bin/g++
+          export PATH=/usr/local/cuda-12.5/bin:$PATH
+
+          which nvcc
+          nvcc --version
+          which gcc
+          gcc --version
+          which g++
+          g++ --version
+
           colcon build \
             --merge-install \
             --symlink-install \
             --cmake-args \
               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+              -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.5/bin/nvcc \
+              -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++ \
+              -DCMAKE_CUDA_HOST_LINK_LAUNCHER=/usr/bin/g++ \
+              -DCUDAToolkit_ROOT=/usr/local/cuda-12.5 \
               -DARMOR_DETECTOR_ENABLE_OPENVINO=ON \
               -DARMOR_DETECTOR_ENABLE_TENSORRT=ON
+
           test -f build/compile_commands.json
           echo "Found build/compile_commands.json"
 
