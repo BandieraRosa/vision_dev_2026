@@ -50,8 +50,8 @@ else()
 endif()
 
 if(ARMOR_DETECTOR_ENABLE_TENSORRT)
-  find_package(CUDAToolkit REQUIRED)
   enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
 
   if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
     set(CUDA_ARCH_DIR "aarch64-linux-gnu")
