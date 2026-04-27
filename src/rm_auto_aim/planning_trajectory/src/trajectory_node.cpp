@@ -110,7 +110,7 @@ void PlanningTrajectoryNode::TargetCallback(
     cmd.is_fire = false;
   }
   send_msg.is_fire = cmd.is_fire;
-  send_msg.pitch = cmd.pitch + 0.015;
+  send_msg.pitch = cmd.pitch;
   send_msg.yaw = cmd.yaw;
   send_msg.vel_yaw = cmd.vel_yaw;
   send_msg.acc_yaw = cmd.acc_yaw;

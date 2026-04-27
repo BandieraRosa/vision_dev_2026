@@ -153,7 +153,15 @@ RMSerialDriver::~RMSerialDriver() {}
 // Send消息回调
 void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
-  HostEulerTarget target{};
+  // std::chrono::time_point timestamp1 = std::chrono::steady_clock::now();
+  // auto duration =
+  //     std::chrono::duration_cast<std::chrono::milliseconds>(timestamp1 -
+  //     last_send_time_)
+  //         .count();
+  // RCLCPP_INFO(this->get_logger(), "SendCallBack called, duration since last call: %ld
+  // ms",
+  //             duration);
+  // last_send_time_ = timestamp1;
 
   target.rol = 0.0f;
   target.pit = static_cast<float>(msg->pitch);

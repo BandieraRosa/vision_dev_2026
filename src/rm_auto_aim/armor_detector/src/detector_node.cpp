@@ -183,7 +183,14 @@ void ArmorDetectorNode::ImageCallback(
           }
         }
 
-        const double view_yaw_deg = compute_view_yaw_deg(rvec, tvec);
+        // cv::Mat R;
+        // cv::Rodrigues(rvec, R);
+        // double yaw = std::atan2(R.at<double>(0, 2), R.at<double>(2, 2));
+        // double yaw_deg = yaw * 180.0 / CV_PI;
+        // RCLCPP_WARN(this->get_logger(), "Armor view: %.2f rad, %.2f deg", yaw,
+        // yaw_deg);
+
+        double view_yaw_deg = compute_view_yaw_deg(rvec, tvec);
         if (view_yaw_deg > 55.0)
         {
           RCLCPP_WARN(this->get_logger(), "Drop armor by yaw gate: %.2f deg > %.2f deg",

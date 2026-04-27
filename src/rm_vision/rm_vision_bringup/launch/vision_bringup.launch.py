@@ -50,6 +50,9 @@ def _build_after_checkout(context, *args, **kwargs):
         ],
         output="both",
         emulate_tty=True,
+        parameters=[
+            {"thread_num": 16},
+        ],
         ros_arguments=[
             "--ros-args",
             "--log-level",
@@ -64,9 +67,34 @@ def _build_after_checkout(context, *args, **kwargs):
         on_exit=Shutdown(),
     )
 
+    # vision_container = ComposableNodeContainer(
+    #     name="vision_container",
+    #     namespace="",
+    #     package="rclcpp_components",
+    #     executable="component_container",
+    #     composable_node_descriptions=[
+    #         get_camera_component(robot_type),
+    #         get_detector_component(robot_type),
+    #         get_tracker_component(robot_type),
+    #         get_marker_component(robot_type),
+    #     ],
+    # )
+
+    # control_container = ComposableNodeContainer(
+    #     name="control_container",
+    #     namespace="",
+    #     package="rclcpp_components",
+    #     executable="component_container_mt",
+    #     composable_node_descriptions=[
+    #         get_trajectory_component(robot_type),
+    #         get_serial_component(robot_type),
+    #     ],
+    # )
+
     return [
         robot_state_publisher,
         vision_container,
+        # control_container,
     ]
 
 

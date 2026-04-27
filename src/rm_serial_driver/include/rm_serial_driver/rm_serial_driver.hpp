@@ -91,6 +91,10 @@ class RMSerialDriver : public rclcpp::Node
 
   uint8_t last_lob_val_{0};
   bool is_hero_{false};
+
+  std::chrono::time_point<std::chrono::steady_clock,
+                          std::chrono::duration<uint64_t, std::ratio<1, 1000000000>>>
+      last_send_time_{};
 };
 
 }  // namespace rm_serial_driver
