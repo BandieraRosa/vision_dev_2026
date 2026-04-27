@@ -34,8 +34,6 @@ jobs:
       - name: colcon build
         shell: bash
         run: |
-          set -euxo pipefail
-
           source /opt/ros/humble/setup.bash
 
           export CUDA_HOME=/usr/local/cuda-12.5
