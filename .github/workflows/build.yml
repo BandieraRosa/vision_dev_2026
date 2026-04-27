@@ -25,17 +25,23 @@ jobs:
           rosdep init || true
           rosdep update
 
-      - name: Install workspace dependencies (rosdep)
+      - name: Install workspace dependencies
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
           rosdep install --from-paths src --ignore-src -r -y
 
-      - name: colcon build (export compile_commands)
+      - name: colcon build
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
-          colcon build --merge-install --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          colcon build \
+            --merge-install \
+            --symlink-install \
+            --cmake-args \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+              -DARMOR_DETECTOR_ENABLE_OPENVINO=ON \
+              -DARMOR_DETECTOR_ENABLE_TENSORRT=ON
           test -f build/compile_commands.json
           echo "Found build/compile_commands.json"
 

@@ -75,7 +75,7 @@ if(ARMOR_DETECTOR_ENABLE_TENSORRT)
   set_source_files_properties(src/gpu_preprocessor.cu PROPERTIES LANGUAGE CUDA)
 
   set_target_properties(
-    ${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "89"
+    ${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "87;89"
                                CUDA_SEPARABLE_COMPILATION ON)
 
   target_link_libraries(${PROJECT_NAME} CUDA::cudart nvinfer nvonnxparser
