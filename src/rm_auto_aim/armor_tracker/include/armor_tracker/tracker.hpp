@@ -128,7 +128,7 @@ class Tracker  // 整车观测
   void ResetState(double& yaw, const geometry_msgs::msg::Point& position);
   void UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw);
   void HandleArmorJump(const Armor& current_armor);
-  void SoftBreakEKF(const Eigen::Vector2d& innovation_xy);
+  void SoftBreakEKF(const geometry_msgs::msg::Point& armor_position);
   void VelocityConstrain(double vx_max, double vy_max, double vz_max, double vyaw_max,
                          double yaw_coupling);
 
@@ -148,11 +148,12 @@ class Tracker  // 整车观测
   int change_count_ = 0;
   int lag_diff_count_ = 0;
   int jump_cooldown_ = 0;
-  static constexpr int JUMP_COOLDOWN_FRAMES = 5;  // 冷却帧数，可调
+  static constexpr int JUMP_COOLDOWN_FRAMES = 10;  // 冷却帧数，可调
   double last_yaw_ = 0.0;
   int update_count_ = 0;
   double last_v_yaw_ = 0.0;
   double last_z_ = 0.0;
+  double last_r_ = 0.0;
 };
 
 }  // namespace rm_auto_aim

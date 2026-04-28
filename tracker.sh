@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while true
 do
-    ps -ef | grep "armor_tracker_node" | grep -v "grep" > /dev/null
+    ps -ef | grep "component_container" | grep -v "grep" > /dev/null
     
     if [ $? -ne 0 ]
     then

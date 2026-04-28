@@ -76,9 +76,9 @@ class RmSimulatorNode : public rclcpp::Node
 
     // 线性噪声: sigma = k0 + k1 * distance
     double k0_pos = declare_parameter("noise.k0_pos", 0.000);
-    double k1_pos = declare_parameter("noise.k1_pos", 0.0);
+    double k1_pos = declare_parameter("noise.k1_pos", 0.01);
     double k0_ori = declare_parameter("noise.k0_ori", 0.0);
-    double k1_ori = declare_parameter("noise.k1_ori", 0.0);
+    double k1_ori = declare_parameter("noise.k1_ori", 0.03);
     int noise_seed = declare_parameter("noise.seed", -1);  // <0 则不固定
 
     // 相机外参 (对应 URDF 中 camera_joint 的 xyz)
@@ -95,8 +95,8 @@ class RmSimulatorNode : public rclcpp::Node
     else
       robot_.setupDefaultArmors(horizontal_dist, height_offset, armor_pitch);
 
-    robot_.setVelocityX([vx](double t) { return M_PI / 2 * cos(M_PI / 6 * t); });
-    //  robot_.setVelocityX([vx](double t) { return vx; });
+    robot_.setVelocityX([vx](double t) { return M_PI / 2.0 * cos(M_PI / 2.0 * t); });
+    //robot_.setVelocityX([vx](double t) { return vx; });
     robot_.setVelocityY([vy](double) { return vy; });
     robot_.setVelocityZ([vz](double) { return vz; });
     robot_.setAngularVelocity([omega](double) { return omega; });
@@ -215,7 +215,7 @@ class RmSimulatorNode : public rclcpp::Node
     msg.header.stamp = stamp;
     msg.header.frame_id = "camera_optical_frame";
 
-    msg.pose.position.x = robot_.x();
+    msg.pose.position.x = -robot_.x();
     msg.pose.position.y = robot_.y();
     msg.pose.position.z = robot_.z();
 

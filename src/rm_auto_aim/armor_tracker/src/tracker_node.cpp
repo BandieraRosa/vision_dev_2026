@@ -102,14 +102,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
     add_cv_block(4, 5, z_scale * s2_q_z_);
     add_cv_block(6, 7, yaw_scale * s2_q_yaw_);
 
-    double radius_q_scale = 1.0;
-    // const int updates = tracker_->GetUpdateCount();
-    // if (updates >= q_radius_stable_update_count_ && !boost_on)
-    // {
-    //   radius_q_scale = 100.0;
-    // }
-
-    q(8, 8) = std::max(1e-10, t * s2_q_r_ * radius_q_scale);
+    q(8, 8) = t * s2_q_r_;
     return q;
   };
   // update_R - measurement noise covariance matrix
@@ -405,6 +398,7 @@ void ArmorTrackerNode::ArmorsCallback(
 
   if (tracker_->tracker_state == Tracker::State::LOST)
   {
+    RCLCPP_ERROR(get_logger(), "Tracker state is LOST");
     tracker_->Init(armors_msg);
     target_msg.tracking = false;
   }
@@ -419,6 +413,7 @@ void ArmorTrackerNode::ArmorsCallback(
     if (tracker_->tracker_state == Tracker::State::DETECTING)
     {
       target_msg.tracking = false;
+      RCLCPP_ERROR(get_logger(), "Tracker state is DETECTING, which should not happen. Check the tracker logic.");
     }
     else if (tracker_->tracker_state == Tracker::State::TRACKING ||
              tracker_->tracker_state == Tracker::State::TEMP_LOST)

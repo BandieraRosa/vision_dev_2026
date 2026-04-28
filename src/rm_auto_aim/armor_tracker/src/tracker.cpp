@@ -1,9 +1,10 @@
 #include "armor_tracker/tracker.hpp"
 
-#include <numbers>
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <iostream>
+#include <numbers>
 #include <rclcpp/logger.hpp>
 
 namespace rm_auto_aim
@@ -74,19 +75,21 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
                [id = tracked_id](const Armor& armor) { return armor.number == id; });
 
   bool allow_jump_candidate = false;
-  //target_id_armors = FilterSameIdArmorsYaw(target_id_armors, allow_jump_candidate);
 
   if (target_id_armors.size() != armors.size())
   {
+    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
+                "Target id armors size != armors size");
     DoYouWantToChangeTarget(armors_msg);
   }
-
+  // target_id_armors = FilterSameIdArmorsYaw(target_id_armors, allow_jump_candidate);
   if (target_id_armors.empty())
   {
     if (allow_jump_candidate)
     {
       ArmManeuverBoost();
     }
+    ClampTargetRadius();
     UpdateTrackerState(matched);
     return;
   }
@@ -95,6 +98,7 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   double position_diff = DBL_MAX;
   double yaw_diff = DBL_MAX;
 
+  // 尝试匹配 tracked_id 的装甲板
   matched = MatchArmor(target_id_armors, position_diff, yaw_diff, is_jump);
   info_position_diff = position_diff;
   info_yaw_diff = yaw_diff;
@@ -115,16 +119,9 @@ void Tracker::Update(const Armors::SharedPtr& armors_msg)
   }
   else
   {
+    SoftBreakEKF(tracked_armor.pose.position);
     double health_rate = ekf.GetHealthRate();
-    if (0.2 < health_rate && health_rate < 0.5)
-    {
-      Eigen::Vector2d innovation_xy(
-          tracked_armor.pose.position.x - predicted_position.x(),
-          tracked_armor.pose.position.y - predicted_position.y());
-      SoftBreakEKF(innovation_xy);
-    }
-
-    else if (health_rate < 0.2)
+    if (health_rate < 0.2)
     {
       RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "EKF health rate: %f",
                   health_rate);
@@ -231,7 +228,8 @@ void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
 //     const double gate = fast_rotation ? fast_gate : normal_gate;
 
 //     Armor adjusted = armor;
-//     adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, chosen_yaw);
+//     adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation,
+//     chosen_yaw);
 
 //     if (chosen_diff < best_score)
 //     {
@@ -243,14 +241,13 @@ void Tracker::DoYouWantToChangeTarget(const Armors::SharedPtr& armors_msg)
 
 //     if (current_diff <= normal_gate)
 //     {
-//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, current_yaw);
-//       filtered.push_back(adjusted);
+//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation,
+//       current_yaw); filtered.push_back(adjusted);
 //     }
 //     else if (jump_diff <= normal_gate || (fast_rotation && jump_diff <= gate))
 //     {
-//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation, jump_yaw);
-//       filtered.push_back(adjusted);
-//       allow_jump_candidate = true;
+//       adjusted.pose.orientation = YawToOrientationLike(armor.pose.orientation,
+//       jump_yaw); filtered.push_back(adjusted); allow_jump_candidate = true;
 //     }
 //     else if (fast_rotation && chosen_diff <= gate)
 //     {
@@ -294,20 +291,21 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
     auto p = armor.pose.position;
     Eigen::Vector3d position_vec(p.x, p.y, p.z);
     double match_position_diff = (predicted_position - position_vec).norm();
-    if (match_yaw_diff < max_match_yaw_diff_)
+
+    if (match_position_diff < max_match_distance_)
     {
-      if (match_position_diff < max_match_distance_)
+      if (match_yaw_diff < max_match_yaw_diff_)
       {
         tracked_armor = armor;
         is_jump = false;
         return true;
       }
-    }
-    else if (jump_yaw_diff < max_match_yaw_diff_)
-    {
-      tracked_armor = armor;
-      is_jump = true;
-      return false;
+      else if (jump_yaw_diff < max_match_yaw_diff_)
+      {
+        tracked_armor = armor;
+        is_jump = true;
+        return false;
+      }
     }
     else
     {
@@ -323,18 +321,11 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
   else if (target_id_armors.size() == 2)
   {
     const auto& armor0 = target_id_armors[0];
-    Eigen::Vector3d position_vec0(armor0.pose.position.x, armor0.pose.position.y,
-                                  armor0.pose.position.z);
     const auto& armor1 = target_id_armors[1];
-    Eigen::Vector3d position_vec1(armor1.pose.position.x, armor1.pose.position.y,
-                                  armor1.pose.position.z);
-    double position_diff021 = abs((position_vec0 - position_vec1).norm());
     double yaw_diff021 = abs(AngleDiff(OrientationToYaw(armor0.pose.orientation),
                                        OrientationToYaw(armor1.pose.orientation)));
 
-    if (position_diff021 < 1.4 * target_state(8) * 0.5 ||
-        position_diff021 > 1.4 * target_state(8) * 1.5 ||
-        yaw_diff021 < a2a_yaw_diff * 0.5 || yaw_diff021 > a2a_yaw_diff * 1.5)
+    if (yaw_diff021 < a2a_yaw_diff * 0.5 || yaw_diff021 > a2a_yaw_diff * 1.5)
     {
       tracked_armor = armor0;
       is_jump = false;
@@ -345,19 +336,14 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
         abs(AngleDiff(OrientationToYaw(armor0.pose.orientation), target_state(6)));
     double match_yaw_diff1 =
         abs(AngleDiff(OrientationToYaw(armor1.pose.orientation), target_state(6)));
-    double jump_yaw_diff0 =
-        abs(AngleDiff(OrientationToYaw(armor0.pose.orientation), next_yaw));
-    double jump_yaw_diff1 =
-        abs(AngleDiff(OrientationToYaw(armor1.pose.orientation), next_yaw));
 
-    if (match_yaw_diff0 < max_match_yaw_diff_ && jump_yaw_diff1 < max_match_yaw_diff_)
+    if (match_yaw_diff0 < max_match_yaw_diff_)
     {
       tracked_armor = armor0;
       is_jump = false;
       return true;
     }
-    else if (match_yaw_diff1 < max_match_yaw_diff_ &&
-             jump_yaw_diff0 < max_match_yaw_diff_)
+    else if (match_yaw_diff1 < max_match_yaw_diff_)
     {
       tracked_armor = armor1;
       is_jump = false;
@@ -370,6 +356,7 @@ bool Tracker::MatchArmor(const std::vector<Armor>& target_id_armors,
       return false;
     }
   }
+  tracked_armor = target_id_armors[0];
   is_jump = false;
   return false;
 }
@@ -409,14 +396,29 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
       {
         target_state(7) = std::copysign(0.8 * std::numbers::pi, last_v_yaw_);
       }
-      target_state(4) = std::clamp(target_state(4), last_z_ - 0.005, last_z_ + 0.01);
+      target_state(4) = std::clamp(target_state(4), last_z_ - 0.001, last_z_ + 0.001);
       last_v_yaw_ = target_state(7);
       last_z_ = target_state(4);
     }
   }
+  else if (std::fabs(target_state(7)) > 1.5)
+  {
+    if (update_count_ <= 40)
+    {
+      last_r_ += target_state(8) / 40.0;
+    }
+    if (update_count_ > 40)
+    {
+      target_state(8) = std::clamp(target_state(8), last_r_ - 0.0001, last_r_ + 0.0001);
+      last_r_ = target_state(8);
+    }
+    // VelocityConstrain(5, 5, 5, 16, 1);
+  }
   else
   {
-    VelocityConstrain(5, 5, 5, 16, 1);
+    update_count_ = 0;
+    target_state(8) = std::clamp(target_state(8), last_r_ - 0.001, last_r_ + 0.001);
+    last_r_ = target_state(8);
   }
 
   RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
@@ -525,51 +527,60 @@ void Tracker::HandleArmorJump(const Armor& current_armor)
   auto orientation = current_armor.pose.orientation;
   double yaw = OrientationToYaw(orientation);
 
-  UpdateArmorsNum(current_armor);
+  // UpdateArmorsNum(current_armor);
   UpdateJumpedState(position, yaw);
-
-  Eigen::Vector3d current_p(position.x, position.y, position.z);
-  Eigen::Vector3d infer_p = GetArmorPositionFromState(target_state);
-  if ((current_p - infer_p).norm() > max_match_distance_)
-  {
-    // ResetState(yaw, position);
-  }
 
   last_tracked_armor = current_armor;
   ekf.SetState(target_state);
 }
 
-void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
+void Tracker::SoftBreakEKF(const geometry_msgs::msg::Point& armor_position)
 {
-  double innovation_norm = innovation_xy.norm();
-  if (innovation_norm < 0.03)
+  const double yaw = target_state(6);
+  const double r = target_state(8);
+
+  Eigen::Vector2d predicted_center(target_state(0), target_state(2));
+  Eigen::Vector2d measured_armor(armor_position.x, armor_position.y);
+
+  // 用当前 yaw/r 把装甲板观测反推为中心观测
+  Eigen::Vector2d measured_center(measured_armor.x() + r * std::cos(yaw),
+                                  measured_armor.y() + r * std::sin(yaw));
+
+  // 预测 - 观测
+  Eigen::Vector2d model_error = predicted_center - measured_center;
+  const double error_norm = model_error.norm();
+
+  if (error_norm < 0.08)
   {
     lag_diff_count_ = 0;
     return;
   }
 
   Eigen::Vector2d v_xy(target_state(1), target_state(3));
-  double v_norm = v_xy.norm();
-  if (v_norm < 1e-3)
+  const double v_norm = v_xy.norm();
+
+  if (v_norm < 0.10)
   {
     lag_diff_count_ = 0;
     return;
   }
 
-  // 残差在当前速度方向上的投影
-  // 若 proj < 0，说明观测落在“当前速度方向的反方向”，也就是预测还沿旧方向跑
-  double proj = innovation_xy.dot(v_xy / v_norm);
+  Eigen::Vector2d v_dir = v_xy / v_norm;
 
-  // 横向残差占比大，也说明可能在变向
-  double lateral =
-      std::sqrt(std::max(0.0, innovation_norm * innovation_norm - proj * proj));
+  // 模型误差在速度方向上的投影
+  // > 0 表示预测点在当前速度方向上冲过头
+  const double forward_error = model_error.dot(v_dir);
 
-  // 条件 1：沿速度方向明显“拖后”
-  // 条件 2：横向残差显著，说明可能在拐弯
-  bool lagging_along_velocity = (proj < -0.03);
-  bool strong_lateral_error = (lateral > 0.05 && lateral > 0.8 * std::abs(proj));
+  // 横向误差，用二维叉积绝对值表示
+  const double lateral_error =
+      std::abs(v_dir.x() * model_error.y() - v_dir.y() * model_error.x());
 
-  if (lagging_along_velocity || strong_lateral_error)
+  const bool model_outward_drift =
+      forward_error > 0.04 && forward_error > 0.45 * error_norm;
+
+  const bool possible_turn = lateral_error > 0.06 && forward_error > -0.02;
+
+  if (model_outward_drift)
   {
     lag_diff_count_++;
   }
@@ -578,16 +589,27 @@ void Tracker::SoftBreakEKF(const Eigen::Vector2d& innovation_xy)
     lag_diff_count_ = 0;
   }
 
-  if (lag_diff_count_ > 2)
+  // 横向变向迹象：先 boost Q，不一定立刻砍速度
+  if (possible_turn)
+  {
+    ArmManeuverBoost();
+  }
+
+  if (lag_diff_count_ >= 2)
   {
     RCLCPP_WARN(rclcpp::get_logger("armor_tracker"),
-                "Soft break EKF! proj=%.3f lateral=%.3f", proj, lateral);
+                "Soft break EKF: forward_error=%.3f lateral_error=%.3f", forward_error,
+                lateral_error);
 
-    // 只刹平面速度，不直接反号，避免抖动
+    // 衰减旧的平移速度
     target_state(1) *= 0.35;
     target_state(3) *= 0.35;
 
+    // 接下来几帧增大过程噪声，让观测更容易拉回状态
+    ArmManeuverBoost();
+
     ekf.SetState(target_state);
+
     lag_diff_count_ = 0;
   }
 }
@@ -671,7 +693,6 @@ void Tracker::ResetState(double& yaw, const geometry_msgs::msg::Point& p)
   RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Reset State with velocity and P!");
 }
 
-
 void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, double yaw)
 {
   target_state(6) = yaw;
@@ -695,8 +716,6 @@ void Tracker::UpdateJumpedState(const geometry_msgs::msg::Point& position, doubl
     {
       outpost_idx = (outpost_idx + sign + 3) % 3;
     }
-    RCLCPP_INFO(rclcpp::get_logger("armor_tracker"),
-                "Outpost Jump: z_diff=%.3f, current_idx=%d", z_diff, outpost_idx);
   }
 
   const double r = target_state(8);
@@ -712,7 +731,7 @@ double Tracker::RawOrientationToYaw(const geometry_msgs::msg::Quaternion& q) con
 }
 
 std::optional<double> Tracker::NormalizeArmorYawCandidate(double raw_yaw,
-                                                           double reference_yaw) const
+                                                          double reference_yaw) const
 {
   if (!std::isfinite(raw_yaw) || !std::isfinite(reference_yaw) ||
       static_cast<int>(tracked_armors_num) <= 0)
@@ -742,8 +761,6 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
   tf2::fromMsg(q, tf_q);
   double roll = NAN, pitch = NAN, yaw = NAN;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
-  // yaw += M_PI;
-  // yaw = NormalizeAngle(yaw);
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
   last_yaw_ = yaw;
   return yaw;
