@@ -385,29 +385,27 @@ void Tracker::UpdateEKF(double measured_yaw, const geometry_msgs::msg::Point& ar
     target_state(3) = 0;
     target_state(5) = 0;
 
-    if (update_count_ <= 400)
+    if (update_count_ <= 100)
     {
-      last_v_yaw_ += target_state(7) / 400.0;
-      last_z_ += target_state(4) / 400.0;
+      last_v_yaw_ += target_state(7) / 100.0;
+      last_z_ += target_state(4) / 100.0;
     }
-    if (update_count_ > 400)
+    if (update_count_ > 100)
     {
       if (std::fabs(last_v_yaw_) > 1.5)
       {
         target_state(7) = std::copysign(0.8 * std::numbers::pi, last_v_yaw_);
       }
       target_state(4) = std::clamp(target_state(4), last_z_ - 0.001, last_z_ + 0.001);
-      last_v_yaw_ = target_state(7);
-      last_z_ = target_state(4);
     }
   }
   else if (std::fabs(target_state(7)) > 1.5)
   {
-    if (update_count_ <= 40)
+    if (update_count_ <= 100)
     {
-      last_r_ += target_state(8) / 40.0;
+      last_r_ += target_state(8) / 100.0;
     }
-    if (update_count_ > 40)
+    if (update_count_ > 100)
     {
       target_state(8) = std::clamp(target_state(8), last_r_ - 0.0001, last_r_ + 0.0001);
       last_r_ = target_state(8);
@@ -482,9 +480,12 @@ void Tracker::SwitchEKFParams() { switch_q_(is_outpost); }
 
 void Tracker::InitEkf(const Armor& armor)
 {
-  jump_cooldown_ = 0;  // ← 新目标，清除冷却
+  jump_cooldown_ = 0;
   maneuver_boost_count_ = 0;
   update_count_ = 0;
+  last_v_yaw_ = 0;
+  last_z_ = 0;
+  last_r_ = 0;
 
   first_tracked = true;
   is_outpost = (armor.number == "outpost");
@@ -512,7 +513,18 @@ void Tracker::InitEkf(const Armor& armor)
   target_state = Eigen::VectorXd::Zero(9);
   target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
 
-  ekf.SetState(target_state);
+  Eigen::MatrixXd p0 = Eigen::MatrixXd::Zero(9, 9);
+  p0(0, 0) = 0.05;  // xc
+  p0(1, 1) = 1.0;   // v_xc
+  p0(2, 2) = 0.05;  // yc
+  p0(3, 3) = 1.0;   // v_yc
+  p0(4, 4) = 0.05;  // za
+  p0(5, 5) = 1.0;   // v_za
+  p0(6, 6) = 0.1;   // yaw
+  p0(7, 7) = 2.0;   // v_yaw
+  p0(8, 8) = 1.0;   // r
+  
+  ekf.SetState(target_state, p0);
 }
 
 void Tracker::HandleArmorJump(const Armor& current_armor)

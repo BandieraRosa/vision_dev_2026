@@ -97,6 +97,7 @@ void PlanningTrajectoryNode::TargetCallback(
                                             aim_z, idx, target_local, gimbal_yaw,
                                             gimbal_pitch, send_time_, gimbal_yaw_speed_);
   double bc_yaw = cmd.yaw;
+  double bc_pitch = cmd.pitch;
   {
     send_time_ += dt_;
     trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
@@ -110,8 +111,8 @@ void PlanningTrajectoryNode::TargetCallback(
     cmd.is_fire = false;
   }
   send_msg.is_fire = cmd.is_fire;
-  send_msg.pitch = cmd.pitch;
-  send_msg.yaw = cmd.yaw;
+  send_msg.pitch = bc_pitch;
+  send_msg.yaw = bc_yaw;
   send_msg.vel_yaw = cmd.vel_yaw;
   send_msg.acc_yaw = cmd.acc_yaw;
   send_msg.num = target_local.number;

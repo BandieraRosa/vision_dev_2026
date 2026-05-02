@@ -182,6 +182,10 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
   double distance = std::sqrt(x * x + y * y);
   double target_s = distance + s_bias_;
   double target_z = z + z_bias_;
+  if (std::fabs(z) < 0.01) {
+    RCLCPP_WARN(logger_, "Target z is too low: %.2f", target_z);
+    return 0.0f;
+  }
 
   double pitch = 0.0f;
   bool use_iteration = false;  // 是否需要走迭代法
@@ -620,7 +624,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     const double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) < 0.05 &&
+    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) < 0.04 &&
               !choose_next_;  // CanFire(gimbal_yaw_, pitch, false);
     if (is_fire)
     {
