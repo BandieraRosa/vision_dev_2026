@@ -22,6 +22,11 @@ namespace LibXR::USB
  */
 class CDCBase : public DeviceClass
 {
+ public:
+  static constexpr const char* DEFAULT_CONTROL_INTERFACE_STRING = "XRUSB CDC Control";
+  static constexpr const char* DEFAULT_DATA_INTERFACE_STRING = "XRUSB CDC Data";
+
+ private:
   /// CDC功能描述符子类型定义 / CDC functional descriptor subtypes
   enum class DescriptorSubtype : uint8_t
   {
@@ -51,9 +56,9 @@ class CDCBase : public DeviceClass
   {
     NONE = 0x00,  ///< 无子类 / No subclass
     DIRECT_LINE_CONTROL_MODEL =
-        0x01,  ///< 直接控制模型（CDC-DCM）| Direct Control Model (CDC-DCM)
+        0x01,  ///< 直接控制模型（CDC-DCM） / Direct Control Model (CDC-DCM)
     ABSTRACT_CONTROL_MODEL =
-        0x02,  ///< 抽象控制模型（CDC-ACM）| Abstract Control Model (CDC-ACM)
+        0x02,  ///< 抽象控制模型（CDC-ACM） / Abstract Control Model (CDC-ACM)
   };
 
   /// CDC类特定请求 / CDC class-specific requests
@@ -72,7 +77,7 @@ class CDCBase : public DeviceClass
     RESPONSE_AVAILABLE = 0x01,   ///< 响应可用通知 / Response available
     AUX_JACK_HOOK_STATE = 0x08,  ///< 辅助插槽状态通知 / Aux jack hook state
     RING_DETECT = 0x09,          ///< 响铃检测通知 / Ring detect
-    SERIAL_STATE = 0x20,  ///< 串行状态通知（CDC-ACM必需）| Serial state notification
+    SERIAL_STATE = 0x20,  ///< 串行状态通知（CDC-ACM 必需） / Serial state notification
                           ///< (required for CDC-ACM)
   };
 
@@ -86,7 +91,7 @@ class CDCBase : public DeviceClass
    */
   struct CDCLineCoding
   {
-    uint32_t dwDTERate;   ///< 波特率（小端格式）| Baud rate (little-endian)
+    uint32_t dwDTERate;   ///< 波特率（小端格式） / Baud rate (little-endian)
     uint8_t bCharFormat;  ///< 停止位：0=1位，1=1.5位，2=2位 / Stop bits: 0=1, 1=1.5, 2=2
     uint8_t bParityType;  ///< 校验：0=None,1=Odd,2=Even,3=Mark,4=Space / Parity:
                           ///< 0=None,1=Odd,2=Even,3=Mark,4=Space
@@ -102,17 +107,18 @@ class CDCBase : public DeviceClass
    */
   struct SerialStateNotification
   {
-    uint8_t bmRequestType;  ///< 请求类型（固定为0xA1）| Request type (fixed to 0xA1)
-    uint8_t bNotification;  ///< 通知类型（固定为SERIAL_STATE）| Notification type (fixed
+    uint8_t bmRequestType;  ///< 请求类型（固定为 0xA1） / Request type (fixed to 0xA1)
+    uint8_t bNotification;  ///< 通知类型（固定为 SERIAL_STATE） / Notification type (fixed
                             ///< to SERIAL_STATE)
-    uint16_t wValue;        ///< 值（固定为0）| Value (fixed to 0)
+    uint16_t wValue;        ///< 值（固定为 0） / Value (fixed to 0)
     uint16_t wIndex;        ///< 接口号 / Interface number
     uint16_t wLength;       ///< 数据长度（固定为2）| Data length (fixed to 2)
     uint16_t serialState;   ///< 串行状态位图 / Serial state bitmap
   };
 #pragma pack(pop)
 
-  // 确保CDCLineCoding结构体大小为7字节
+  // 确保 CDCLineCoding 结构体大小为 7 字节。
+  // Ensure CDCLineCoding is exactly 7 bytes.
   static_assert(sizeof(CDCLineCoding) == 7, "LineCoding结构必须7字节");
 
   // 控制线路状态位定义
@@ -130,11 +136,28 @@ class CDCBase : public DeviceClass
    */
   CDCBase(Endpoint::EPNumber data_in_ep_num = Endpoint::EPNumber::EP_AUTO,
           Endpoint::EPNumber data_out_ep_num = Endpoint::EPNumber::EP_AUTO,
-          Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO)
+          Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO,
+          const char* control_interface_string = DEFAULT_CONTROL_INTERFACE_STRING,
+          const char* data_interface_string = DEFAULT_DATA_INTERFACE_STRING)
       : data_in_ep_num_(data_in_ep_num),
         data_out_ep_num_(data_out_ep_num),
-        comm_ep_num_(comm_ep_num)
+        comm_ep_num_(comm_ep_num),
+        control_interface_string_(control_interface_string),
+        data_interface_string_(data_interface_string)
   {
+  }
+
+  const char* GetInterfaceString(size_t local_interface_index) const override
+  {
+    switch (local_interface_index)
+    {
+      case 0:
+        return control_interface_string_;
+      case 1:
+        return data_interface_string_;
+      default:
+        return nullptr;
+    }
   }
 
   /**
@@ -174,10 +197,12 @@ class CDCBase : public DeviceClass
         reinterpret_cast<SerialStateNotification*>(buffer.addr_);
     notification->wIndex = itf_comm_in_num_;
 
-    // 设置串行状态位
+    // 设置串行状态位。
+    // Fill the serial-state bitmap.
     if (IsDtrSet())
     {
-      // DTR有效时报告载波检测(DCD)和数据集就绪(DSR)
+      // DTR 有效时报告载波检测（DCD）和数据集就绪（DSR）。
+      // When DTR is asserted, report DCD and DSR as active.
       notification->serialState = 0x03;  // DCD / DSR
     }
     else
@@ -185,7 +210,8 @@ class CDCBase : public DeviceClass
       notification->serialState = 0x00;  // 无状态
     }
 
-    // 填充固定字段
+    // 填充固定字段。
+    // Fill the fixed notification header fields.
     notification->bmRequestType = 0xA1;  // 设备到主机，类，接口
     notification->bNotification = static_cast<uint8_t>(CDCNotification::SERIAL_STATE);
     notification->wValue = 0;
@@ -202,6 +228,7 @@ class CDCBase : public DeviceClass
    */
   void SetOnSetControlLineStateCallback(LibXR::Callback<bool, bool> cb)
   {
+    has_control_line_state_cb_ = !cb.Empty();
     on_set_control_line_state_cb_ = cb;
   }
 
@@ -211,6 +238,7 @@ class CDCBase : public DeviceClass
    */
   void SetOnSetLineCodingCallback(LibXR::Callback<LibXR::UART::Configuration> cb)
   {
+    has_line_coding_cb_ = !cb.Empty();
     on_set_line_coding_cb_ = cb;
   }
 
@@ -224,8 +252,10 @@ class CDCBase : public DeviceClass
    *
    * @param endpoint_pool 端点资源池 / Endpoint resource pool
    * @param start_itf_num 起始接口号 / Starting interface number
+   * @param in_isr        是否在中断上下文 / Whether in ISR context
    */
-  virtual void Init(EndpointPool& endpoint_pool, uint8_t start_itf_num) override
+  virtual void BindEndpoints(EndpointPool& endpoint_pool, uint8_t start_itf_num,
+                             bool) override
   {
     control_line_state_ = 0;
     // 获取并配置数据IN端点
@@ -236,11 +266,13 @@ class CDCBase : public DeviceClass
     ans = endpoint_pool.Get(ep_data_out_, Endpoint::Direction::OUT, data_out_ep_num_);
     ASSERT(ans == ErrorCode::OK);
 
-    // 获取并配置通信端点
+    // 获取并配置通信端点。
+    // Acquire and configure the communication endpoint.
     ans = endpoint_pool.Get(ep_comm_in_, Endpoint::Direction::IN, comm_ep_num_);
     ASSERT(ans == ErrorCode::OK);
 
-    // 配置端点参数
+    // 配置端点参数。
+    // Configure endpoint parameters.
     ep_data_in_->Configure(
         {Endpoint::Direction::IN, Endpoint::Type::BULK, UINT16_MAX, true});
     ep_data_out_->Configure(
@@ -251,7 +283,8 @@ class CDCBase : public DeviceClass
     static constexpr uint8_t COMM_INTERFACE = 0;  // 通信接口号
     static constexpr uint8_t DATA_INTERFACE = 1;  // 数据接口号
 
-    // IAD描述符（关联接口）
+    // IAD 描述符（关联两组 CDC 接口）。
+    // IAD descriptor that groups the two CDC interfaces.
     desc_block_.iad = {8,
                        static_cast<uint8_t>(DescriptorType::IAD),
                        static_cast<uint8_t>(COMM_INTERFACE + start_itf_num),
@@ -261,7 +294,8 @@ class CDCBase : public DeviceClass
                        static_cast<uint8_t>(Protocol::NONE),
                        0};
 
-    // 通信接口描述符
+    // 通信接口描述符。
+    // Communication interface descriptor.
     desc_block_.comm_intf = {9,
                              static_cast<uint8_t>(DescriptorType::INTERFACE),
                              static_cast<uint8_t>(COMM_INTERFACE + start_itf_num),
@@ -270,28 +304,33 @@ class CDCBase : public DeviceClass
                              static_cast<uint8_t>(Class::COMM),
                              static_cast<uint8_t>(Subclass::ABSTRACT_CONTROL_MODEL),
                              static_cast<uint8_t>(Protocol::NONE),
-                             0};
+                             GetInterfaceStringIndex(COMM_INTERFACE)};
 
-    // CDC头功能描述符
+    // CDC 头功能描述符。
+    // CDC header functional descriptor.
     desc_block_.cdc_header = {5, DescriptorType::CS_INTERFACE, DescriptorSubtype::HEADER,
                               0x0110};  // CDC规范版本1.10
 
-    // 呼叫管理功能描述符
+    // 呼叫管理功能描述符。
+    // Call-management functional descriptor.
     desc_block_.cdc_callmgmt = {
         5, DescriptorType::CS_INTERFACE, DescriptorSubtype::CALL_MANAGEMENT,
         0x00,                                                   // 无呼叫管理能力
         static_cast<uint8_t>(DATA_INTERFACE + start_itf_num)};  // 数据接口号
 
-    // ACM功能描述符
+    // ACM 功能描述符。
+    // ACM functional descriptor.
     desc_block_.cdc_acm = {4, DescriptorType::CS_INTERFACE, DescriptorSubtype::ACM,
                            0x02};  // 支持SetLineCoding/GetLineCoding/SetControlLineState
 
-    // 联合功能描述符
+    // 联合功能描述符。
+    // Union functional descriptor.
     desc_block_.cdc_union = {5, DescriptorType::CS_INTERFACE, DescriptorSubtype::UNION,
                              static_cast<uint8_t>(COMM_INTERFACE + start_itf_num),
                              static_cast<uint8_t>(DATA_INTERFACE + start_itf_num)};
 
-    // 数据接口描述符
+    // 数据接口描述符。
+    // Data interface descriptor.
     desc_block_.data_intf = {9,
                              static_cast<uint8_t>(DescriptorType::INTERFACE),
                              static_cast<uint8_t>(DATA_INTERFACE + start_itf_num),
@@ -300,7 +339,7 @@ class CDCBase : public DeviceClass
                              static_cast<uint8_t>(Class::DATA),
                              0x00,  // 无子类
                              0x00,  // 无协议
-                             0};
+                             GetInterfaceStringIndex(DATA_INTERFACE)};
 
     // 数据OUT端点描述符
     desc_block_.data_ep_out = {7,
@@ -318,7 +357,8 @@ class CDCBase : public DeviceClass
                               ep_data_in_->MaxPacketSize(),
                               0};  // 轮询间隔0（BULK忽略）
 
-    // 通信端点描述符
+    // 通信端点描述符。
+    // Communication endpoint descriptor.
     desc_block_.comm_ep = {
         7,
         static_cast<uint8_t>(DescriptorType::ENDPOINT),
@@ -330,17 +370,19 @@ class CDCBase : public DeviceClass
 
     itf_comm_in_num_ = start_itf_num;
 
-    // 设置描述符原始数据
+    // 设置描述符原始数据。
+    // Publish the raw descriptor block.
     SetData(RawData{reinterpret_cast<uint8_t*>(&desc_block_), sizeof(desc_block_)});
 
-    // 设置端点传输完成回调
+    // 设置端点传输完成回调。
+    // Install endpoint transfer-complete callbacks.
     ep_data_out_->SetOnTransferCompleteCallback(on_data_out_complete_cb_);
     ep_data_in_->SetOnTransferCompleteCallback(on_data_in_complete_cb_);
 
     inited_ = true;
 
     // 启动OUT端点传输
-    ep_data_out_->Transfer(ep_data_out_->MaxTransferSize());
+    ep_data_out_->Transfer(ep_data_out_->MaxPacketSize());
   }
 
   /**
@@ -350,7 +392,7 @@ class CDCBase : public DeviceClass
    * 释放所有占用的资源
    * Releases all allocated resources
    */
-  virtual void Deinit(EndpointPool& endpoint_pool) override
+  virtual void UnbindEndpoints(EndpointPool& endpoint_pool, bool) override
   {
     inited_ = false;
     control_line_state_ = 0;
@@ -418,7 +460,7 @@ class CDCBase : public DeviceClass
    *
    * @return size_t 接口数量（固定为2：通信接口+数据接口）
    */
-  size_t GetInterfaceNum() override { return 2; }
+  size_t GetInterfaceCount() override { return 2; }
 
   /**
    * @brief 检查是否包含IAD
@@ -457,7 +499,7 @@ class CDCBase : public DeviceClass
    */
   ErrorCode OnClassRequest(bool in_isr, uint8_t bRequest, uint16_t wValue,
                            uint16_t wLength, uint16_t wIndex,
-                           DeviceClass::RequestResult& result) override
+                           DeviceClass::ControlTransferResult& result) override
   {
     UNUSED(in_isr);
     UNUSED(wIndex);
@@ -475,7 +517,8 @@ class CDCBase : public DeviceClass
         return ErrorCode::OK;
 
       case ClassRequest::GET_LINE_CODING:
-        // 返回当前线路编码设置
+        // 返回当前线路编码设置。
+        // Return the current line-coding settings.
         if (wLength != sizeof(line_coding_))
         {
           return ErrorCode::ARG_ERR;
@@ -486,15 +529,21 @@ class CDCBase : public DeviceClass
         return ErrorCode::OK;
 
       case ClassRequest::SET_CONTROL_LINE_STATE:
-        // 设置DTR/RTS状态
+        // 设置 DTR / RTS 状态。
+        // Update the DTR / RTS control-line state.
         control_line_state_ = wValue;
         result.write_zlp = true;
         SendSerialState();
-        on_set_control_line_state_cb_.Run(in_isr, IsDtrSet(), IsRtsSet());
+        if (has_control_line_state_cb_)
+        {
+          on_set_control_line_state_cb_.Run(in_isr, IsDtrSet(), IsRtsSet());
+        }
         return ErrorCode::OK;
 
       case ClassRequest::SEND_BREAK:
-        // BREAK信号通常忽略
+        // BREAK 信号通常忽略。
+        // BREAK is typically ignored on this path.
+        result.write_zlp = true;
         return ErrorCode::OK;
 
       default:
@@ -515,7 +564,8 @@ class CDCBase : public DeviceClass
     {
       case ClassRequest::SET_LINE_CODING:
       {
-        // 将CDC线路编码转换为UART配置
+        // 将 CDC 线路编码转换为 UART 配置。
+        // Convert CDC line coding into a UART configuration.
         LibXR::UART::Configuration cfg;
         cfg.baudrate = line_coding_.dwDTERate;
         switch (line_coding_.bCharFormat)
@@ -542,7 +592,10 @@ class CDCBase : public DeviceClass
             cfg.parity = LibXR::UART::Parity::NO_PARITY;
         }
         cfg.data_bits = line_coding_.bDataBits;
-        on_set_line_coding_cb_.Run(in_isr, cfg);
+        if (has_line_coding_cb_)
+        {
+          on_set_line_coding_cb_.Run(in_isr, cfg);
+        }
       }
         return ErrorCode::OK;
       default:
@@ -620,37 +673,50 @@ class CDCBase : public DeviceClass
   Endpoint* GetCommInEndpoint() { return ep_comm_in_; }
 
  private:
-  // 端点号
+  // 端点号。
+  // Endpoint numbers.
   Endpoint::EPNumber data_in_ep_num_;   ///< 数据IN端点号 / Data IN endpoint number
   Endpoint::EPNumber data_out_ep_num_;  ///< 数据OUT端点号 / Data OUT endpoint number
   Endpoint::EPNumber comm_ep_num_;      ///< 通信端点号 / Communication endpoint number
+  const char* control_interface_string_ =
+      nullptr;  ///< 控制接口字符串 / Control interface string
+  const char* data_interface_string_ =
+      nullptr;  ///< 数据接口字符串 / Data interface string
 
-  // 端点指针
+  // 端点指针。
+  // Endpoint pointers.
   Endpoint* ep_data_in_ = nullptr;   ///< 数据IN端点 / Data IN endpoint
   Endpoint* ep_data_out_ = nullptr;  ///< 数据OUT端点 / Data OUT endpoint
   Endpoint* ep_comm_in_ = nullptr;   ///< 通信IN端点 / Communication IN endpoint
 
-  // 端点回调
+  // 端点回调。
+  // Endpoint callbacks.
   LibXR::Callback<LibXR::ConstRawData&> on_data_out_complete_cb_ =
       LibXR::Callback<LibXR::ConstRawData&>::Create(OnDataOutCompleteStatic, this);
 
   LibXR::Callback<LibXR::ConstRawData&> on_data_in_complete_cb_ =
       LibXR::Callback<LibXR::ConstRawData&>::Create(OnDataInCompleteStatic, this);
 
-  // 用户回调
+  // 用户回调。
+  // User callbacks.
   LibXR::Callback<bool, bool>
       on_set_control_line_state_cb_;  ///< 控制线路状态变更回调 / Control line state
                                       ///< change callback
   LibXR::Callback<LibXR::UART::Configuration>
       on_set_line_coding_cb_;  ///< 线路编码变更回调 / Line coding change callback
 
-  // 状态标志
-  bool inited_ = false;  ///< 初始化标志 / Initialization flag
+  // 状态标志。
+  // State flags.
+  bool inited_ = false;                 ///< 初始化标志 / Initialization flag
+  bool has_control_line_state_cb_ = false;  ///< Control-line callback registered
+  bool has_line_coding_cb_ = false;         ///< Line-coding callback registered
 
-  // 接口信息
+  // 接口信息。
+  // Interface metadata.
   uint8_t itf_comm_in_num_;  ///< 通信接口号 / Communication interface number
 
-  // CDC参数
+  // CDC 参数。
+  // CDC parameters.
   CDCLineCoding line_coding_ = {115200, 0, 0, 8};  ///< 当前线路编码 / Current line coding
   uint16_t control_line_state_ = 0;                ///< 控制线路状态 / Control line state
 };

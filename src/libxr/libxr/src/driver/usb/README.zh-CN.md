@@ -36,17 +36,28 @@ XRUSB是一个独立的现代 C++ USB 协议栈。以subtree的形式作为[LibX
 
 ## 设备驱动
 
-本仓库只包含平台无关的协议栈代码，具体的设备驱动请到libxr对应平台的驱动下查看。如`driver/st/stm32_usb_ep.cpp`和`driver/ch/ch32_usb_endpoint_otghs.cpp`。
+本仓库只包含平台无关的协议栈代码，具体的平台驱动请到 libxr 对应路径查看，例如：
+
+- `driver/st/stm32_usb_ep.cpp`
+- `driver/ch/ch32_usb_endpoint_otghs.cpp`
+- `driver/esp/esp_usb_dev.cpp`
+
+说明：
+
+- 下表中的 `USB-DEVICE` 指 XRUSB 使用的原生 USB 设备控制器路径。
+- 当前主线 libxr 中，ESP32-C3 / ESP32-C6 通过 `driver/esp/esp_cdc_jtag.*` 提供 `CDC-JTAG`；这是独立的 USB Serial/JTAG UART 后端，不属于 XRUSB 的通用设备控制器路径。
 
 ## 支持进度
 
 ### 设备协议栈
 
-| 协议    | 支持状态 | 其他                                              |
-| ------- | -------- | ------------------------------------------------- |
-| CDC-ACM | 支持     | 封装为LibXR的UART实现                             |
-| HID     | 支持     | 仅提供标准键盘/鼠标与遥控器，其他类型需要自行派生 |
-| UAC     | 支持     | 目前仅实现了UAC1.0的麦克风                        |
+| 协议       | 支持状态        | 其他                                              |
+| ---------- | --------------- | ------------------------------------------------- |
+| CDC-ACM    | 支持            | 封装为LibXR的UART实现                             |
+| HID        | 支持            | 仅提供标准键盘/鼠标与遥控器，其他类型需要自行派生 |
+| UAC        | 支持            | 目前仅实现了UAC1.0的麦克风                        |
+| GSUSB      | 支持(CAN/FDCAN) | 适用于 Linux 平台的免驱 SocketCAN                 |
+| DAPLINK V2 | 支持(仅SWD接口) | 可在Keil/OpenOCD使用                              |
 
 ### 主机协议栈
 
@@ -60,8 +71,14 @@ TODO
 | STM32 | USB_DRV_FS    | 支持 (Device) | STM32G431                  |
 | STM32 | USB_OTG_FS    | 支持 (Device) | STM32F407                  |
 | STM32 | USB_OTG_HS    | 支持 (Device) | STM32F407/STM32H750        |
+| ESP32-S3 | USB_OTG_FS | 支持 (Device) | ESP32-S3                   |
+| CH32  | USB_DEVICE_FS | 支持          | CH32V203                   |
 | CH32  | USB_OTG_FS    | 支持 (Device) | CH32V307/CH32V203/CH32V208 |
-| CH32  | USB_HS        | 支持          | CH32V307                   |
+| CH32  | USB_OTG_HS    | 支持          | CH32V307                   |
+
+说明：
+
+- 当前 ESP 原生 USB 设备后端实现于 `ESP32-S3`。
 
 ## 文档
 

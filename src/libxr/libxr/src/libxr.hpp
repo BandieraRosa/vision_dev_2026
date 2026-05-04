@@ -5,6 +5,7 @@
 #include "database.hpp"
 #include "double_buffer.hpp"
 #include "event.hpp"
+#include "flag.hpp"
 #include "inertia.hpp"
 #include "kinematic.hpp"
 #include "libxr_assert.hpp"
@@ -24,6 +25,9 @@
 #include "lockfree_queue.hpp"
 #include "logger.hpp"
 #include "message.hpp"
+#if defined(LIBXR_SYSTEM_POSIX_HOST)
+#include "linux_shared_topic.hpp"
+#endif
 #include "mutex.hpp"
 #include "queue.hpp"
 #include "ramfs.hpp"

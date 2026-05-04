@@ -8,10 +8,10 @@ set(LIBXR_SHARED_BUILD
     ON
     CACHE BOOL "" FORCE)
 set(LIBXR_SYSTEM
-    "Linux"
+    "linux"
     CACHE STRING "" FORCE)
 set(LIBXR_DRIVER
-    "Linux"
+    "linux"
     CACHE STRING "" FORCE)
 
 add_subdirectory(libxr)
@@ -26,38 +26,61 @@ target_compile_definitions(xr PRIVATE EIGEN_NO_IO)
 
 set(LIBXR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/libxr)
 
+set(_libxr_system_dir "${LIBXR_SYSTEM}")
+set(_libxr_driver_dir "${LIBXR_DRIVER}")
+string(TOLOWER "${_libxr_system_dir}" _libxr_system_dir)
+string(TOLOWER "${_libxr_driver_dir}" _libxr_driver_dir)
+
 set_target_properties(xr PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
 
 target_include_directories(xr PRIVATE ${LIBXR_SRC}/lib/Eigen)
 
 target_link_libraries(xr PUBLIC Eigen3::Eigen)
 
-target_include_directories(
-  xr
-  PUBLIC $<BUILD_INTERFACE:${LIBXR_SRC}/src>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/core>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/system>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/utils>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/structure>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/middleware>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/src/driver>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/system/Linux>
-         $<BUILD_INTERFACE:${LIBXR_SRC}/driver/Linux>
-         $<INSTALL_INTERFACE:include/libxr>)
+set(_xr_public_build_include_dirs
+    ${LIBXR_SRC}/src
+    ${LIBXR_SRC}/src/core
+    ${LIBXR_SRC}/src/system
+    ${LIBXR_SRC}/src/utils
+    ${LIBXR_SRC}/src/structure
+    ${LIBXR_SRC}/src/middleware
+    ${LIBXR_SRC}/src/middleware/message
+    ${LIBXR_SRC}/src/driver
+    ${LIBXR_SRC}/system/${_libxr_system_dir}
+    ${LIBXR_SRC}/driver/${_libxr_driver_dir}
+    ${LIBXR_SRC}/src/driver/usb
+    ${LIBXR_SRC}/src/driver/usb/core
+    ${LIBXR_SRC}/src/driver/usb/device
+    ${LIBXR_SRC}/src/driver/usb/device/bos
+    ${LIBXR_SRC}/src/driver/usb/device/cdc
+    ${LIBXR_SRC}/src/driver/usb/device/dap
+    ${LIBXR_SRC}/src/driver/usb/device/dfu
+    ${LIBXR_SRC}/src/driver/usb/device/gsusb
+    ${LIBXR_SRC}/src/driver/usb/device/hid
+    ${LIBXR_SRC}/src/driver/usb/device/uac)
 
-file(
-  GLOB_RECURSE _usb_all
-  LIST_DIRECTORIES true
-  "${LIBXR_SRC}/src/driver/usb/*")
-set(_usb_dirs "${LIBXR_SRC}/src/driver/usb")
-foreach(_p ${_usb_all})
-  if(IS_DIRECTORY "${_p}")
-    list(APPEND _usb_dirs "${_p}")
+set(_xr_public_install_include_dirs
+    include/libxr
+    include/libxr/message
+    include/libxr/usb
+    include/libxr/usb/core
+    include/libxr/usb/device
+    include/libxr/usb/device/bos
+    include/libxr/usb/device/cdc
+    include/libxr/usb/device/dap
+    include/libxr/usb/device/dfu
+    include/libxr/usb/device/gsusb
+    include/libxr/usb/device/hid
+    include/libxr/usb/device/uac)
+
+foreach(_dir IN LISTS _xr_public_build_include_dirs)
+  if(EXISTS "${_dir}")
+    target_include_directories(xr PUBLIC $<BUILD_INTERFACE:${_dir}>)
   endif()
 endforeach()
-list(REMOVE_DUPLICATES _usb_dirs)
-foreach(_d ${_usb_dirs})
-  target_include_directories(xr PUBLIC $<BUILD_INTERFACE:${_d}>)
+
+foreach(_dir IN LISTS _xr_public_install_include_dirs)
+  target_include_directories(xr PUBLIC $<INSTALL_INTERFACE:${_dir}>)
 endforeach()
 
 set(_header_dirs
@@ -68,15 +91,17 @@ set(_header_dirs
     ${LIBXR_SRC}/src/structure
     ${LIBXR_SRC}/src/middleware
     ${LIBXR_SRC}/src/driver
-    ${LIBXR_SRC}/system/Linux
-    ${LIBXR_SRC}/driver/Linux)
+    ${LIBXR_SRC}/system/${_libxr_system_dir}
+    ${LIBXR_SRC}/driver/${_libxr_driver_dir})
 foreach(_dir ${_header_dirs})
-  install(
-    DIRECTORY "${_dir}/"
-    DESTINATION include/libxr
-    FILES_MATCHING
-    PATTERN "*.hpp"
-    PATTERN "*.h")
+  if(EXISTS "${_dir}")
+    install(
+      DIRECTORY "${_dir}/"
+      DESTINATION include/libxr
+      FILES_MATCHING
+      PATTERN "*.hpp"
+      PATTERN "*.h")
+  endif()
 endforeach()
 
 install(
@@ -94,7 +119,7 @@ install(
   RUNTIME DESTINATION bin)
 
 ament_export_targets(libxr_export HAS_LIBRARY_TARGET)
-ament_export_include_directories(include/libxr)
+ament_export_include_directories(${_xr_public_install_include_dirs})
 ament_export_libraries(xr)
 ament_export_dependencies(Eigen3)
 

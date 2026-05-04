@@ -36,7 +36,7 @@ class CycleValue
    * @return 返回赋值后的 `CycleValue` 对象。
    *         Returns the assigned `CycleValue` object.
    */
-  CycleValue &operator=(const CycleValue &) = default;
+  CycleValue& operator=(const CycleValue&) = default;
 
   /**
    * @brief 计算角度值并归一化到 0 到 2π 之间。
@@ -49,10 +49,10 @@ class CycleValue
    */
   static constexpr Scalar Calculate(Scalar value)
   {
-    value = std::fmod(value, M_2PI);
+    value = std::fmod(value, LibXR::TWO_PI);
     if (value < 0)
     {
-      value += M_2PI;
+      value += LibXR::TWO_PI;
     }
     return value;
   }
@@ -64,7 +64,7 @@ class CycleValue
    * @param value 需要存储的角度值。
    *              The angle value to be stored.
    */
-  CycleValue(const Scalar &value) : value_(Calculate(value)) {}
+  CycleValue(const Scalar& value) : value_(Calculate(value)) {}
 
   /**
    * @brief 拷贝构造函数，确保角度值在合法范围内。
@@ -73,16 +73,16 @@ class CycleValue
    * @param value 另一个 `CycleValue` 对象。
    *              Another `CycleValue` object.
    */
-  CycleValue(const CycleValue &value) : value_(value.value_)
+  CycleValue(const CycleValue& value) : value_(value.value_)
   {
-    while (value_ >= M_2PI)
+    while (value_ >= LibXR::TWO_PI)
     {
-      value_ -= M_2PI;
+      value_ -= LibXR::TWO_PI;
     }
 
     while (value_ < 0)
     {
-      value_ += M_2PI;
+      value_ += LibXR::TWO_PI;
     }
   }
 
@@ -101,9 +101,9 @@ class CycleValue
    * @return 返回新的 `CycleValue` 对象。
    *         Returns a new `CycleValue` object.
    */
-  CycleValue operator+(const Scalar &value) const { return CycleValue(value + value_); }
+  CycleValue operator+(const Scalar& value) const { return CycleValue(value + value_); }
 
-  CycleValue operator+(const CycleValue &value) const
+  CycleValue operator+(const CycleValue& value) const
   {
     return CycleValue(value.value_ + value_);
   }
@@ -117,23 +117,23 @@ class CycleValue
    * @return 返回自身的引用。
    *         Returns a reference to itself.
    */
-  CycleValue &operator+=(const Scalar &value)
+  CycleValue& operator+=(const Scalar& value)
   {
     value_ = Calculate(value + value_);
     return *this;
   }
 
-  CycleValue &operator+=(const CycleValue &value)
+  CycleValue& operator+=(const CycleValue& value)
   {
     Scalar ans = value.value_ + value_;
-    while (ans >= M_2PI)
+    while (ans >= LibXR::TWO_PI)
     {
-      ans -= M_2PI;
+      ans -= LibXR::TWO_PI;
     }
 
     while (ans < 0)
     {
-      ans += M_2PI;
+      ans += LibXR::TWO_PI;
     }
 
     value_ = ans;
@@ -150,34 +150,34 @@ class CycleValue
    * @return 归一化后的角度差值。
    *         The normalized angle difference.
    */
-  Scalar operator-(const Scalar &raw_value) const
+  Scalar operator-(const Scalar& raw_value) const
   {
     Scalar value = Calculate(raw_value);
     Scalar ans = value_ - value;
-    while (ans >= M_PI)
+    while (ans >= LibXR::PI)
     {
-      ans -= M_2PI;
+      ans -= LibXR::TWO_PI;
     }
 
-    while (ans < -M_PI)
+    while (ans < -LibXR::PI)
     {
-      ans += M_2PI;
+      ans += LibXR::TWO_PI;
     }
 
     return ans;
   }
 
-  Scalar operator-(const CycleValue &value) const
+  Scalar operator-(const CycleValue& value) const
   {
     Scalar ans = value_ - value.value_;
-    while (ans >= M_PI)
+    while (ans >= LibXR::PI)
     {
-      ans -= M_2PI;
+      ans -= LibXR::TWO_PI;
     }
 
-    while (ans < -M_PI)
+    while (ans < -LibXR::PI)
     {
-      ans += M_2PI;
+      ans += LibXR::TWO_PI;
     }
 
     return ans;
@@ -192,23 +192,23 @@ class CycleValue
    * @return 返回自身的引用。
    *         Returns a reference to itself.
    */
-  CycleValue &operator-=(const Scalar &value)
+  CycleValue& operator-=(const Scalar& value)
   {
     value_ = Calculate(value_ - value);
     return *this;
   }
 
-  CycleValue &operator-=(const CycleValue &value)
+  CycleValue& operator-=(const CycleValue& value)
   {
     Scalar ans = value_ - value.value_;
-    while (ans >= M_2PI)
+    while (ans >= LibXR::TWO_PI)
     {
-      ans -= M_2PI;
+      ans -= LibXR::TWO_PI;
     }
 
     while (ans < 0)
     {
-      ans += M_2PI;
+      ans += LibXR::TWO_PI;
     }
 
     value_ = ans;
@@ -222,7 +222,7 @@ class CycleValue
    * @return 返回取反后的 `CycleValue`。
    *         Returns the negated `CycleValue`.
    */
-  CycleValue operator-() const { return CycleValue(M_2PI - value_); }
+  CycleValue operator-() const { return CycleValue(LibXR::TWO_PI - value_); }
 
   /**
    * @brief 类型转换操作符，将 `CycleValue` 转换为 `Scalar`。
@@ -242,7 +242,7 @@ class CycleValue
    * @return 返回自身的引用。
    *         Returns a reference to itself.
    */
-  CycleValue &operator=(const Scalar &value)
+  CycleValue& operator=(const Scalar& value)
   {
     value_ = Calculate(value);
     return *this;

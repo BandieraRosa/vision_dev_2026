@@ -61,6 +61,11 @@ class GPIO
   GPIO() {}
 
   /**
+   * @brief 虚析构函数。Virtual destructor.
+   */
+  virtual ~GPIO() = default;
+
+  /**
    * @brief 读取 GPIO 引脚状态。Reads the GPIO pin state.
    * @return 返回引脚状态，true 表示高电平，false 表示低电平。Returns the pin state, true
    * for high, false for low.
@@ -71,9 +76,8 @@ class GPIO
    * @brief 写入 GPIO 引脚状态。Writes the GPIO pin state.
    * @param value 要写入的状态，true 表示高电平，false 表示低电平。The value to write,
    * true for high, false for low.
-   * @return 操作结果的错误码。Error code indicating the result of the operation.
    */
-  virtual ErrorCode Write(bool value) = 0;
+  virtual void Write(bool value) = 0;
 
   /**
    * @brief 使能 GPIO 引脚中断。Enables the GPIO pin interrupt.

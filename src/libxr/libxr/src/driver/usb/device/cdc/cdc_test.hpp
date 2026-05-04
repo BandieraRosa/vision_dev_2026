@@ -21,16 +21,21 @@ namespace LibXR::USB
 class CDCWriteTest : public CDCBase
 {
  public:
-  CDCWriteTest(Endpoint::EPNumber data_in_ep_num = Endpoint::EPNumber::EP_AUTO,
-               Endpoint::EPNumber data_out_ep_num = Endpoint::EPNumber::EP_AUTO,
-               Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO)
-      : CDCBase(data_in_ep_num, data_out_ep_num, comm_ep_num)
+  CDCWriteTest(
+      Endpoint::EPNumber data_in_ep_num = Endpoint::EPNumber::EP_AUTO,
+      Endpoint::EPNumber data_out_ep_num = Endpoint::EPNumber::EP_AUTO,
+      Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO,
+      const char* control_interface_string = CDCBase::DEFAULT_CONTROL_INTERFACE_STRING,
+      const char* data_interface_string = CDCBase::DEFAULT_DATA_INTERFACE_STRING)
+      : CDCBase(data_in_ep_num, data_out_ep_num, comm_ep_num, control_interface_string,
+                data_interface_string)
   {
   }
 
-  void Init(EndpointPool& endpoint_pool, uint8_t start_itf_num) override
+  void BindEndpoints(EndpointPool& endpoint_pool, uint8_t start_itf_num,
+                     bool in_isr) override
   {
-    CDCBase::Init(endpoint_pool, start_itf_num);
+    CDCBase::BindEndpoints(endpoint_pool, start_itf_num, in_isr);
   }
 
   /**
@@ -87,10 +92,14 @@ class CDCWriteTest : public CDCBase
 class CDCReadTest : public CDCBase
 {
  public:
-  CDCReadTest(Endpoint::EPNumber data_in_ep_num = Endpoint::EPNumber::EP_AUTO,
-              Endpoint::EPNumber data_out_ep_num = Endpoint::EPNumber::EP_AUTO,
-              Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO)
-      : CDCBase(data_in_ep_num, data_out_ep_num, comm_ep_num)
+  CDCReadTest(
+      Endpoint::EPNumber data_in_ep_num = Endpoint::EPNumber::EP_AUTO,
+      Endpoint::EPNumber data_out_ep_num = Endpoint::EPNumber::EP_AUTO,
+      Endpoint::EPNumber comm_ep_num = Endpoint::EPNumber::EP_AUTO,
+      const char* control_interface_string = CDCBase::DEFAULT_CONTROL_INTERFACE_STRING,
+      const char* data_interface_string = CDCBase::DEFAULT_DATA_INTERFACE_STRING)
+      : CDCBase(data_in_ep_num, data_out_ep_num, comm_ep_num, control_interface_string,
+                data_interface_string)
   {
   }
 
@@ -101,9 +110,10 @@ class CDCReadTest : public CDCBase
    * 在初始化时即调用一次 Transfer()，保证主机数据可以立刻被接收。
    * Arms the OUT endpoint immediately so host data can be received right away.
    */
-  void Init(EndpointPool& endpoint_pool, uint8_t start_itf_num) override
+  void BindEndpoints(EndpointPool& endpoint_pool, uint8_t start_itf_num,
+                     bool in_isr) override
   {
-    CDCBase::Init(endpoint_pool, start_itf_num);
+    CDCBase::BindEndpoints(endpoint_pool, start_itf_num, in_isr);
     auto ep_data_out = GetDataOutEndpoint();
     ep_data_out->Transfer(ep_data_out->MaxTransferSize());
   }

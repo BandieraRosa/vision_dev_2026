@@ -87,13 +87,15 @@ class HardwareContainer
    * @brief 注册一个硬件条目
    * @brief Register a hardware entry
    *
+   * @note 包含动态内存分配。
+   *       Contains dynamic memory allocation.
    */
   template <typename T>
   void Register(const Entry<T>& entry)
   {
     for (const auto& alias : entry.aliases)
     {
-      auto node = new (std::align_val_t(LIBXR_CACHE_LINE_SIZE))
+      auto node = new (std::align_val_t(LibXR::CACHE_LINE_SIZE))
           LibXR::LockFreeList::Node<AliasEntry>{alias, static_cast<void*>(&entry.object),
                                                 TypeID::GetID<T>()};
       alias_list_.Add(*node);
@@ -136,10 +138,13 @@ class ApplicationManager
    * @brief Register an application module
    *
    * @param app 模块实例引用 / Reference to an Application instance
+   *
+   * @note 包含动态内存分配。
+   *       Contains dynamic memory allocation.
    */
   void Register(Application& app)
   {
-    auto node = new (std::align_val_t(LIBXR_CACHE_LINE_SIZE))
+    auto node = new (std::align_val_t(LibXR::CACHE_LINE_SIZE))
         LibXR::LockFreeList::Node<Application*>(&app);
     app_list_.Add(*node);
   }

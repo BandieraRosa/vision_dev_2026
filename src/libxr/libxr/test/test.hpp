@@ -11,6 +11,7 @@ void test_lock_free_pool();
 void test_rbt();
 void test_ramfs();
 void test_semaphore();
+void test_mutex();
 void test_stack();
 void test_terminal();
 void test_thread();
@@ -23,5 +24,10 @@ void test_string();
 void test_cycle_value();
 void test_pid();
 void test_pipe();
+void test_print();
+void test_rw();
+void test_cb();
+void test_memory();
+void test_linux_shm_topic();
 
 bool equal(double a, double b);

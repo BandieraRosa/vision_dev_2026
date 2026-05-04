@@ -29,17 +29,28 @@ XRUSB is a standalone, modern C++ USB protocol stack. It is provided both as a [
 
 ## Device Drivers
 
-This repository only contains platform-independent stack code. For platform-specific device drivers, please refer to the corresponding drivers in libxr, such as `driver/st/stm32_usb_ep.cpp` and `driver/ch/ch32_usb_endpoint_otghs.cpp`.
+This repository only contains platform-independent stack code. For platform-specific device drivers, please refer to the corresponding drivers in libxr, such as:
+
+- `driver/st/stm32_usb_ep.cpp`
+- `driver/ch/ch32_usb_endpoint_otghs.cpp`
+- `driver/esp/esp_usb_dev.cpp`
+
+Note:
+
+- `USB-DEVICE` below refers to the native USB device controller path used by XRUSB.
+- Mainline libxr currently provides `CDC-JTAG` on ESP32-C3/ESP32-C6 via `driver/esp/esp_cdc_jtag.*`; this is a separate dedicated USB Serial/JTAG UART backend, not the generic XRUSB device-controller path.
 
 ## Support Status
 
 ### Device Stack
 
-| Protocol | Status    | Notes                                                                                          |
-| -------- | --------- | ---------------------------------------------------------------------------------------------- |
-| CDC-ACM  | Supported | Implemented as LibXR’s UART class                                                              |
-| HID      | Supported | Only standard keyboard/mouse and remote controller; other types require you to derive your own |
-| UAC      | Supported | Currently implements a UAC 1.0 microphone only                                                 |
+| Protocol   | Status                        | Notes                                                                                          |
+| ---------- | ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| CDC-ACM    | Supported                     | Implemented as LibXR’s UART class                                                              |
+| HID        | Supported                     | Only standard keyboard/mouse and remote controller; other types require you to derive your own |
+| UAC        | Supported                     | Currently implements a UAC 1.0 microphone only                                                 |
+| GSUSB      | Supported (CAN/FDCAN)         | Driverless SocketCAN on Linux                                                                  |
+| DAPLINK V2 | Supports (SWD interface only) | Can be used with Keil/OpenOCD                                                                  |
 
 ### Host Stack
 
@@ -53,8 +64,14 @@ TODO
 | STM32    | USB_DRV_FS    | Supported (Device) | STM32G431                  |
 | STM32    | USB_OTG_FS    | Supported (Device) | STM32F407                  |
 | STM32    | USB_OTG_HS    | Supported (Device) | STM32F407/STM32H750        |
+| ESP32-S3 | USB_OTG_FS    | Supported (Device) | ESP32-S3                   |
+| CH32     | USB_DEVICE_FS | Supported          | CH32V203                   |
 | CH32     | USB_OTG_FS    | Supported (Device) | CH32V307/CH32V203/CH32V208 |
-| CH32     | USB_HS        | Supported          | CH32V307                   |
+| CH32     | USB_OTG_HS    | Supported (Device) | CH32V307                   |
+
+Note:
+
+- The current ESP native USB device backend is implemented for `ESP32-S3`.
 
 ## Documentation
 

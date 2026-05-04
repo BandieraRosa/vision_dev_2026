@@ -2,23 +2,27 @@
 #include "libxr_def.hpp"
 #include "test.hpp"
 
-void test_stack() {
+void test_stack()
+{
   LibXR::Stack<int> stack(10);
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; i++)
+  {
     stack.Push(i);
   }
 
-  ASSERT(stack.Push(1) == ErrorCode::FULL);
+  ASSERT(stack.Push(1) == LibXR::ErrorCode::FULL);
 
-  for (int i = 0; i <= 9; i++) {
+  for (int i = 0; i <= 9; i++)
+  {
     int tmp = -1;
     stack.Pop(tmp);
     ASSERT(tmp == 9 - i);
   }
 
-  ASSERT(stack.Pop() == ErrorCode::EMPTY);
+  ASSERT(stack.Pop() == LibXR::ErrorCode::EMPTY);
 
-  for (int i = 0; i <= 5; i++) {
+  for (int i = 0; i <= 5; i++)
+  {
     stack.Push(i);
   }
 

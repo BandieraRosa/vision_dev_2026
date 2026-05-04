@@ -1,27 +1,32 @@
-cmake_minimum_required(VERSION 3.11)
-
-if(NOT TARGET xr)
-    message(FATAL_ERROR "Need LibXR to build.")
+if(NOT TARGET ${PROJECT_NAME})
+  message(FATAL_ERROR "Need LibXR to build.")
 endif()
 
-# 1. 递归查找所有 .cpp 文件
-file(GLOB_RECURSE XRUSB_ALL_CPP "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
+# Keep USB sources recursive so new class/runtime files are picked up automatically.
+file(GLOB_RECURSE XRUSB_ALL_CPP CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_LIST_DIR}/*.cpp"
+)
+list(SORT XRUSB_ALL_CPP)
 
-# 2. 递归查找所有目录（包括根目录）
-file(GLOB_RECURSE XRUSB_ALL_PATHS
-    LIST_DIRECTORIES true
-    "${CMAKE_CURRENT_LIST_DIR}/*"
+# Current USB code still uses short cross-subtree includes, so keep the required roots
+# explicit instead of recursively exporting every future nested directory.
+set(XRUSB_INCLUDE_DIRS
+  ${CMAKE_CURRENT_LIST_DIR}
+  ${CMAKE_CURRENT_LIST_DIR}/core
+  ${CMAKE_CURRENT_LIST_DIR}/device
+  ${CMAKE_CURRENT_LIST_DIR}/device/bos
+  ${CMAKE_CURRENT_LIST_DIR}/device/cdc
+  ${CMAKE_CURRENT_LIST_DIR}/device/dap
+  ${CMAKE_CURRENT_LIST_DIR}/device/dfu
+  ${CMAKE_CURRENT_LIST_DIR}/device/gsusb
+  ${CMAKE_CURRENT_LIST_DIR}/device/hid
+  ${CMAKE_CURRENT_LIST_DIR}/device/uac
 )
 
-# 3. 过滤出所有是目录的路径，并加入 include path
-set(XRUSB_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}")
-foreach(path ${XRUSB_ALL_PATHS})
-    if(IS_DIRECTORY "${path}")
-        list(APPEND XRUSB_INCLUDE_DIRS "${path}")
-    endif()
-endforeach()
-list(REMOVE_DUPLICATES XRUSB_INCLUDE_DIRS)
+target_include_directories(${PROJECT_NAME}
+  PUBLIC ${XRUSB_INCLUDE_DIRS}
+)
 
-# 4. 添加到 target
-target_include_directories(xr PUBLIC ${XRUSB_INCLUDE_DIRS})
-target_sources(xr PRIVATE ${XRUSB_ALL_CPP})
+target_sources(${PROJECT_NAME}
+  PRIVATE ${XRUSB_ALL_CPP}
+)

@@ -60,12 +60,16 @@ class HIDKeyboard : public HID<sizeof(HID_KEYBOARD_REPORT_DESC), 8, 1>
    * @param out_ep_interval OUT 端点间隔 / OUT endpoint interval
    * @param in_ep_num IN 端点号 / IN endpoint number
    * @param out_ep_num OUT 端点号 / OUT endpoint number
+   * @param interface_string 接口字符串 / Interface string
    */
   HIDKeyboard(bool enable_out_endpoint = false, uint8_t in_ep_interval = 1,
               uint8_t out_ep_interval = 1,
               Endpoint::EPNumber in_ep_num = Endpoint::EPNumber::EP_AUTO,
-              Endpoint::EPNumber out_ep_num = Endpoint::EPNumber::EP_AUTO)
-      : HID(enable_out_endpoint, in_ep_interval, out_ep_interval, in_ep_num, out_ep_num)
+              Endpoint::EPNumber out_ep_num = Endpoint::EPNumber::EP_AUTO,
+              const char* interface_string =
+                  HID<sizeof(HID_KEYBOARD_REPORT_DESC), 8, 1>::DEFAULT_INTERFACE_STRING)
+      : HID(enable_out_endpoint, in_ep_interval, out_ep_interval, in_ep_num, out_ep_num,
+            interface_string)
   {
   }
 
@@ -425,7 +429,8 @@ class HIDKeyboard : public HID<sizeof(HID_KEYBOARD_REPORT_DESC), 8, 1>
    * @param result 输出结果 / Output result
    * @return ErrorCode 错误码 / Error code
    */
-  ErrorCode OnSetReport(uint8_t report_id, DeviceClass::RequestResult& result) override
+  ErrorCode OnSetReport(uint8_t report_id,
+                        DeviceClass::ControlTransferResult& result) override
   {
     UNUSED(report_id);
     UNUSED(result);
@@ -444,6 +449,7 @@ class HIDKeyboard : public HID<sizeof(HID_KEYBOARD_REPORT_DESC), 8, 1>
   {
     if (data.size_ >= 1)
     {
+      led_state_ = *(static_cast<const uint8_t*>(data.addr_));
       on_led_change_cb_.Run(in_isr, GetNumLock(), GetCapsLock(), GetScrollLock());
       return ErrorCode::OK;
     }

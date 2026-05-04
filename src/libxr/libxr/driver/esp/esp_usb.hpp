@@ -1,139 +1,114 @@
 #pragma once
 
-#include "driver/usb_serial_jtag.h"
-#include "driver/usb_serial_jtag_select.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
-#include "uart.hpp"
+#include "esp_def.hpp"
 
-namespace LibXR
+#include <cstddef>
+#include <cstdint>
+
+#include "esp_dma_utils.h"
+#include "esp_heap_caps.h"
+#include "usb/core/ep.hpp"
+
+#if SOC_USB_OTG_SUPPORTED && defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
+
+#include "soc/usb_dwc_struct.h"
+
+namespace LibXR::ESPUSBDetail
 {
-template <size_t BUFFER_SIZE = 256>
-class ESP32VirtualUART : public UART
+
+inline constexpr uint32_t DWC2_FS_REG_BASE = 0x60080000UL;
+inline constexpr size_t FIFO_BASE_OFFSET = 0x1000U;
+inline constexpr size_t FIFO_STRIDE = 0x1000U;
+
+inline constexpr uint8_t RX_STATUS_GLOBAL_OUT_NAK = 1U;
+inline constexpr uint8_t RX_STATUS_DATA = 2U;
+inline constexpr uint8_t RX_STATUS_TRANSFER_COMPLETE = 3U;
+inline constexpr uint8_t RX_STATUS_SETUP_DONE = 4U;
+inline constexpr uint8_t RX_STATUS_SETUP_DATA = 6U;
+
+inline constexpr uint8_t ENUM_SPEED_FULL_30_TO_60_MHZ = 1U;
+inline constexpr uint8_t ENUM_SPEED_FULL_48_MHZ = 3U;
+
+inline constexpr size_t WORD_SIZE = sizeof(uint32_t);
+inline constexpr uint8_t FLUSH_ALL_TX_FIFO = 0x10U;
+inline constexpr uint32_t DMA_BURST_INCR4 = 4U;
+inline constexpr uint32_t DMA_MEMORY_CAPS =
+    MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT;
+inline constexpr uint16_t ESP32_SX_FS_DMA_MIN_RX_FIFO_WORDS = 88U;
+inline constexpr uint16_t ESP32_SX_FS_MIN_TX_FIFO_WORDS = 16U;
+inline constexpr uint32_t DISABLE_OUT_WAIT_GUARD = 100000U;
+
+#if defined(CONFIG_USB_ALIGN_SIZE)
+inline constexpr size_t USB_DMA_ALIGNMENT = CONFIG_USB_ALIGN_SIZE;
+#elif defined(CONFIG_CACHE_L1_CACHE_LINE_SIZE)
+inline constexpr size_t USB_DMA_ALIGNMENT = CONFIG_CACHE_L1_CACHE_LINE_SIZE;
+#else
+inline constexpr size_t USB_DMA_ALIGNMENT = 64U;
+#endif
+
+constexpr uint32_t PackTxFifoSizeReg(uint16_t start, uint16_t words)
 {
- public:
-  ESP32VirtualUART(uint32_t tx_queue_size = 5, int tx_task_prio = 10,
-                   uint32_t tx_stack_depth = 2048, int rx_task_prio = 10,
-                   uint32_t rx_stack_depth = 2048)
-      : UART(&_read_port, &_write_port),
-        _read_port(BUFFER_SIZE),
-        _write_port(tx_queue_size, BUFFER_SIZE)
+  return (static_cast<uint32_t>(words) << 16U) | static_cast<uint32_t>(start);
+}
+
+bool CacheSyncDmaBuffer(const void* addr, size_t size, bool cache_to_mem,
+                        bool allow_unaligned = false);
+size_t AlignUp(size_t value, size_t align);
+esp_dma_mem_info_t UsbDmaMemInfo();
+bool CanUseDirectInDmaBuffer(const void* ptr, size_t size);
+bool CanUseDirectOutDmaBuffer(const void* ptr, size_t size);
+uint16_t CalcRxFifoWords(uint16_t largest_packet_size, uint8_t ep_count);
+uint16_t CalcConfiguredRxFifoWords(uint16_t largest_packet_size, uint8_t ep_count,
+                                   bool dma_enabled);
+uint16_t GetHardwareFifoDepthWords();
+uint8_t EncodeEp0Mps(uint16_t packet_size);
+uint16_t ClampPacketSize(LibXR::USB::Endpoint::Type type, uint16_t requested);
+uint16_t CalcTxFifoWords(uint16_t packet_size, bool dma_enabled);
+volatile uint32_t* GetEndpointFifo(usb_dwc_dev_t* dev, uint8_t ep_num);
+void WriteFifoPacket(volatile uint32_t* fifo, const uint8_t* src, size_t size);
+void ReadFifoPacket(const volatile uint32_t* fifo, uint8_t* dst, size_t size);
+uint16_t PacketCount(size_t size, uint16_t max_packet_size);
+void FlushTxFifo(usb_dwc_dev_t* dev, uint8_t fifo_num);
+void DisableInEndpointAndWait(usb_dwc_dev_t* dev);
+void DisableInEndpointAndWait(usb_dwc_dev_t* dev, uint8_t ep_num);
+
+template <typename EpCtl>
+void StartEndpointTransfer(volatile EpCtl& reg)
+{
+  EpCtl ctl = {};
+  ctl.val = reg.val;
+  ctl.snak = 0;
+  ctl.cnak = 1;
+  ctl.epdis = 0;
+  ctl.epena = 1;
+  reg.val = ctl.val;
+}
+
+template <typename DoepCtl>
+void DisableOutEndpointAndWait(volatile DoepCtl& ctl)
+{
+  DoepCtl disable = {};
+  disable.val = ctl.val;
+  disable.snak = 1;
+  const bool was_enabled = disable.epena;
+  if (was_enabled)
   {
-    usb_serial_jtag_driver_config_t cfg = {
-        .tx_buffer_size = BUFFER_SIZE,
-        .rx_buffer_size = BUFFER_SIZE,
-    };
-    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+    disable.epdis = 1;
+  }
+  ctl.val = disable.val;
 
-    _write_port = WriteFun;
-    _read_port = ReadFun;
-
-    xTaskCreate(TxTaskWrapper, "esp32_vuart_tx", tx_stack_depth, this, tx_task_prio,
-                nullptr);
-    xTaskCreate(RxTaskWrapper, "esp32_vuart_rx", rx_stack_depth, this, rx_task_prio,
-                nullptr);
+  if (!was_enabled)
+  {
+    return;
   }
 
-  static void TxTaskWrapper(void *arg)
+  uint32_t guard = DISABLE_OUT_WAIT_GUARD;
+  while (ctl.epena && guard > 0U)
   {
-    auto *self = static_cast<ESP32VirtualUART *>(arg);
-    self->TxTask(self);
+    --guard;
   }
+}
 
-  static void RxTaskWrapper(void *arg)
-  {
-    auto *self = static_cast<ESP32VirtualUART *>(arg);
-    self->RxTask(self);
-  }
+}  // namespace LibXR::ESPUSBDetail
 
-  void TxTask(ESP32VirtualUART *uart)
-  {
-    WriteInfoBlock info;
-
-    while (true)
-    {
-      if (uart->write_sem_.Wait() != ErrorCode::OK)
-      {
-        continue;
-      }
-      if (uart->write_port_->queue_info_->Pop(info) != ErrorCode::OK)
-      {
-        continue;
-      }
-
-      if (uart->write_port_->queue_data_->PopBatch(uart->tx_buffer_, info.data.size_) !=
-          ErrorCode::OK)
-      {
-        uart->write_port_->Finish(false, ErrorCode::FAILED, info, info.data.size_);
-        continue;
-      }
-
-      int sent =
-          usb_serial_jtag_write_bytes(uart->tx_buffer_, info.data.size_, portMAX_DELAY);
-      if (sent == info.data.size_)
-      {
-        uart->write_port_->Finish(false, ErrorCode::OK, info, sent);
-        continue;
-      }
-      else
-      {
-        uart->write_port_->Finish(false, ErrorCode::FAILED, info, sent);
-        continue;
-      }
-    }
-  }
-
-  void RxTask(ESP32VirtualUART *uart)
-  {
-    ReadInfoBlock block;
-
-    while (true)
-    {
-      auto avail = usb_serial_jtag_read_ready();
-      int len = 0;
-      if (!avail)
-      {
-        len = usb_serial_jtag_read_bytes(uart->rx_buffer_, 1, portMAX_DELAY);
-      }
-      else
-      {
-        len = usb_serial_jtag_read_bytes(uart->rx_buffer_, BUFFER_SIZE, 0);
-      }
-      if (len > 0)
-      {
-        uart->read_port_->queue_data_->PushBatch(uart->rx_buffer_, len);
-        uart->read_port_->ProcessPendingReads(false);
-      }
-    }
-  }
-
-  static ErrorCode WriteFun(WritePort &port)
-  {
-    ESP32VirtualUART *uart = CONTAINER_OF(&port, ESP32VirtualUART, _write_port);
-    uart->write_sem_.Post();
-
-    return ErrorCode::FAILED;
-  }
-
-  static ErrorCode ReadFun(ReadPort &port)
-  {
-    UNUSED(port);
-
-    return ErrorCode::EMPTY;
-  }
-
-  ErrorCode SetConfig(UART::Configuration) override { return ErrorCode::OK; }
-
- private:
-  uint8_t tx_buffer_[BUFFER_SIZE];
-  uint8_t rx_buffer_[BUFFER_SIZE];
-
-  LibXR::Semaphore write_sem_;
-
-  ReadPort _read_port;
-  WritePort _write_port;
-};
-
-}  // namespace LibXR
+#endif

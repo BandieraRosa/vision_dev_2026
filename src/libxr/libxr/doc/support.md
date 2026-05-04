@@ -10,94 +10,95 @@
 
 | `Peripheral` | Ubuntu/Debian |
 | ------------ | ------------- |
-| POWER        | ✅             |
-| GPIO         | ❌             |
-| FLASH        | ✅             |
-| UART         | ✅             |
-| SPI          | ❌             |
-| I2C          | ❌             |
-| CAN          | ❌             |
-| CANFD        | ❌             |
-| ADC          | ❌             |
-| DAC          | ❌             |
-| PWM          | ❌             |
-| USB-CDC      | ❌             |
-| WDG          | ❌             |
+| POWER | ✅ |
+| GPIO | ✅ |
+| FLASH | ✅ |
+| UART | ✅ |
+| SPI | ❌ |
+| I2C | ❌ |
+| CAN | ❌ |
+| CANFD | ❌ |
+| ADC | ❌ |
+| DAC | ❌ |
+| PWM | ❌ |
+| USB-DEVICE | ❌ |
+| WDG | ❌ |
 
-| `Network`   | Ubuntu/Debian |
+| `Network` | Ubuntu/Debian |
 | ----------- | ------------- |
-| WIFI Client | ✅             |
-| SmartConfig | ❌             |
-| Bluetooth   | ❌             |
+| WIFI Client | ✅ |
+| SmartConfig | ❌ |
+| Bluetooth | ❌ |
 
 ## STM32 Support
 
 | `Peripheral` | STM32F0/F1/F4/G0/G4/H7 | STM32L0/L1/L4 |
 | ------------ | ---------------------- | ------------- |
-| POWER        | ✅                      | ⚙️             |
-| GPIO         | ✅                      | ⚙️             |
-| FLASH        | ✅                      | ⚙️             |
-| UART         | ✅                      | ⚙️             |
-| SPI          | ✅                      | ⚙️             |
-| I2C          | ✅                      | ⚙️             |
-| CAN          | ✅                      | ⚙️             |
-| CANFD        | ✅                      | ⚙️             |
-| ADC          | ✅                      | ⚙️             |
-| DAC          | ✅                      | ⚙️             |
-| PWM          | ✅                      | ⚙️             |
-| USB-CDC      | ✅                      | ⚙️             |
-| WDG          | ✅                      | ⚙️             |
+| POWER | ✅ | ⚙️ |
+| GPIO | ✅ | ⚙️ |
+| FLASH | ✅ | ⚙️ |
+| UART | ✅ | ⚙️ |
+| SPI | ✅ | ⚙️ |
+| I2C | ✅ | ⚙️ |
+| CAN | ✅ | ⚙️ |
+| CANFD | ✅ | ⚙️ |
+| ADC | ✅ | ⚙️ |
+| DAC | ✅ | ⚙️ |
+| PWM | ✅ | ⚙️ |
+| USB-DEVICE | ✅ | ⚙️ |
+| WDG | ✅ | ⚙️ |
 
-| `Network`   | STM32 |
+| `Network` | STM32 |
 | ----------- | ----- |
-| WIFI Client | ❌     |
-| SmartConfig | ❌     |
-| Bluetooth   | ❌     |
+| WIFI Client | ❌ |
+| SmartConfig | ❌ |
+| Bluetooth | ❌ |
 
 ## ESP32 Support
 
-| `Peripheral` | ESP32-C3 |
-| ------------ | -------- |
-| POWER        | ✅        |
-| GPIO         | ✅        |
-| FLASH        | ✅        |
-| UART         | ✅        |
-| SPI          | ❌        |
-| I2C          | ❌        |
-| CAN          | ❌        |
-| CANFD        | 🚫        |
-| ADC          | ✅        |
-| DAC          | ❌        |
-| PWM          | ✅        |
-| USB-CDC      | ✅        |
-| WDG          | ❌        |
+| `Peripheral` | ESP32 | ESP32-S3 | ESP32-C3 | ESP32-C6 |
+| ------------ | ----- | -------- | -------- | -------- |
+| POWER | ✅ | ✅ | ✅ | ✅ |
+| GPIO | ✅ | ✅ | ✅ | ✅ |
+| FLASH | ✅ | ✅ | ✅ | ✅ |
+| UART | ✅ | ✅ | ✅ | ✅ |
+| SPI | ✅ | ✅ | ✅ | ✅ |
+| I2C | ✅ | ✅ | ✅ | ✅ |
+| CAN | ❌ | ❌ | ❌ | ❌ |
+| CANFD | 🚫 | 🚫 | 🚫 | 🚫 |
+| ADC | ✅ | ✅ | ✅ | ✅ |
+| DAC | ✅ | 🚫 | 🚫 | 🚫 |
+| PWM | ✅ | ✅ | ✅ | ✅ |
+| USB-DEVICE | 🚫 | ✅ | 🚫 | 🚫 |
+| CDC-JTAG | 🚫 | 🚫 | ✅ | ✅ |
+| WDG | ✅ | ✅ | ✅ | ✅ |
 
-| `Network`   | ESP32-C3 |
-| ----------- | -------- |
-| WIFI Client | ✅        |
-| SmartConfig | ❌        |
-| Bluetooth   | ❌        |
+| `Network` | ESP32 | ESP32-S3 | ESP32-C3 | ESP32-C6 |
+| ----------- | ----- | -------- | -------- | -------- |
+| WIFI Client | ✅ | ✅ | ✅ | ✅ |
+| SmartConfig | ❌ | ❌ | ❌ | ❌ |
+| Bluetooth | ❌ | ❌ | ❌ | ❌ |
 
 ## CH32 Support
 
-| `Peripheral` | CH32V307/CH32V203 |
-| ------------ | ----------------- |
-| POWER        | ✅                 |
-| GPIO         | ✅                 |
-| FLASH        | ✅                 |
-| UART         | ✅                 |
-| SPI          | ✅                 |
-| I2C          | ❌                 |
-| CAN          | ❌                 |
-| CANFD        | 🚫                 |
-| ADC          | ❌                 |
-| DAC          | ❌                 |
-| PWM          | ✅                 |
-| USB-CDC      | ✅                 |
-| WDG          | ❌                 |
+| `Peripheral` | CH32V305/CH32V307/CH32V203 |
+| ------------ | -------------------------- |
+| POWER | ✅ |
+| GPIO | ✅ |
+| FLASH | ✅ |
+| UART | ✅ |
+| SPI | ✅ |
+| I2C | ✅ |
+| CAN | ✅ |
+| CANFD | 🚫 |
+| ADC | ❌ |
+| DAC | ❌ |
+| PWM | ✅ |
+| USB-DEVICE | ✅ |
+| WDG | ❌ |
 
-| `Network`   | CH32V307 |
+| `Network` | CH32V307 |
 | ----------- | -------- |
-| WIFI Client | ❌        |
-| SmartConfig | ❌        |
-| Bluetooth   | ❌        |
+| WIFI Client | ❌ |
+| SmartConfig | ❌ |
+| Bluetooth | ❌ |

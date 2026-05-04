@@ -1,5 +1,6 @@
 #include "stm32_usb_ep.hpp"
 
+#include "stm32_dcache.hpp"
 using namespace LibXR;
 
 #if defined(HAL_PCD_MODULE_ENABLED)
@@ -20,13 +21,13 @@ STM32Endpoint::STM32Endpoint(EPNumber ep_num, stm32_usb_dev_id_t id,
 #if defined(USB_OTG_HS)
   if (id == STM32_USB_OTG_HS)
   {
-    map_hs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
+    map_otg_hs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
   }
 #endif
 #if defined(USB_OTG_FS)
   if (id == STM32_USB_OTG_FS)
   {
-    map_fs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
+    map_otg_fs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
   }
 #endif
 
@@ -45,29 +46,20 @@ STM32Endpoint::STM32Endpoint(EPNumber ep_num, stm32_usb_dev_id_t id,
 STM32Endpoint::STM32Endpoint(EPNumber ep_num, stm32_usb_dev_id_t id,
                              PCD_HandleTypeDef* hpcd, Direction dir,
                              size_t hw_buffer_offset, size_t hw_buffer_size,
-                             bool double_hw_buffer, LibXR::RawData buffer)
-    : Endpoint(ep_num, dir, buffer),
-      hpcd_(hpcd),
-      hw_buffer_size_(hw_buffer_size),
-      double_hw_buffer_(double_hw_buffer),
-      id_(id)
+                             LibXR::RawData buffer)
+    : Endpoint(ep_num, dir, buffer), hpcd_(hpcd), hw_buffer_size_(hw_buffer_size), id_(id)
 {
   ASSERT(hw_buffer_size >= 8);
 
   ASSERT(is_power_of_two(hw_buffer_size));
   ASSERT(is_power_of_two(buffer.size_) || buffer.size_ % 4 == 0);
 
-  map_otg_fs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
+  map_fs_[EPNumberToInt8(GetNumber())][static_cast<uint8_t>(dir)] = this;
 
   size_t buffer_offset = hw_buffer_offset;
 
-  if (double_hw_buffer)
-  {
-    buffer_offset |= ((hw_buffer_offset + hw_buffer_size) << 16);
-  }
-
-  HAL_PCDEx_PMAConfig(hpcd_, EPNumberToAddr(GetNumber(), dir),
-                      double_hw_buffer ? PCD_DBL_BUF : PCD_SNG_BUF, buffer_offset);
+  HAL_PCDEx_PMAConfig(hpcd_, EPNumberToAddr(GetNumber(), dir), PCD_SNG_BUF,
+                      buffer_offset);
 }
 #endif
 
@@ -219,27 +211,25 @@ ErrorCode STM32Endpoint::Transfer(size_t size)
   ep->xfer_count = 0U;
   ep->is_in = is_in ? 1U : 0U;
   ep->num = ep_addr & EP_ADDR_MSK;
+  last_transfer_size_ = size;
 
 #if defined(USB_OTG_FS) || defined(USB_OTG_HS)
   if (hpcd_->Init.dma_enable == 1U)
   {
     ep->dma_addr = reinterpret_cast<uint32_t>(ep->xfer_buff);
 
-#if defined(__DCACHE_PRESENT) && (__DCACHE_PRESENT == 1U)
     if (is_in == true)
     {
-      SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t*>(buffer.addr_),
-                              static_cast<int32_t>(size));
+      STM32_CleanDCacheByAddr(buffer.addr_, size);
     }
-#endif
   }
 #endif
 
 #if defined(USB_BASE)
   if (is_in)
   {
-    ep->xfer_fill_db = 1U;
-    ep->xfer_len_db = size;
+    ep->xfer_fill_db = 0U;
+    ep->xfer_len_db = 0U;
   }
 #endif
 
@@ -269,7 +259,8 @@ ErrorCode STM32Endpoint::Transfer(size_t size)
 
 ErrorCode STM32Endpoint::Stall()
 {
-  if (GetState() != State::IDLE)
+  const bool is_in = (GetDirection() == Direction::IN);
+  if (GetState() != State::IDLE && !(GetState() == State::BUSY && !is_in))
   {
     return ErrorCode::BUSY;
   }
@@ -334,19 +325,19 @@ static STM32Endpoint* GetEndpoint(PCD_HandleTypeDef* hpcd, uint8_t epnum, bool i
 #if defined(USB_OTG_HS)
   if (id == STM32_USB_OTG_HS)
   {
-    return STM32Endpoint::map_hs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
+    return STM32Endpoint::map_otg_hs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
   }
 #endif
 #if defined(USB_OTG_FS)
   if (id == STM32_USB_OTG_FS)
   {
-    return STM32Endpoint::map_fs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
+    return STM32Endpoint::map_otg_fs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
   }
 #endif
 #if defined(USB_BASE)
   if (id == STM32_USB_FS_DEV)
   {
-    return STM32Endpoint::map_otg_fs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
+    return STM32Endpoint::map_fs_[epnum & 0x7F][static_cast<uint8_t>(is_in)];
   }
 #endif
   return nullptr;
@@ -356,7 +347,10 @@ extern "C" void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef* hpcd, uint8_t epn
 {
   auto id = STM32USBDeviceGetID(hpcd);
 
-  ASSERT(id < STM32_USB_DEV_ID_NUM);
+  if (id >= STM32_USB_DEV_ID_NUM || STM32USBDevice::map_[id] == nullptr)
+  {
+    return;
+  }
 
   auto ep = GetEndpoint(hpcd, epnum, true);
 
@@ -365,18 +359,17 @@ extern "C" void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef* hpcd, uint8_t epn
     return;
   }
 
-  PCD_EPTypeDef* ep_handle = &hpcd->IN_ep[epnum & EP_ADDR_MSK];
-
-  size_t actual_transfer_size = ep_handle->xfer_count;
-
-  ep->OnTransferCompleteCallback(true, actual_transfer_size);
+  ep->OnTransferCompleteCallback(true, ep->last_transfer_size_);
 }
 
 extern "C" void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef* hpcd, uint8_t epnum)
 {
   auto id = STM32USBDeviceGetID(hpcd);
 
-  ASSERT(id < STM32_USB_DEV_ID_NUM);
+  if (id >= STM32_USB_DEV_ID_NUM || STM32USBDevice::map_[id] == nullptr)
+  {
+    return;
+  }
 
   auto ep = GetEndpoint(hpcd, epnum, false);
 
@@ -389,10 +382,10 @@ extern "C" void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef* hpcd, uint8_t ep
 
   size_t actual_transfer_size = ep_handle->xfer_count;
 
-#if defined(__DCACHE_PRESENT) && (__DCACHE_PRESENT == 1U)
-  SCB_InvalidateDCache_by_Addr(ep->GetBuffer().addr_,
-                               static_cast<int32_t>(actual_transfer_size));
-#endif
+  if (STM32USBUsesDma(hpcd))
+  {
+    STM32_InvalidateDCacheByAddr(ep->GetBuffer().addr_, actual_transfer_size);
+  }
 
   ep->OnTransferCompleteCallback(true, actual_transfer_size);
 }
@@ -401,7 +394,10 @@ extern "C" void HAL_PCD_ISOINIncompleteCallback(PCD_HandleTypeDef* hpcd, uint8_t
 {
   auto id = STM32USBDeviceGetID(hpcd);
 
-  ASSERT(id < STM32_USB_DEV_ID_NUM);
+  if (id >= STM32_USB_DEV_ID_NUM || STM32USBDevice::map_[id] == nullptr)
+  {
+    return;
+  }
 
   auto ep = GetEndpoint(hpcd, epnum, true);
 
@@ -417,7 +413,10 @@ extern "C" void HAL_PCD_ISOOUTIncompleteCallback(PCD_HandleTypeDef* hpcd, uint8_
 {
   auto id = STM32USBDeviceGetID(hpcd);
 
-  ASSERT(id < STM32_USB_DEV_ID_NUM);
+  if (id >= STM32_USB_DEV_ID_NUM || STM32USBDevice::map_[id] == nullptr)
+  {
+    return;
+  }
 
   auto ep = GetEndpoint(hpcd, epnum, false);
 
