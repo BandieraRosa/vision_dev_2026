@@ -1,6 +1,10 @@
 #ifndef RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
 #define RM_SERIAL_DRIVER__RM_SERIAL_DRIVER_HPP_
 
+// STD
+#include <chrono>
+#include <memory>
+
 // ROS2
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/node.hpp>
@@ -27,12 +31,12 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   using namespace LibXR;
   static ApplicationManager appmgr;
 
-  static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
+  static SharedTopic shared_topic(hw, appmgr, "uart_client", 256,
                                   {{"ahrs_quaternion"}, {"lob_shot"}});
 
   static SharedTopicClient shared_topic_client(
-      hw, appmgr, "uart_client", 81920, 256,
-      {{"target_euler"}, {"fire_notify", "tracker"}});
+      hw, appmgr, "uart_client", 256,
+      {{"target_euler"}, {"fire_notify", "tracker"}, {"target_num"}});
 }
 
 #pragma pack(push, 1)
@@ -61,18 +65,15 @@ class RMSerialDriver : public rclcpp::Node
 
   /* ROS2发布者 */
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
-      joint_state_pub_;  // 云台关节状态发布者
-  rclcpp::Publisher<auto_aim_interfaces::msg::Velocity>::SharedPtr
-      velocity_pub_;                                                // 弹速发布者
+      joint_state_pub_;                                             // 云台关节状态发布者
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lob_shot_pub_;  // 吊射标志发布者
 
   /* ROS2订阅者 */
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr fire_sub_;
+  //   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr fire_sub_;
 
-  /* LibXR Topic (用于发送到下位机) */
+  /* LibXR Topic */
   LibXR::Topic ahrs_quaternion_topic_;
-  LibXR::Topic bullet_speed_topic_;
   LibXR::Topic target_euler_topic_;
   LibXR::Topic fire_notify_topic_;
   LibXR::Topic lob_shot_topic_;
@@ -91,6 +92,7 @@ class RMSerialDriver : public rclcpp::Node
 
   uint8_t last_lob_val_{0};
   bool is_hero_{false};
+  bool is_send_vel_ = false;
 
   std::chrono::time_point<std::chrono::steady_clock,
                           std::chrono::duration<uint64_t, std::ratio<1, 1000000000>>>

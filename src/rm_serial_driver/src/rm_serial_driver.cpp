@@ -1,5 +1,7 @@
 #include "rm_serial_driver/rm_serial_driver.hpp"
 
+#include <iostream>
+
 namespace rm_serial_driver
 {
 RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
@@ -14,6 +16,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   timestamp_offset_ = this->declare_parameter<double>("timestamp_offset", 0);
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
   is_hero_ = (robot_type == "hero");
+  is_send_vel_ = this->declare_parameter<bool>("send_velocity", false);
   std::cout << "Serial timestamp_offset: " << timestamp_offset_ << '\n';
 
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
@@ -34,13 +37,17 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
 
   lob_shot_topic_ = LibXR::Topic::FindOrCreate<uint8_t>("lob_shot");
 
-  LibXR::Topic::Domain referee_domain = LibXR::Topic::Domain("referee");
-  bullet_speed_topic_ =
-      LibXR::Topic::FindOrCreate<float>("bullet_speed", &referee_domain);
-
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
-  target_euler_topic_ = LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler");
+  if (is_send_vel_)
+  {
+    target_euler_topic_ = LibXR::Topic::FindOrCreate<HostEulerTarget>("target_euler");
+  }
+  else
+  {
+    target_euler_topic_ =
+        LibXR::Topic::FindOrCreate<LibXR::EulerAngle<float>>("target_euler");
+  }
   fire_notify_topic_ =
       LibXR::Topic::FindOrCreate<uint8_t>("fire_notify", &tracker_domain);
   target_num_topic_ = LibXR::Topic::FindOrCreate<int>("target_num");
@@ -48,10 +55,6 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   // 云台关节状态
   joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
-
-  // 弹速
-  velocity_pub_ =
-      this->create_publisher<auto_aim_interfaces::msg::Velocity>("/current_velocity", 10);
 
   // 吊射标志
   if (is_hero_)
@@ -61,19 +64,19 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   }
 
   // 打弹（t键打弹，g键停止）
-  fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-      "/cmd_vel", rclcpp::SensorDataQoS(),
-      [this](const geometry_msgs::msg::Twist::SharedPtr msg)
-      {
-        if (msg->linear.z > 0.0)
-        {
-          fire_notify_ = 1;
-        }
-        else if (msg->linear.z == 0.0)
-        {
-          fire_notify_ = 0;
-        }
-      });
+  // fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+  //     "/cmd_vel", rclcpp::SensorDataQoS(),
+  //     [this](const geometry_msgs::msg::Twist::SharedPtr msg)
+  //     {
+  //       if (msg->linear.z > 0.0)
+  //       {
+  //         fire_notify_ = 1;
+  //       }
+  //       else if (msg->linear.z == 0.0)
+  //       {
+  //         fire_notify_ = 0;
+  //       }
+  //     });
 
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
@@ -108,22 +111,6 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   };
   auto ahrs_quaternion_cb = LibXR::Topic::Callback::Create(ahrs_quaternion_cb_fun, this);
   ahrs_quaternion_topic_.RegisterCallback(ahrs_quaternion_cb);
-
-  // 弹速回调
-  void (*bullet_speed_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
-      [](bool, RMSerialDriver* self, LibXR::RawData& data)
-  {
-    auto bullet_speed = reinterpret_cast<float*>(data.addr_);
-    // XR_LOG_INFO("Serial got bullet_speed:%f", *bullet_speed);
-
-    // ROS2发布弹速
-    auto_aim_interfaces::msg::Velocity velocity_msg;
-    velocity_msg.header.stamp = self->now();
-    velocity_msg.velocity = static_cast<double>(*bullet_speed);
-    self->velocity_pub_->publish(velocity_msg);
-  };
-  auto bullet_speed_cb = LibXR::Topic::Callback::Create(bullet_speed_cb_fun, this);
-  bullet_speed_topic_.RegisterCallback(bullet_speed_cb);
 
   // 吊射标志回调
   if (is_hero_)
@@ -162,21 +149,35 @@ void RMSerialDriver::SendCallBack(const auto_aim_interfaces::msg::Send::SharedPt
   // ms",
   //             duration);
   // last_send_time_ = timestamp1;
-  HostEulerTarget target{};
-  target.rol = 0.0f;
-  target.pit = static_cast<float>(msg->pitch);
-  target.yaw = static_cast<float>(msg->yaw);
 
-  target.rol_dot = 0.0f;
-  target.pit_dot = 0.0f;
-  target.yaw_dot = static_cast<float>(msg->vel_yaw);
+  if (is_send_vel_)
+  {
+    HostEulerTarget target{};
 
-  target.rol_ddot = 0.0f;
-  target.pit_ddot = 0.0f;
-  target.yaw_ddot = static_cast<float>(msg->acc_yaw);
+    target.rol = 0.0f;
+    target.pit = static_cast<float>(msg->pitch);
+    target.yaw = static_cast<float>(msg->yaw);
+
+    target.rol_dot = 0.0f;
+    target.pit_dot = 0.0f;
+    target.yaw_dot = static_cast<float>(msg->vel_yaw);
+
+    target.rol_ddot = 0.0f;
+    target.pit_ddot = 0.0f;
+    target.yaw_ddot = static_cast<float>(msg->acc_yaw);
+
+    target_euler_topic_.Publish(target);
+  }
+  else
+  {
+    LibXR::EulerAngle<float> euler_target;
+    euler_target.Roll() = 0.0f;
+    euler_target.Pitch() = static_cast<float>(msg->pitch);
+    euler_target.Yaw() = static_cast<float>(msg->yaw);
+    target_euler_topic_.Publish(euler_target);
+  }
 
   fire_notify_ = msg->is_fire;
-  target_euler_topic_.Publish(target);
   fire_notify_topic_.Publish(fire_notify_);
   target_num_topic_.Publish(msg->num);
 }

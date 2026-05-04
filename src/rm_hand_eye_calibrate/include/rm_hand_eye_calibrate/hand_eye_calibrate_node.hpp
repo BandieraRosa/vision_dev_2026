@@ -23,8 +23,7 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   static ApplicationManager appmgr;
 
   // 只从下位机接收 ahrs_quaternion，不发送任何数据
-  static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
-                                  {{"ahrs_quaternion"}});
+  static SharedTopic shared_topic(hw, appmgr, "uart_client", 256, {{"ahrs_quaternion"}});
 }
 
 // =====================================================

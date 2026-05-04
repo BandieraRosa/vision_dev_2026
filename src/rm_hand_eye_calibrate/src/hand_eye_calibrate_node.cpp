@@ -1,6 +1,6 @@
 #include "rm_hand_eye_calibrate/hand_eye_calibrate_node.hpp"
 
-HandEyeCalibrateNode::HandEyeCalibrateNode(const rclcpp::NodeOptions &options)
+HandEyeCalibrateNode::HandEyeCalibrateNode(const rclcpp::NodeOptions& options)
     : Node("hand_eye_calibrator_node", options)
 {
   LibXR::PlatformInit();
@@ -28,10 +28,10 @@ HandEyeCalibrateNode::HandEyeCalibrateNode(const rclcpp::NodeOptions &options)
 
   XRobotMain(peripherals);
 
-  void (*ahrs_quaternion_cb_fun)(bool, HandEyeCalibrateNode *self, LibXR::RawData &data) =
-      [](bool, HandEyeCalibrateNode *self, LibXR::RawData &data)
+  void (*ahrs_quaternion_cb_fun)(bool, HandEyeCalibrateNode* self, LibXR::RawData& data) =
+      [](bool, HandEyeCalibrateNode* self, LibXR::RawData& data)
   {
-    auto quat = reinterpret_cast<LibXR::Quaternion<float> *>(data.addr_);
+    auto quat = reinterpret_cast<LibXR::Quaternion<float>*>(data.addr_);
     Eigen::Quaterniond q_eigen(
         static_cast<double>(quat->w()), static_cast<double>(quat->x()),
         static_cast<double>(quat->y()), static_cast<double>(quat->z()));
@@ -120,7 +120,7 @@ double HandEyeCalibrateNode::LimitRad(double angle)
   return angle;
 }
 
-Eigen::Vector3d HandEyeCalibrateNode::QuatToEulers(const Eigen::Quaterniond &q, int axis0,
+Eigen::Vector3d HandEyeCalibrateNode::QuatToEulers(const Eigen::Quaterniond& q, int axis0,
                                                    int axis1, int axis2)
 {
   bool extrinsic = true;
@@ -195,13 +195,13 @@ Eigen::Vector3d HandEyeCalibrateNode::QuatToEulers(const Eigen::Quaterniond &q, 
   return eulers;
 }
 
-Eigen::Vector3d HandEyeCalibrateNode::MatToEulers(const Eigen::Matrix3d &R, int a0,
+Eigen::Vector3d HandEyeCalibrateNode::MatToEulers(const Eigen::Matrix3d& R, int a0,
                                                   int a1, int a2)
 {
   return QuatToEulers(Eigen::Quaterniond(R), a0, a1, a2);
 }
 
-double HandEyeCalibrateNode::CalcBlurScore(const cv::Mat &gray)
+double HandEyeCalibrateNode::CalcBlurScore(const cv::Mat& gray)
 {
   cv::Mat lap;
   cv::Laplacian(gray, lap, CV_64F);
@@ -210,7 +210,7 @@ double HandEyeCalibrateNode::CalcBlurScore(const cv::Mat &gray)
   return stddev.val[0] * stddev.val[0];
 }
 
-bool HandEyeCalibrateNode::CheckStatic(const Eigen::Quaterniond &q_current) const
+bool HandEyeCalibrateNode::CheckStatic(const Eigen::Quaterniond& q_current) const
 {
   if (!prev_quat_.has_value())
   {
@@ -220,13 +220,13 @@ bool HandEyeCalibrateNode::CheckStatic(const Eigen::Quaterniond &q_current) cons
 }
 
 Eigen::Matrix3d HandEyeCalibrateNode::ImuQuatToGimbalWorld(
-    const Eigen::Quaterniond &q_imu) const
+    const Eigen::Quaterniond& q_imu) const
 {
   Eigen::Matrix3d r_imubody2imuabs = q_imu.toRotationMatrix();
   return r_gimbal2imubody_.transpose() * r_imubody2imuabs * r_gimbal2imubody_;
 }
 
-int HandEyeCalibrateNode::ToOpenCvMethod(const std::string &m) const
+int HandEyeCalibrateNode::ToOpenCvMethod(const std::string& m) const
 {
   std::string u = m;
   std::transform(u.begin(), u.end(), u.begin(), ::toupper);
@@ -324,7 +324,7 @@ void HandEyeCalibrateNode::ImageCallback(sensor_msgs::msg::Image::ConstSharedPtr
 
   // ---- 可视化 ----
   cv::Mat vis = frame.clone();
-  auto draw_text = [&](const std::string &txt, bool ok, int line)
+  auto draw_text = [&](const std::string& txt, bool ok, int line)
   {
     cv::Scalar color = ok ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
     cv::putText(vis, txt, cv::Point(20, 30 * line), cv::FONT_HERSHEY_SIMPLEX, 0.7, color,
@@ -429,7 +429,7 @@ void HandEyeCalibrateNode::OnCapture(
     res->message = "未检测到标定板。";
     return;
   }
-  const auto &det = last_detection_.value();
+  const auto& det = last_detection_.value();
 
   if ((now() - det.stamp).seconds() > max_age_sec_)
   {
@@ -450,7 +450,7 @@ void HandEyeCalibrateNode::OnCapture(
     return;
   }
 
-  for (const auto &s : samples_)
+  for (const auto& s : samples_)
   {
     double dist = s.q_gimbal2world.angularDistance(det.q_gimbal2world);
     if (dist < min_angle_dist_rad_)
@@ -516,7 +516,7 @@ void HandEyeCalibrateNode::SolveClassic(
     const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
 {
   std::vector<cv::Mat> r_g2b, t_g2b, r_t2c, t_t2c;
-  for (const auto &s : samples_)
+  for (const auto& s : samples_)
   {
     r_g2b.push_back(s.R_gimbal2world);
     t_g2b.push_back(s.t_gimbal);
@@ -531,7 +531,7 @@ void HandEyeCalibrateNode::SolveClassic(
         r_g2b, t_g2b, r_t2c, t_t2c, r_cam2grip, t_cam2grip,
         static_cast<cv::HandEyeCalibrationMethod>(ToOpenCvMethod(method_)));
   }
-  catch (cv::Exception &e)
+  catch (cv::Exception& e)
   {
     res->success = false;
     res->message = std::string("calibrateHandEye 异常: ") + e.what();
@@ -545,7 +545,7 @@ void HandEyeCalibrateNode::SolveRobotWorld(
     const std::shared_ptr<std_srvs::srv::Trigger::Response> res)
 {
   std::vector<cv::Mat> rvecs, tvecs, r_w2g, t_w2g;
-  for (const auto &s : samples_)
+  for (const auto& s : samples_)
   {
     cv::Mat rvec;
     cv::Rodrigues(s.R_target2cam, rvec);
@@ -561,7 +561,7 @@ void HandEyeCalibrateNode::SolveRobotWorld(
     cv::calibrateRobotWorldHandEye(rvecs, tvecs, r_w2g, t_w2g, r_world2board,
                                    t_world2board, r_gimbal2camera, t_gimbal2camera);
   }
-  catch (cv::Exception &e)
+  catch (cv::Exception& e)
   {
     res->success = false;
     res->message = std::string("calibrateRobotWorldHandEye 异常: ") + e.what();
@@ -596,10 +596,10 @@ void HandEyeCalibrateNode::SolveRobotWorld(
 }
 
 void HandEyeCalibrateNode::FormatResult(
-    const cv::Mat &R_cam2gimbal, const cv::Mat &t_cam2gimbal,
-    const std::string &method_name,
+    const cv::Mat& R_cam2gimbal, const cv::Mat& t_cam2gimbal,
+    const std::string& method_name,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> res,
-    const std::string &extra_info)
+    const std::string& extra_info)
 {
   tf2::Matrix3x3 r_opt;
   r_opt.setRPY(-CV_PI / 2.0, 0.0, -CV_PI / 2.0);

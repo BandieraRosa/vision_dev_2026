@@ -171,10 +171,10 @@ class TimestampCalibratorTest : public ::testing::Test
     };
 
     static LibXR::ApplicationManager appmgr;
-    static SharedTopic shared_topic(peripherals, appmgr, "uart_client", 81920, 256,
+    static SharedTopic shared_topic(peripherals, appmgr, "uart_client", 256,
                                     {{"ts_pong"}, {"ahrs_stamped"}});
-    static SharedTopicClient shared_topic_client(peripherals, appmgr, "uart_client",
-                                                 81920, 256, {{"ts_ping"}});
+    static SharedTopicClient shared_topic_client(peripherals, appmgr, "uart_client", 256,
+                                                 {{"ts_ping"}});
   }
 
   void PhaseRtt()

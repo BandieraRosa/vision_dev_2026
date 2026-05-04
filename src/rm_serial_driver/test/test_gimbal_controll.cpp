@@ -294,9 +294,8 @@ LibXR::HardwareContainer& init_transport_once()
 void start_shared_topic_apps_once(LibXR::HardwareContainer& hw)
 {
   static LibXR::ApplicationManager appmgr;
-  static SharedTopic shared_topic(hw, appmgr, "uart_client", 81920, 256,
-                                  {{"ahrs_quaternion"}});
-  static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 81920, 256,
+  static SharedTopic shared_topic(hw, appmgr, "uart_client", 256, {{"ahrs_quaternion"}});
+  static SharedTopicClient shared_topic_client(hw, appmgr, "uart_client", 256,
                                                {{"target_euler"}});
 }
 
@@ -344,10 +343,10 @@ class GimbalControllTest : public ::testing::Test
     };
 
     static LibXR::ApplicationManager appmgr;
-    static SharedTopic shared_topic(peripherals, appmgr, "uart_client", 81920, 256,
+    static SharedTopic shared_topic(peripherals, appmgr, "uart_client", 256,
                                     {{"ahrs_quaternion"}});
-    static SharedTopicClient shared_topic_client(peripherals, appmgr, "uart_client",
-                                                 81920, 256, {{"target_euler"}});
+    static SharedTopicClient shared_topic_client(peripherals, appmgr, "uart_client", 256,
+                                                 {{"target_euler"}});
 
     void (*cb_fun)(bool, PoseReceiver*, LibXR::RawData&) =
         [](bool, PoseReceiver* receiver, LibXR::RawData& data)
