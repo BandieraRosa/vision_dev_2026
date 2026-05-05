@@ -1,7 +1,6 @@
 #include "hik_camera_node/hik_camera_node.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <functional>
 
@@ -18,10 +17,10 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
   params_.frame_rate_enable = this->declare_parameter<bool>("frame_rate_enable", false);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
   params_.fps_stat_period = this->declare_parameter<double>("fps_stat_period", 1.0);
-  const int grab_timeout_ms_param = this->declare_parameter<int>("grab_timeout_ms", 20);
-  const int image_node_num_param = this->declare_parameter<int>("image_node_num", 1);
-  params_.grab_timeout_ms = static_cast<uint32_t>(std::max(1, grab_timeout_ms_param));
-  params_.image_node_num = static_cast<uint32_t>(std::max(1, image_node_num_param));
+  auto grab_timeout_ms_param = this->declare_parameter<int>("grab_timeout_ms", 20);
+  auto image_node_num_param = this->declare_parameter<int>("image_node_num", 1);
+  params_.grab_timeout_ms = static_cast<uint32_t>(std::max(1L, grab_timeout_ms_param));
+  params_.image_node_num = static_cast<uint32_t>(std::max(1L, image_node_num_param));
   if (grab_timeout_ms_param <= 0)
   {
     RCLCPP_WARN(this->get_logger(),
@@ -60,7 +59,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
 
   // 创建 FPS 统计定时器，分别统计 SDK 成功取到的帧和成功 publish 的帧
   fps_stat_last_time_ = std::chrono::steady_clock::now();
-  const auto fps_stat_period = std::chrono::duration_cast<std::chrono::milliseconds>(
+  auto fps_stat_period = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::duration<double>(std::max(0.001, params_.fps_stat_period)));
   fps_stat_timer_ = this->create_wall_timer(
       fps_stat_period, std::bind(&HikCameraNode::ReportFpsStats, this));
@@ -163,7 +162,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
             case 1:
             case 3:
             {
-              const size_t byte_count = image.total() * image.elemSize();
+              size_t byte_count = image.total() * image.elemSize();
               rotate_buffer_.resize(byte_count);
               cv::Mat rotated(image.cols, image.rows, image.type(), rotate_buffer_.data(),
                               static_cast<size_t>(image.rows) * image.elemSize());
@@ -244,7 +243,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   }
 
   MV_FRAME_OUT raw{};
-  const unsigned int ret = MV_CC_GetImageBuffer(handle_, &raw, params_.grab_timeout_ms);
+  unsigned int ret = MV_CC_GetImageBuffer(handle_, &raw, params_.grab_timeout_ms);
 
   if (ret != MV_OK)
   {
@@ -266,8 +265,8 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   timestamp = this->now();
 
   const auto& frame_info = raw.stFrameInfo;
-  const int width = static_cast<int>(frame_info.nWidth);
-  const int height = static_cast<int>(frame_info.nHeight);
+  int width = static_cast<int>(frame_info.nWidth);
+  int height = static_cast<int>(frame_info.nHeight);
   if (width <= 0 || height <= 0)
   {
     MV_CC_FreeImageBuffer(handle_, &raw);
@@ -275,7 +274,7 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
     return false;
   }
 
-  const size_t byte_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
+  size_t byte_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
   image_msg_.data.resize(byte_count);
   cv::Mat dst_image(height, width, CV_8UC3, image_msg_.data.data(),
                     static_cast<size_t>(width) * 3);
@@ -340,8 +339,8 @@ bool HikCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 
 void HikCameraNode::ReportFpsStats()
 {
-  const auto now = std::chrono::steady_clock::now();
-  const auto elapsed = std::chrono::duration<double>(now - fps_stat_last_time_).count();
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration<double>(now - fps_stat_last_time_).count();
   fps_stat_last_time_ = now;
 
   if (elapsed <= 0.0)
@@ -349,10 +348,10 @@ void HikCameraNode::ReportFpsStats()
     return;
   }
 
-  const auto received = received_frame_count_.exchange(0, std::memory_order_relaxed);
-  const auto published = published_frame_count_.exchange(0, std::memory_order_relaxed);
-  const double received_fps = static_cast<double>(received) / elapsed;
-  const double published_fps = static_cast<double>(published) / elapsed;
+  auto received = received_frame_count_.exchange(0, std::memory_order_relaxed);
+  auto published = published_frame_count_.exchange(0, std::memory_order_relaxed);
+  double received_fps = static_cast<double>(received) / elapsed;
+  double published_fps = static_cast<double>(published) / elapsed;
 
   RCLCPP_INFO(this->get_logger(),
               "Camera FPS stats: received %.2f Hz (%lu frames), published %.2f Hz (%lu "
@@ -500,7 +499,8 @@ void HikCameraNode::CaptureInit()
   if (params_.frame_rate_enable)
   {
     // 帧率
-    ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate", params_.frame_rate);
+    ret = MV_CC_SetFloatValue(handle_, "AcquisitionFrameRate",
+                              static_cast<float>(params_.frame_rate));
     if (ret != MV_OK)
     {
       RCLCPP_ERROR(this->get_logger(), "MV_CC_SetFloatValue(set framerate) failed: 0x%X",
