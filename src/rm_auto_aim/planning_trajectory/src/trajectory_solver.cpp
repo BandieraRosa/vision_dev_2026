@@ -65,7 +65,6 @@ void TrajectorySolver::ReBuild()
   should_last_shot_ = false;
   turn_s_ = 0.0;
   step_s_ = 0.0;
-  selected_time_delay_ = 0.0;
   start_turn_ = time_point::min();
   end_turn_ = time_point::min();
   last_start_turn_ = time_point::min();
@@ -351,16 +350,13 @@ void TrajectorySolver::GlobalSelectArmor(double time_delay)
   }
 
   selected_idx_ = best_idx;
-  selected_time_delay_ = best_time;
-  PredictOneArmorPosition(best_time, best_idx);
 }
 
 void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
-  if (std::fabs(target_.velocity.yaw) < 0.3)
+  if (std::fabs(target_.velocity.yaw) < 1.6)
   {
     selected_idx_ = 0;
-    selected_time_delay_ = time_delay;
     return;
   }
 
@@ -371,7 +367,7 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
       std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
   const double s_0 = armor0.x * armor0.x + armor0.y * armor0.y;
 
-  const double t1 = time_delay;  // + turn_s_;
+  const double t1 = time_delay + 0.01 * std::fabs(target_.velocity.yaw);
   const TarPostion center1 = PredictCenter(t1);
   const TarPostion armor1 = PredictArmor(1, center1);
   const double center_yaw_1 = SolveYaw(center1.x, center1.y);
@@ -401,82 +397,12 @@ void TrajectorySolver::LocalSelectArmor(double time_delay)
   if (last_outpost_idx_ == target_.outpost_idx && target_.num == 3)
   {
     selected_idx_ = (selected_idx_ == 1 ? 1 : (choose_next_ ? 1 : 0));
-    selected_time_delay_ = selected_idx_ ? t1 : time_delay;
   }
   else
   {
     selected_idx_ = (choose_next_ ? 1 : 0);
-    selected_time_delay_ = choose_next_ ? t1 : time_delay;
   }
 }
-
-// void TrajectorySolver::LocalSelectArmor(double time_delay)
-// {
-//   if (std::fabs(target_.velocity.yaw) < 0.3)
-//   {
-//     selected_idx_ = 0;
-//     selected_time_delay_ = time_delay;
-//     choose_next_ = false;
-//     PredictOneArmorPosition(time_delay, selected_idx_);
-//     return;
-//   }
-
-//   const TarPostion center_curr = PredictCenter(time_delay);
-//   const TarPostion armor_curr0 = PredictArmor(0, center_curr);
-//   const TarPostion armor_curr1 = PredictArmor(1, center_curr);
-//   const double center_yaw_curr = SolveYaw(pre_center_.x, pre_center_.y);
-//   const double armor_yaw_curr0 = SolveYaw(armor_curr0.x, armor_curr0.y);
-//   const double armor_yaw_curr1 = SolveYaw(armor_curr1.x, armor_curr1.y);
-
-//   const double yaw_turn_delta = std::fabs(AngleDiff(armor_yaw_curr1, armor_yaw_curr0));
-//   const double turn_time =
-// yaw_turn_delta / (std::fabs(gimbal_yaw_speed_ + target_.velocity.yaw));
-
-//   const TarPostion center_next = PredictCenter(time_delay + turn_time);
-//   const TarPostion armor_next_0 = PredictArmor(0, center_next);
-//   const TarPostion armor_next_1 = PredictArmor(1, center_next);
-//   const double center_yaw_next = SolveYaw(center_next.x, center_next.y);
-//   const double armor_yaw_next0 = SolveYaw(armor_next_0.x, armor_next_0.y);
-//   const double armor_yaw_next1 = SolveYaw(armor_next_1.x, armor_next_1.y);
-
-//   const double s_0 = armor_next_0.x * armor_next_0.x + armor_next_0.y * armor_next_0.y;
-//   const double s_1 = armor_next_1.x * armor_next_1.x + armor_next_1.y * armor_next_1.y;
-
-//   choose_next_ = (armor_yaw_next1 <= armor_yaw_next0) && (s_1 <= s_0);
-
-//   selected_idx_ = choose_next_ ? 1 : 0;
-//   selected_time_delay_ = choose_next_ ? time_delay + turn_time : time_delay;
-//   PredictOneArmorPosition(selected_time_delay_, selected_idx_);
-// }
-
-// // 在一个合理的时间窗口内用二分法/牛顿法求 f(t)=0
-// double TrajectorySolver::FindSwitchTime(double t_lo, double t_hi, double tol = 1e-4)
-// {
-//   auto f = [&](double t) -> double {
-//     const auto c0 = PredictCenter(t);
-//     const auto a0 = PredictArmor(0, c0);
-//     double cy0 = SolveYaw(c0.x, c0.y);
-//     double err0 = std::fabs(AngleDiff(SolveYaw(a0.x, a0.y), cy0));
-
-//     const auto c1 = PredictCenter(t + turn_s_);
-//     const auto a1 = PredictArmor(1, c1);
-//     double cy1 = SolveYaw(c1.x, c1.y);
-//     double err1 = std::fabs(AngleDiff(SolveYaw(a1.x, a1.y), cy1));
-
-//     return err1 - err0;  // < 0 时 choose_next_ 为 true
-//   };
-
-//   // 二分法
-//   double lo = t_lo, hi = t_hi;
-//   while (hi - lo > tol) {
-//     double mid = (lo + hi) / 2.0;
-//     if (f(mid) > 0.0)
-//       lo = mid;
-//     else
-//       hi = mid;
-//   }
-//   return (lo + hi) / 2.0;
-// }
 
 void TrajectorySolver::PreSelectArmor(double time_delay)
 {
@@ -624,7 +550,7 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     const double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) < 0.04 &&
+    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) < 0.03 &&
               !choose_next_;  // CanFire(gimbal_yaw_, pitch, false);
     if (is_fire)
     {

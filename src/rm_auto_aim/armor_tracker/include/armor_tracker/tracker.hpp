@@ -148,7 +148,7 @@ class Tracker  // 整车观测
   int change_count_ = 0;
   int lag_diff_count_ = 0;
   int jump_cooldown_ = 0;
-  static constexpr int JUMP_COOLDOWN_FRAMES = 10;  // 冷却帧数，可调
+  static constexpr int JUMP_COOLDOWN_FRAMES = 3;  // 冷却帧数，可调
   double last_yaw_ = 0.0;
   int update_count_ = 0;
   double last_v_yaw_ = 0.0;
