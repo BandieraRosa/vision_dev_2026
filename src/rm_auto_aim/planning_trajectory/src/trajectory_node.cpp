@@ -20,11 +20,11 @@ void PlanningTrajectoryNode::TargetCallback(
 {
   // std::lock_guard<std::mutex> lk(target_mutex_);
 
-  if (target_msg->is_switchtable && !last_switchtable_)
-  {
-    trajectory_->SwitchTable();
-  }
-  last_switchtable_ = target_msg->is_switchtable;
+  // if (target_msg->is_switchtable && !last_switchtable_)
+  // {
+  //   trajectory_->SwitchTable();
+  // }
+  // last_switchtable_ = target_msg->is_switchtable;
   send_time_ = 0;
   tracking_ = target_msg->tracking;
 
@@ -46,6 +46,7 @@ void PlanningTrajectoryNode::TargetCallback(
   target_.radius2 = target_msg->radius_2;
 
   target_.number = target_msg->num;
+  target_.is_center = target_msg->is_center;
 
   if (!tracking_)
   {
@@ -131,7 +132,6 @@ void PlanningTrajectoryNode::TargetCallback(
 
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  RCLCPP_DEBUG(this->get_logger(), "Trajectory time: %ld us", duration.count());
 }
 
 void PlanningTrajectoryNode::PublishStopCommand()
@@ -218,7 +218,6 @@ void PlanningTrajectoryNode::Init()
       ament_index_cpp::get_package_share_directory("rm_vision_bringup") + "/config/";
   table_filename_normal_ =
       package_prefix + this->declare_parameter("table.filename", "table.bin");
-  ;
   RCLCPP_ERROR(this->get_logger(), "table_filename_normal_: %s",
                table_filename_normal_.c_str());
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");

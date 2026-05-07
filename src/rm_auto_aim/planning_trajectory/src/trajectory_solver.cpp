@@ -451,6 +451,24 @@ void TrajectorySolver::AutoSelectArmor(double time_delay, bool is_pre_select)
   }
 }
 
+// 装甲板 CV 模型分支：上游给的就是装甲板位置/速度
+// 不建模(不从中心反推)、不择板(固定 idx=0)
+void TrajectorySolver::SolveByArmorCV(double time_delay)
+{
+  selected_idx_ = 0;
+  choose_next_ = false;
+  should_last_shot_ = true;
+
+  pre_center_ = {};
+  pre_position_.fill({});
+
+  pre_position_[0].x = target_.position.x + target_.velocity.x * time_delay;
+  pre_position_[0].y = target_.position.y + target_.velocity.y * time_delay;
+  pre_position_[0].z = target_.position.z + target_.velocity.z * time_delay;
+  pre_position_[0].yaw =
+      NormalizeAngle(target_.position.yaw + target_.velocity.yaw * time_delay);
+}
+
 void TrajectorySolver::UpdateFireLogicMode()
 {
   if (choose_next_ && !last_choose_next_)
@@ -585,6 +603,21 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   gimbal_yaw_speed_ = gimbal_yaw_speed;
 
   fire_logic_mode_ = FireLogicMode::COMMON;
+
+  // 上游若标记 is_center=false，说明给的就是装甲板的位置/速度
+  // 直接走 CV 外推分支，跳过整车建模和择板
+  if (!target_.is_center)
+  {
+    double time_delay = fly_time_ + bias_time_ + send_time;
+    SolveByArmorCV(time_delay);
+    // 用第一次外推位置估计 fly_time_
+    SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
+               pre_position_[selected_idx_].z);
+    time_delay = fly_time_ + bias_time_ + send_time;
+    SolveByArmorCV(time_delay);
+    UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
+    return;
+  }
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);

@@ -9,91 +9,55 @@
 
 #include <Eigen/Dense>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/float32.hpp>
-#include <std_msgs/msg/int32.hpp>
+#include <memory>
+#include <string>
 
-#include "auto_aim_interfaces/msg/send.hpp"
+#include "armor_tracker/tracker.hpp"
+#include "armor_tracker/tracker_params.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
-#include "tracker.hpp"
 
 namespace rm_auto_aim
 {
+
 using armors_tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Armors>;
+
 class ArmorTrackerNode : public rclcpp::Node
 {
  public:
   explicit ArmorTrackerNode(const rclcpp::NodeOptions& options);
 
  private:
-  void InitParameters();
+  // 读取所有参数到 TrackerParams 结构体
+  TrackerParams DeclareTrackerParams();
 
-  void ArmorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr& armors_ptr);
+  // 订阅回调
+  void ArmorsCallback(auto_aim_interfaces::msg::Armors::SharedPtr armors_ptr);
 
-  Eigen::Matrix3d BuildJacobianYpdToCameraXyz(const Eigen::Vector3d& p_cam);
+  // -------------------- 配置 --------------------
+  double max_armor_distance_ = 10.0;
+  bool is_hero_ = false;
+  std::string target_frame_ = "odom";
+  std::string last_camera_frame_id_ = "camera_optical_frame";
 
-  // Maximum allowable armor distance in the XOY plane
-  double max_armor_distance_;
-
-  // The time when the last message was received
+  // 时间相关（用于把 lost/change 的秒数换算成帧数）
   rclcpp::Time last_time_;
-  double dt_;
+  double dt_ = 0.01;
+  double lost_time_thres_ = 0.3;
+  double change_time_thres_ = 0.3;
 
-  // Armor tracker
-  double s2_q_x_, s2_q_y_, s2_q_z_, s2_q_yaw_, s2_q_r_;
-  double s2_q_x_armor_, s2_q_y_armor_, s2_q_z_armor_, s2_q_yaw_armor_, s2_q_r_armor_;
-  double s2qxyz_outpost_, s2qyaw_outpost_, s2qr_outpost_;
-  double r_xyz_factor_, r_yaw_;
-
-  double r_xyz_base_;
-  double r_xyz_dist_gain_;
-  double r_xyz_oblique_gain_;
-
-  double r_z_scale_;
-
-  double r_yaw_base_;
-  double r_yaw_dist_gain_;
-  double r_yaw_oblique_gain_;
-  double r_yaw_outpost_scale_;
-
-  double q_boost_xy_;
-  double q_boost_z_;
-  double q_boost_yaw_;
-
-  int q_radius_stable_update_count_;
-  int q_radius_locked_update_count_;
-  double q_radius_stable_scale_;
-  double q_radius_locked_scale_;
-
-  double lost_time_thres_;
-  double change_time_thres_;
+  // -------------------- 核心 --------------------
   std::unique_ptr<Tracker> tracker_;
 
-  // Subscriber with tf2 message_filter
-  std::string target_frame_;
+  // -------------------- TF / 订阅 --------------------
   std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
   message_filters::Subscriber<auto_aim_interfaces::msg::Armors> armors_sub_;
   std::shared_ptr<armors_tf2_filter> armors_filter_;
 
-  // Tracker info publisher
-  rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
-
-  // Publisher
+  // -------------------- 发布 --------------------
   rclcpp::Publisher<auto_aim_interfaces::msg::Target>::SharedPtr target_pub_;
-
-  // Lob shot
-  bool is_hero_{false};
-  std::string last_camera_frame_id_ = "camera_optical_frame";
-
-  // ypd R
-  double r_ypd_yaw_std_;
-  double r_ypd_pitch_std_;
-  double r_ypd_distance_std_scale_;
-  double r_armor_yaw_std_;
-  Eigen::Matrix3d camera_to_world_rot_ = Eigen::Matrix3d::Identity();
-  Eigen::Vector3d camera_origin_world_ = Eigen::Vector3d::Zero();
+  rclcpp::Publisher<auto_aim_interfaces::msg::TrackerInfo>::SharedPtr info_pub_;
 };
 
 }  // namespace rm_auto_aim

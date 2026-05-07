@@ -13,3 +13,4 @@ float64 radius_2
 float64 dz
 bool is_switchtable
 int8 state
+bool is_center

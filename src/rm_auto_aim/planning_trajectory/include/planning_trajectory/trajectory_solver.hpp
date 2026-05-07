@@ -75,6 +75,8 @@ class TrajectorySolver
     double radius2{0.0};
     int outpost_idx{0};
     int number{0};
+    // 上游 tracker 输出的是车辆中心 (true) 还是装甲板本身 (false)
+    bool is_center{true};
   };
 
   struct control
@@ -112,6 +114,9 @@ class TrajectorySolver
   void LocalSelectArmor(double time_delay);
   void PreSelectArmor(double time_delay);
   void AutoSelectArmor(double time_delay, bool is_pre_select = false);
+
+  // 装甲板 CV 模型分支：上游已经给装甲板位置和速度，不再建模、不再择板
+  void SolveByArmorCV(double time_delay);
 
   void UpdateFireLogicMode();
   void UpdateSolveState(double& pitch, double& yaw, bool& is_fire, double& aim_x,
