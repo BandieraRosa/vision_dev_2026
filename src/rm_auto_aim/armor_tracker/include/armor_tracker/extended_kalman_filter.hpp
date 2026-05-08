@@ -2,6 +2,7 @@
 #define ARMOR_PROCESSOR__KALMAN_FILTER_HPP_
 
 #include <Eigen/Dense>
+#include <cmath>
 #include <deque>
 #include <functional>
 
@@ -24,7 +25,7 @@ class ExtendedKalmanFilter
 
   // Set the initial state
   void SetState(const Eigen::VectorXd& x0);
-  void SetState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);  // ← 新增
+  void SetState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);
 
   // Get the estimated state
   Eigen::VectorXd GetState();
@@ -32,18 +33,23 @@ class ExtendedKalmanFilter
   // Compute a predicted state
   Eigen::MatrixXd Predict();
 
-  // Update the estimated state based on measurement
+  // Update the estimated state based on measurement by IEKF
   Eigen::MatrixXd Update(const Eigen::VectorXd& z);
 
   // 新增：给 MatchArmor 用
   Eigen::VectorXd ComputeInnovation(const Eigen::VectorXd& z) const;
+  Eigen::VectorXd ComputeInnovation(const Eigen::VectorXd& z,
+                                    const Eigen::VectorXd& x) const;
   double ComputeNIS(const Eigen::VectorXd& z) const;
 
   // Get the health rate
   double GetHealthRate();
 
  private:
+  static constexpr int K_IEKF_ITERATIONS = 5;
+
   static double NormalizeAngle(double a) { return std::remainder(a, 2.0 * M_PI); }
+
   // Process nonlinear vector function
   VecVecFunc f;
   // Observation nonlinear vector function

@@ -3,13 +3,13 @@
 namespace rm_auto_aim
 {
 /*
-f:过程函数
-h:观测函数
-j_f:过程函数的雅可比矩阵
-j_h:测量函数的雅可比矩阵
-u_q:过程噪声协方差矩阵
-u_r:测量噪声协方差矩阵
-P0:初始状态协方差矩阵
+f: 过程函数
+h: 观测函数
+j_f: 过程函数的雅可比矩阵
+j_h: 测量函数的雅可比矩阵
+u_q: 过程噪声协方差矩阵
+u_r: 测量噪声协方差矩阵
+P0: 初始状态协方差矩阵
 */
 ExtendedKalmanFilter::ExtendedKalmanFilter(const VecVecFunc& f, const VecVecFunc& h,
                                            const VecMatFunc& j_f, const VecMatFunc& j_h,
@@ -39,7 +39,8 @@ void ExtendedKalmanFilter::SetState(const Eigen::VectorXd& x0, const Eigen::Matr
 
 Eigen::MatrixXd ExtendedKalmanFilter::Predict()
 {
-  F = jacobian_f(x_post), Q = update_Q();
+  F = jacobian_f(x_post);
+  Q = update_Q();
 
   x_pri = f(x_post);
   P_pri = F * P_post * F.transpose() + Q;
@@ -53,7 +54,13 @@ Eigen::MatrixXd ExtendedKalmanFilter::Predict()
 
 Eigen::VectorXd ExtendedKalmanFilter::ComputeInnovation(const Eigen::VectorXd& z) const
 {
-  Eigen::VectorXd innovation = z - h(x_pri);
+  return ComputeInnovation(z, x_pri);
+}
+
+Eigen::VectorXd ExtendedKalmanFilter::ComputeInnovation(const Eigen::VectorXd& z,
+                                                        const Eigen::VectorXd& x) const
+{
+  Eigen::VectorXd innovation = z - h(x);
   if (innovation.size() > 3)
   {
     innovation(3) = NormalizeAngle(innovation(3));
@@ -68,24 +75,46 @@ double ExtendedKalmanFilter::ComputeNIS(const Eigen::VectorXd& z) const
   const Eigen::VectorXd innovation = ComputeInnovation(z);
   const Eigen::MatrixXd S = H_local * P_pri * H_local.transpose() + R_local;
 
-  return innovation.transpose() * S.ldlt().solve(innovation);
+  return innovation.dot(S.ldlt().solve(innovation));
 }
 
 Eigen::MatrixXd ExtendedKalmanFilter::Update(const Eigen::VectorXd& z)
 {
-  H = jacobian_h(x_pri), R = update_R(x_pri);
+  const double nis = ComputeNIS(z);
 
-  K = P_pri * H.transpose() *
-      (H * P_pri * H.transpose() + R).inverse();  // inverse计算逆矩阵
+  Eigen::VectorXd x_iter = x_pri;
 
-  const Eigen::VectorXd innovation = ComputeInnovation(z);
-  x_post = x_pri + K * innovation;
-  //  P_post = (I - K * H) * P_pri;
+  for (int i = 0; i < K_IEKF_ITERATIONS; ++i)
+  {
+    H = jacobian_h(x_iter);
+    R = update_R(x_iter);
+
+    const Eigen::MatrixXd S = H * P_pri * H.transpose() + R;
+    const Eigen::MatrixXd S_inv =
+        S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.rows()));
+    K = P_pri * H.transpose() * S_inv;
+
+    Eigen::VectorXd innovation = ComputeInnovation(z, x_iter) + H * (x_iter - x_pri);
+    if (innovation.size() > 3)
+    {
+      innovation(3) = NormalizeAngle(innovation(3));
+    }
+
+    x_iter = x_pri + K * innovation;
+  }
+
+  x_post = x_iter;
+
+  H = jacobian_h(x_post);
+  R = update_R(x_post);
+  const Eigen::MatrixXd S = H * P_pri * H.transpose() + R;
+  const Eigen::MatrixXd S_inv =
+      S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.rows()));
+  K = P_pri * H.transpose() * S_inv;
+
   const Eigen::MatrixXd I_KH = I - K * H;
   P_post = I_KH * P_pri * I_KH.transpose() + K * R * K.transpose();
 
-  Eigen::MatrixXd s = H * P_pri * H.transpose() + R;
-  double nis = innovation.transpose() * s.inverse() * innovation;
   nis_window_.push_back(nis);
   if (nis_window_.size() > 100)
   {
