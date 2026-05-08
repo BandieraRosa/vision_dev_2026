@@ -77,6 +77,7 @@ class MindVisionCameraNode : public rclcpp::Node
   void SetAnalogGain(double value);
   bool CheckStatus(CameraSdkStatus status, const std::string& action, bool fatal = false);
   int SelectDeviceIndex(const tSdkCameraDevInfo* device_list, int device_count) const;
+  bool IsTriggerModeSupported(int mode) const;
   static uint8_t ClampUInt8(int value, uint8_t fallback, const rclcpp::Logger& logger,
                             const std::string& name);
 

@@ -414,6 +414,26 @@ int MindVisionCameraNode::SelectDeviceIndex(const tSdkCameraDevInfo* device_list
   return static_cast<int>(current_device_index_);
 }
 
+bool MindVisionCameraNode::IsTriggerModeSupported(int mode) const
+{
+  if (capability_.iTriggerDesc <= 0 || capability_.pTriggerDesc == nullptr)
+  {
+    RCLCPP_WARN(
+        this->get_logger(),
+        "Camera capability has no trigger-mode list; skip trigger-mode precheck.");
+    return true;
+  }
+
+  for (int i = 0; i < capability_.iTriggerDesc; ++i)
+  {
+    if (capability_.pTriggerDesc[i].iIndex == mode)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
 void MindVisionCameraNode::CaptureInit()
 {
   if (!running_.load())
@@ -483,7 +503,17 @@ void MindVisionCameraNode::CaptureInit()
     image_msg_.width = static_cast<uint32_t>(max_width);
   }
 
-  ret = CameraSetTriggerMode(handle_, params_.autocap ? CONTINUATION : EXTERNAL_TRIGGER);
+  int trigger_mode = params_.autocap ? CONTINUATION : EXTERNAL_TRIGGER;
+  if (!IsTriggerModeSupported(trigger_mode))
+  {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Requested trigger mode %d is not supported by this camera.",
+                 trigger_mode);
+    CaptureStop();
+    return;
+  }
+
+  ret = CameraSetTriggerMode(handle_, trigger_mode);
   if (!CheckStatus(ret,
                    params_.autocap ? "CameraSetTriggerMode(CONTINUATION)"
                                    : "CameraSetTriggerMode(EXTERNAL_TRIGGER)",
@@ -529,15 +559,12 @@ void MindVisionCameraNode::CaptureInit()
   if (params_.frame_rate_enable)
   {
     int fps = static_cast<int>(std::round(params_.frame_rate));
-    if (fps > 0)
+    if (fps <= 0)
     {
-      CheckStatus(CameraSetFrameRate(handle_, fps), "CameraSetFrameRate", false);
+      RCLCPP_INFO(this->get_logger(),
+                  "frame_rate <= 0 requested; SDK interprets this as maximum rate.");
     }
-    else
-    {
-      RCLCPP_WARN(this->get_logger(),
-                  "frame_rate must be > 0 when frame_rate_enable is true.");
-    }
+    CheckStatus(CameraSetFrameRate(handle_, fps), "CameraSetFrameRate", false);
   }
 
   ret = CameraPlay(handle_);
@@ -662,11 +689,46 @@ void MindVisionCameraNode::SetExposureTime(double value_us)
     return;
   }
 
+  double min_us = 0.0;
+  double max_us = 0.0;
+  double step_us = 0.0;
+  CameraSdkStatus range_ret =
+      CameraGetExposureTimeRange(handle_, &min_us, &max_us, &step_us);
+  if (range_ret == CAMERA_STATUS_SUCCESS && max_us >= min_us)
+  {
+    double clamped_value = std::max(min_us, std::min(max_us, value_us));
+    if (std::fabs(clamped_value - value_us) > 1e-6)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "exposure_time %.3f us is out of camera range [%.3f, %.3f] us. "
+                  "Use %.3f us instead.",
+                  value_us, min_us, max_us, clamped_value);
+    }
+    value_us = clamped_value;
+  }
+  else
+  {
+    CheckStatus(range_ret, "CameraGetExposureTimeRange", false);
+  }
+
   CameraSdkStatus ret = CameraSetExposureTime(handle_, value_us);
   if (ret != CAMERA_STATUS_SUCCESS)
   {
     RCLCPP_ERROR(this->get_logger(), "CameraSetExposureTime(%f us) failed: %d", value_us,
                  ret);
+    return;
+  }
+
+  double actual_us = 0.0;
+  CameraSdkStatus get_ret = CameraGetExposureTime(handle_, &actual_us);
+  if (get_ret == CAMERA_STATUS_SUCCESS)
+  {
+    RCLCPP_INFO(this->get_logger(), "Exposure time requested %.3f us, actual %.3f us.",
+                value_us, actual_us);
+  }
+  else
+  {
+    CheckStatus(get_ret, "CameraGetExposureTime", false);
   }
 }
 
@@ -679,10 +741,17 @@ void MindVisionCameraNode::SetAnalogGain(double value)
 
   int min_gain = static_cast<int>(capability_.sExposeDesc.uiAnalogGainMin);
   int max_gain = static_cast<int>(capability_.sExposeDesc.uiAnalogGainMax);
-  int gain = static_cast<int>(std::round(value));
+  int requested_gain = static_cast<int>(std::round(value));
+  int gain = requested_gain;
   if (max_gain >= min_gain)
   {
     gain = std::max(min_gain, std::min(max_gain, gain));
+    if (gain != requested_gain)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "gain %.3f is out of camera range [%d, %d]. Use %d instead.", value,
+                  min_gain, max_gain, gain);
+    }
   }
 
   CameraSdkStatus ret = CameraSetAnalogGain(handle_, gain);
