@@ -51,7 +51,7 @@ sys.path.append(
 #         output="both",
 #         emulate_tty=True,
 #         parameters=[
-#             {"thread_num": 16},
+#             {"thread_num": os.cpu_count()},
 #         ],
 #         ros_arguments=[
 #             "--ros-args",
@@ -129,7 +129,7 @@ def _build_after_checkout(context, *args, **kwargs):
         output="both",
         emulate_tty=True,
         parameters=[
-            {"thread_num": 16},
+            {"thread_num": os.cpu_count() - 2},
         ],
         ros_arguments=[
             "--ros-args",
