@@ -190,17 +190,17 @@ void ArmorDetectorNode::ImageCallback(
         // RCLCPP_WARN(this->get_logger(), "Armor view: %.2f rad, %.2f deg", yaw,
         // yaw_deg);
 
-        double view_yaw_deg = compute_view_yaw_deg(rvec, tvec);
-        if (view_yaw_deg > 55.0)
-        {
-          RCLCPP_WARN(this->get_logger(), "Drop armor by yaw gate: %.2f deg > %.2f deg",
-                      view_yaw_deg, 55.0);
-          continue;
-        }
-        else
-        {
-          RCLCPP_WARN(this->get_logger(), "View yaw: %.2f deg", view_yaw_deg);
-        }
+        // double view_yaw_deg = compute_view_yaw_deg(rvec, tvec);
+        // if (view_yaw_deg > 55.0)
+        // {
+        //   RCLCPP_WARN(this->get_logger(), "Drop armor by yaw gate: %.2f deg > %.2f deg",
+        //               view_yaw_deg, 55.0);
+        //   continue;
+        // }
+        // else
+        // {
+        //   RCLCPP_WARN(this->get_logger(), "View yaw: %.2f deg", view_yaw_deg);
+        // }
 
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];

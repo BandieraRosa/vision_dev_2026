@@ -16,7 +16,7 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   timestamp_offset_ = this->declare_parameter<double>("timestamp_offset", 0);
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
   is_hero_ = (robot_type == "hero");
-  is_send_vel_ = this->declare_parameter<bool>("send_velocity", false);
+  is_send_vel_ = this->declare_parameter<bool>("send_velocity", true);
   std::cout << "Serial timestamp_offset: " << timestamp_offset_ << '\n';
 
   uart_client_ = std::make_unique<LibXR::LinuxUART>(

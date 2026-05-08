@@ -6,14 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while true
 do
-    ps -ef | grep "component_container" | grep -v "grep" > /dev/null
+    ps -ef | grep "container" | grep -v "grep" > /dev/null
     
     if [ $? -ne 0 ]
     then
         echo "[$(date '+%H:%M:%S')] tracker未运行，清理旧进程..."
         
         # 清理冲突进程
-        for proc in robot_state_publisher rm_serial_driver_node armor_tracker_node component_container; do
+        for proc in robot_state_publisher rm_serial_driver_node armor_tracker_node component_container trajectory_container vision_container; do
             if pgrep -f "$proc" > /dev/null; then
                 echo "  杀死 $proc"
                 pkill -f "$proc"

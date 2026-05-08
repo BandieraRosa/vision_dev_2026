@@ -18,13 +18,13 @@ PlanningTrajectoryNode::PlanningTrajectoryNode(const rclcpp::NodeOptions& option
 void PlanningTrajectoryNode::TargetCallback(
     const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
 {
-  // std::lock_guard<std::mutex> lk(target_mutex_);
+  std::lock_guard<std::mutex> lk(target_mutex_);
 
-  // if (target_msg->is_switchtable && !last_switchtable_)
-  // {
-  //   trajectory_->SwitchTable();
-  // }
-  // last_switchtable_ = target_msg->is_switchtable;
+  if (target_msg->is_switchtable && !last_switchtable_)
+  {
+    trajectory_->SwitchTable();
+  }
+  last_switchtable_ = target_msg->is_switchtable;
   send_time_ = 0;
   tracking_ = target_msg->tracking;
 
@@ -52,17 +52,31 @@ void PlanningTrajectoryNode::TargetCallback(
   {
     trajectory_->Reset();
   }
+}
 
+void PlanningTrajectoryNode::PublishStopCommand()
+{
+  auto_aim_interfaces::msg::Send send_msg;
+  send_msg.is_fire = false;
+  send_msg.pitch = 0.0;
+  send_msg.yaw = 0.0;
+  send_msg.vel_yaw = 0.0;
+  send_msg.acc_yaw = 0.0;
+  send_pub_->publish(send_msg);
+}
+
+void PlanningTrajectoryNode::timer_callback()
+{
   auto start = std::chrono::high_resolution_clock::now();
 
   // 先把需要的状态在锁内拷贝出来，尽快释放锁
   bool tracking_local;
   TrajectorySolver::Target target_local;
-  // {
-  //   std::lock_guard<std::mutex> lk(target_mutex_);
-  tracking_local = tracking_;
-  target_local = target_;
-  // }
+  {
+    std::lock_guard<std::mutex> lk(target_mutex_);
+    tracking_local = tracking_;
+    target_local = target_;
+  }
 
   if (!tracking_local)
   {
@@ -93,7 +107,7 @@ void PlanningTrajectoryNode::TargetCallback(
 
   // 调用 solver 也要加锁，因为 trajectory_ 内部状态会被 Reset() / SwitchTable() 修改
 
-  // std::lock_guard<std::mutex> lk(target_mutex_);
+  std::lock_guard<std::mutex> lk(target_mutex_);
   trajectory_->solver().AutoSolveTrajectory(cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y,
                                             aim_z, idx, target_local, gimbal_yaw,
                                             gimbal_pitch, send_time_, gimbal_yaw_speed_);
@@ -101,21 +115,21 @@ void PlanningTrajectoryNode::TargetCallback(
   double bc_pitch = cmd.pitch;
   {
     send_time_ += dt_;
-    trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
+    // trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
   }
 
   gimbal_yaw_speed_ = cmd.vel_yaw;
   // publish 放在锁外，避免阻塞 sub 线程
   auto_aim_interfaces::msg::Send send_msg;
-  if (send_time_ >= 2 * dt_)
-  {
-    cmd.is_fire = false;
-  }
+  // if (send_time_ >= 2 * dt_)
+  // {
+  //   cmd.is_fire = false;
+  // }
   send_msg.is_fire = cmd.is_fire;
   send_msg.pitch = bc_pitch;
   send_msg.yaw = bc_yaw;
-  send_msg.vel_yaw = cmd.vel_yaw;
-  send_msg.acc_yaw = cmd.acc_yaw;
+  send_msg.vel_yaw =0;// cmd.vel_yaw;
+  send_msg.acc_yaw = 0;//cmd.acc_yaw;
   send_msg.num = target_local.number;
   send_pub_->publish(send_msg);
 
@@ -133,19 +147,6 @@ void PlanningTrajectoryNode::TargetCallback(
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 }
-
-void PlanningTrajectoryNode::PublishStopCommand()
-{
-  auto_aim_interfaces::msg::Send send_msg;
-  send_msg.is_fire = false;
-  send_msg.pitch = 0.0;
-  send_msg.yaw = 0.0;
-  send_msg.vel_yaw = 0.0;
-  send_msg.acc_yaw = 0.0;
-  send_pub_->publish(send_msg);
-}
-
-void PlanningTrajectoryNode::timer_callback() {}
 
 std::pair<double, double> PlanningTrajectoryNode::GetGimbalYawAndPitch()
 {
@@ -245,13 +246,12 @@ void PlanningTrajectoryNode::Init()
   {
     table_config_lob_ = table_config_;
   }
-  // ====== 新增：创建两个互斥型 callback group ======
+
   timer_cb_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   sub_cb_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-  // ====== 订阅：放进 sub_cb_group_ ======
   rclcpp::SubscriptionOptions sub_options;
   sub_options.callback_group = sub_cb_group_;
 
@@ -259,23 +259,31 @@ void PlanningTrajectoryNode::Init()
       "/current_velocity",
       rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)),
       [this](const auto_aim_interfaces::msg::Velocity::SharedPtr velocity_msg)
-      { trajectory_->InitVelocity(velocity_msg); }, sub_options);
+      { trajectory_->InitVelocity(velocity_msg); },
+      sub_options);
+
+  auto target_qos = rclcpp::QoS(1);
+  target_qos.best_effort();
+  target_qos.durability_volatile();
 
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
-      "/tracker/target", rclcpp::SensorDataQoS(),
+      "/tracker/target", target_qos,
       [this](const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
-      { TargetCallback(target_msg); }, sub_options);
+      { TargetCallback(target_msg); },
+      sub_options);
 
-  // ====== 发布器（无 group 概念，发布是同步调用） ======
   send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
       "/trajectory/send", rclcpp::SensorDataQoS());
   info_pub_ = this->create_publisher<auto_aim_interfaces::msg::TrajectoryInfo>(
       "/trajectory/info", rclcpp::SensorDataQoS());
 
-  // ====== Timer：放进 timer_cb_group_ ======
+  const auto timer_period =
+      std::chrono::nanoseconds(static_cast<int64_t>(1e9 / send_frequency_));
+
   timer_ = this->create_wall_timer(
-      std::chrono::duration<double, std::milli>(1000.0 / send_frequency_),
-      std::bind(&PlanningTrajectoryNode::timer_callback, this), timer_cb_group_);
+      timer_period, std::bind(&PlanningTrajectoryNode::timer_callback, this),
+      timer_cb_group_);
+
   q_yaw_ = this->declare_parameter("ekf.q_yaw", 0.0);
   q_pitch_ = this->declare_parameter("ekf.q_pitch", 0.0);
   q_jerk_ = this->declare_parameter("ekf.q_jerk", 0.0);

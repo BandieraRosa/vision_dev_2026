@@ -12,12 +12,12 @@
 #include <vector>
 
 // 表参数配置
-constexpr double MIN_PITCH = -0.226893;  // 最小pitch限位 (rad)
-constexpr double MAX_PITCH = 0.785398;   // 最大pitch限位 (rad)
+constexpr double MIN_PITCH = -0.726893;  // 最小pitch限位 (rad)
+constexpr double MAX_PITCH = 0.885398;   // 最大pitch限位 (rad)
 constexpr double MAX_X = 22.0;           // 最大水平距离 (m)
-constexpr double MIN_X = 0.0;            // 最小水平距离 (m)
+constexpr double MIN_X = -5.0;            // 最小水平距离 (m)
 constexpr double MAX_Y = 3.0;            // 最大高度 (m)
-constexpr double MIN_Y = -1.0;           // 最小高度 (m)
+constexpr double MIN_Y = -4.0;           // 最小高度 (m)
 constexpr double RESOLUTION = 0.01;      // 精度 (m)
 constexpr double MAX_ERROR = 0.01;       // 允许误差 (m)
 constexpr int ERROR_LEVEL = 10;          // 误差等级
@@ -25,8 +25,8 @@ constexpr double GUN = 0.15;             // 枪口到pitch轴电机的距离 (m)
 
 constexpr double G = 9.7985;     // 重力加速度 (m/s^2)
 constexpr double STEP = 0.0001;  // RK4步长 (s)
-static double v0 = 11.7;         // 默认弹速
-static bool bullet_type = 0;     // 默认42mm (英雄)
+static double v0 = 22.7;         // 默认弹速
+static bool bullet_type = 1;     // 默认42mm (英雄)
 
 // 弹丸状态
 struct State

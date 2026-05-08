@@ -21,6 +21,83 @@ sys.path.append(
 )
 
 
+# def _build_after_checkout(context, *args, **kwargs):
+#     from common import (
+#         launch_params,
+#         robot_state_publisher,
+#         get_camera_component,
+#         get_detector_component,
+#         get_tracker_component,
+#         get_trajectory_component,
+#         get_serial_component,
+#         get_marker_component,
+#     )
+
+#     robot_type = LaunchConfiguration("robot").perform(context)
+
+#     vision_container = ComposableNodeContainer(
+#         name="vision_container",
+#         namespace="",
+#         package="rclcpp_components",
+#         executable="component_container_mt",
+#         composable_node_descriptions=[
+#             get_camera_component(robot_type),
+#             get_detector_component(robot_type),
+#             get_tracker_component(robot_type),
+#             get_trajectory_component(robot_type),
+#             get_serial_component(robot_type),
+#             get_marker_component(robot_type),
+#         ],
+#         output="both",
+#         emulate_tty=True,
+#         parameters=[
+#             {"thread_num": 16},
+#         ],
+#         ros_arguments=[
+#             "--ros-args",
+#             "--log-level",
+#             "armor_detector:=" + launch_params["detector_log_level"],
+#             "--log-level",
+#             "armor_tracker:=" + launch_params["tracker_log_level"],
+#             "--log-level",
+#             "planning_trajectory:=" + launch_params.get("trajectory_log_level", "INFO"),
+#             "--log-level",
+#             "serial_driver:=" + launch_params["serial_log_level"],
+#         ],
+#         on_exit=Shutdown(),
+#     )
+
+#     # vision_container = ComposableNodeContainer(
+#     #     name="vision_container",
+#     #     namespace="",
+#     #     package="rclcpp_components",
+#     #     executable="component_container",
+#     #     composable_node_descriptions=[
+#     #         get_camera_component(robot_type),
+#     #         get_detector_component(robot_type),
+#     #         get_tracker_component(robot_type),
+#     #         get_marker_component(robot_type),
+#     #     ],
+#     # )
+
+#     # control_container = ComposableNodeContainer(
+#     #     name="control_container",
+#     #     namespace="",
+#     #     package="rclcpp_components",
+#     #     executable="component_container_mt",
+#     #     composable_node_descriptions=[
+#     #         get_trajectory_component(robot_type),
+#     #         get_serial_component(robot_type),
+#     #     ],
+#     # )
+
+#     return [
+#         robot_state_publisher,
+#         vision_container,
+#         # control_container,
+#     ]
+
+# 针对轮腿nuc上的特殊优化，将视觉节点和控制节点分别放到不同的CPU上
 def _build_after_checkout(context, *args, **kwargs):
     from common import (
         launch_params,
@@ -35,16 +112,17 @@ def _build_after_checkout(context, *args, **kwargs):
 
     robot_type = LaunchConfiguration("robot").perform(context)
 
+    # 普通视觉节点：CPU4-6
     vision_container = ComposableNodeContainer(
         name="vision_container",
         namespace="",
         package="rclcpp_components",
         executable="component_container_mt",
+        prefix="taskset -c 4-6",
         composable_node_descriptions=[
             get_camera_component(robot_type),
             get_detector_component(robot_type),
             get_tracker_component(robot_type),
-            get_trajectory_component(robot_type),
             get_serial_component(robot_type),
             get_marker_component(robot_type),
         ],
@@ -60,43 +138,39 @@ def _build_after_checkout(context, *args, **kwargs):
             "--log-level",
             "armor_tracker:=" + launch_params["tracker_log_level"],
             "--log-level",
-            "planning_trajectory:=" + launch_params.get("trajectory_log_level", "INFO"),
-            "--log-level",
             "serial_driver:=" + launch_params["serial_log_level"],
         ],
         on_exit=Shutdown(),
     )
 
-    # vision_container = ComposableNodeContainer(
-    #     name="vision_container",
-    #     namespace="",
-    #     package="rclcpp_components",
-    #     executable="component_container",
-    #     composable_node_descriptions=[
-    #         get_camera_component(robot_type),
-    #         get_detector_component(robot_type),
-    #         get_tracker_component(robot_type),
-    #         get_marker_component(robot_type),
-    #     ],
-    # )
-
-    # control_container = ComposableNodeContainer(
-    #     name="control_container",
-    #     namespace="",
-    #     package="rclcpp_components",
-    #     executable="component_container_mt",
-    #     composable_node_descriptions=[
-    #         get_trajectory_component(robot_type),
-    #         get_serial_component(robot_type),
-    #     ],
-    # )
+    # trajectory 单独容器：CPU7 + SCHED_FIFO 80
+    trajectory_container = ComposableNodeContainer(
+        name="trajectory_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        prefix="chrt -f 80 taskset -c 7",
+        composable_node_descriptions=[
+            get_trajectory_component(robot_type),
+        ],
+        output="both",
+        emulate_tty=True,
+        parameters=[
+            {"thread_num": 2},
+        ],
+        ros_arguments=[
+            "--ros-args",
+            "--log-level",
+            "planning_trajectory:=" + launch_params.get("trajectory_log_level", "INFO"),
+        ],
+        on_exit=Shutdown(),
+    )
 
     return [
         robot_state_publisher,
         vision_container,
-        # control_container,
+        trajectory_container,
     ]
-
 
 def generate_launch_description():
     ws_root = LaunchConfiguration("ws_root")
