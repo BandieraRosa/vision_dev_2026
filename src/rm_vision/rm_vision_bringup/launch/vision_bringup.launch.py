@@ -21,83 +21,33 @@ sys.path.append(
 )
 
 
-# def _build_after_checkout(context, *args, **kwargs):
-#     from common import (
-#         launch_params,
-#         robot_state_publisher,
-#         get_camera_component,
-#         get_detector_component,
-#         get_tracker_component,
-#         get_trajectory_component,
-#         get_serial_component,
-#         get_marker_component,
-#     )
+def _safe_taskset_prefix(cpu_list):
+    """Bind a container only if the requested CPU list is valid on this NUC.
 
-#     robot_type = LaunchConfiguration("robot").perform(context)
+    This avoids launch failures on machines that do not have CPU7 or have not
+    been tuned with CPU isolation. If taskset fails, the process is started
+    normally.
+    """
+    cpu_list = str(cpu_list).strip()
+    if not cpu_list:
+        return None
 
-#     vision_container = ComposableNodeContainer(
-#         name="vision_container",
-#         namespace="",
-#         package="rclcpp_components",
-#         executable="component_container_mt",
-#         composable_node_descriptions=[
-#             get_camera_component(robot_type),
-#             get_detector_component(robot_type),
-#             get_tracker_component(robot_type),
-#             get_trajectory_component(robot_type),
-#             get_serial_component(robot_type),
-#             get_marker_component(robot_type),
-#         ],
-#         output="both",
-#         emulate_tty=True,
-#         parameters=[
-#             {"thread_num": os.cpu_count()},
-#         ],
-#         ros_arguments=[
-#             "--ros-args",
-#             "--log-level",
-#             "armor_detector:=" + launch_params["detector_log_level"],
-#             "--log-level",
-#             "armor_tracker:=" + launch_params["tracker_log_level"],
-#             "--log-level",
-#             "planning_trajectory:=" + launch_params.get("trajectory_log_level", "INFO"),
-#             "--log-level",
-#             "serial_driver:=" + launch_params["serial_log_level"],
-#         ],
-#         on_exit=Shutdown(),
-#     )
+    return (
+        "bash -lc 'CPU_LIST=\"%s\"; "
+        "if command -v taskset >/dev/null 2>&1 && "
+        "taskset -c \"$CPU_LIST\" true >/dev/null 2>&1; then "
+        "exec taskset -c \"$CPU_LIST\" \"$@\"; "
+        "else "
+        "echo \"[launch] skip taskset CPU_LIST=$CPU_LIST: unavailable or invalid on this machine\" >&2; "
+        "exec \"$@\"; "
+        "fi' --"
+    ) % cpu_list
 
-#     # vision_container = ComposableNodeContainer(
-#     #     name="vision_container",
-#     #     namespace="",
-#     #     package="rclcpp_components",
-#     #     executable="component_container",
-#     #     composable_node_descriptions=[
-#     #         get_camera_component(robot_type),
-#     #         get_detector_component(robot_type),
-#     #         get_tracker_component(robot_type),
-#     #         get_marker_component(robot_type),
-#     #     ],
-#     # )
 
-#     # control_container = ComposableNodeContainer(
-#     #     name="control_container",
-#     #     namespace="",
-#     #     package="rclcpp_components",
-#     #     executable="component_container_mt",
-#     #     composable_node_descriptions=[
-#     #         get_trajectory_component(robot_type),
-#     #         get_serial_component(robot_type),
-#     #     ],
-#     # )
-
-#     return [
-#         robot_state_publisher,
-#         vision_container,
-#         # control_container,
-#     ]
-
-# 针对轮腿nuc上的特殊优化，将视觉节点和控制节点分别放到不同的CPU上
+# 针对多台 NUC 的兼容优化：
+# - 若 CPU4-6 / CPU7 存在，则按配置绑核；
+# - 若某台 NUC 核心数不足或未做隔离，自动跳过 taskset，不影响启动；
+# - 不再在 launch 里强制 chrt，SCHED_FIFO 由 planning_trajectory 内部实时线程尝试设置。
 def _build_after_checkout(context, *args, **kwargs):
     from common import (
         launch_params,
@@ -112,13 +62,16 @@ def _build_after_checkout(context, *args, **kwargs):
 
     robot_type = LaunchConfiguration("robot").perform(context)
 
-    # 普通视觉节点：CPU4-6
+    vision_cpu_list = launch_params.get("vision_cpu_list", "4-6")
+    trajectory_cpu_list = launch_params.get("trajectory_cpu_list", "7")
+
+    # 普通视觉节点：优先 CPU4-6；若机器不支持则自动跳过 taskset
     vision_container = ComposableNodeContainer(
         name="vision_container",
         namespace="",
         package="rclcpp_components",
         executable="component_container_mt",
-        prefix="taskset -c 4-6",
+        prefix=_safe_taskset_prefix(vision_cpu_list),
         composable_node_descriptions=[
             get_camera_component(robot_type),
             get_detector_component(robot_type),
@@ -143,13 +96,13 @@ def _build_after_checkout(context, *args, **kwargs):
         on_exit=Shutdown(),
     )
 
-    # trajectory 单独容器：CPU7 + SCHED_FIFO 80
+    # trajectory 单独容器：优先 CPU7；SCHED_FIFO 在节点内部线程里设置
     trajectory_container = ComposableNodeContainer(
         name="trajectory_container",
         namespace="",
         package="rclcpp_components",
         executable="component_container_mt",
-        prefix="chrt -f 80 taskset -c 7",
+        prefix=_safe_taskset_prefix(trajectory_cpu_list),
         composable_node_descriptions=[
             get_trajectory_component(robot_type),
         ],
@@ -171,6 +124,7 @@ def _build_after_checkout(context, *args, **kwargs):
         vision_container,
         trajectory_container,
     ]
+
 
 def generate_launch_description():
     ws_root = LaunchConfiguration("ws_root")

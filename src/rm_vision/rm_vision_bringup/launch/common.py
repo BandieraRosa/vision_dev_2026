@@ -89,11 +89,32 @@ def get_tracker_component(robot_type="default"):
 
 
 def get_trajectory_component(robot_type="default"):
+    trajectory_rt_defaults = {
+        # true: use clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)
+        # false: fallback to rclcpp::Timer
+        "rt.use_rt_thread": launch_params.get("trajectory_use_rt_thread", True),
+
+        # These are safe defaults. On machines without CPU7 or without realtime
+        # permissions, the node logs a warning and continues in degraded mode.
+        "rt.cpu": int(launch_params.get("trajectory_rt_cpu", 7)),
+        "rt.priority": int(launch_params.get("trajectory_rt_priority", 80)),
+        "rt.enable_cpu_affinity": launch_params.get(
+            "trajectory_enable_cpu_affinity", True
+        ),
+        "rt.enable_realtime": launch_params.get("trajectory_enable_realtime", True),
+        "rt.lock_memory": launch_params.get("trajectory_lock_memory", True),
+
+        # 0 disables periodic statistics logs in the RT loop.
+        "rt.statistics_interval": int(
+            launch_params.get("trajectory_rt_statistics_interval", 0)
+        ),
+    }
+
     return ComposableNode(
         package="planning_trajectory",
         plugin="rm_auto_aim::PlanningTrajectoryNode",
         name="planning_trajectory",
-        parameters=[node_params, {"robot_type": robot_type}],
+        parameters=[trajectory_rt_defaults, node_params, {"robot_type": robot_type}],
         extra_arguments=[{"use_intra_process_comms": True}],
     )
 
