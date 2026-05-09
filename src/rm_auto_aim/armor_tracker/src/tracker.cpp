@@ -13,8 +13,7 @@ namespace rm_auto_aim
 // 构造
 // =====================================================================
 Tracker::Tracker(const TrackerParams& params)
-    : params_(params),
-      full_pred_(Eigen::VectorXd::Zero(8))
+    : params_(params), full_pred_(Eigen::VectorXd::Zero(8))
 {
   another_r_ = params_.default_init_radius;
   full_last_r_ = params_.default_init_radius;
@@ -39,16 +38,18 @@ void Tracker::SetCameraPose(const Eigen::Matrix3d& rot_camera_to_world,
 void Tracker::BuildEkfFull()
 {
   // f
-  auto f = [this](const Eigen::VectorXd& x) {
+  auto f = [this](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd x_new = x;
-    x_new(0) += x(1) * dt_;       // xc
-    x_new(2) += x(3) * dt_;       // yc
-    x_new(5) += x(6) * dt_;       // yaw
+    x_new(0) += x(1) * dt_;  // xc
+    x_new(2) += x(3) * dt_;  // yc
+    x_new(5) += x(6) * dt_;  // yaw
     return x_new;
   };
 
   // J_f (8x8)
-  auto j_f = [this](const Eigen::VectorXd&) {
+  auto j_f = [this](const Eigen::VectorXd&)
+  {
     Eigen::MatrixXd m = Eigen::MatrixXd::Identity(8, 8);
     m(0, 1) = dt_;
     m(2, 3) = dt_;
@@ -57,7 +58,8 @@ void Tracker::BuildEkfFull()
   };
 
   // h: 装甲板 = 中心 - r*(cos(yaw),sin(yaw)); za=za; yaw_obs=yaw
-  auto h = [](const Eigen::VectorXd& x) {
+  auto h = [](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd z(4);
     const double xc = x(0), yc = x(2), za = x(4), yaw = x(5), r = x(7);
     z(0) = xc - r * std::cos(yaw);
@@ -68,22 +70,29 @@ void Tracker::BuildEkfFull()
   };
 
   // J_h (4x8)
-  auto j_h = [](const Eigen::VectorXd& x) {
+  auto j_h = [](const Eigen::VectorXd& x)
+  {
     const double yaw = x(5), r = x(7);
     Eigen::MatrixXd m = Eigen::MatrixXd::Zero(4, 8);
     // 列序: xc, vxc, yc, vyc, za, yaw, vyaw, r
-    m(0, 0) = 1;  m(0, 5) = r * std::sin(yaw);  m(0, 7) = -std::cos(yaw);
-    m(1, 2) = 1;  m(1, 5) = -r * std::cos(yaw); m(1, 7) = -std::sin(yaw);
+    m(0, 0) = 1;
+    m(0, 5) = r * std::sin(yaw);
+    m(0, 7) = -std::cos(yaw);
+    m(1, 2) = 1;
+    m(1, 5) = -r * std::cos(yaw);
+    m(1, 7) = -std::sin(yaw);
     m(2, 4) = 1;
     m(3, 5) = 1;
     return m;
   };
 
   // Q (8x8)：xy/yaw 用 CV block；za/r 用随机游走
-  auto u_q = [this]() {
+  auto u_q = [this]()
+  {
     const double t = dt_;
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(8, 8);
-    auto add_cv = [&](int p, int v, double s2) {
+    auto add_cv = [&](int p, int v, double s2)
+    {
       const double a = std::pow(t, 4) / 4.0 * s2;
       const double b = std::pow(t, 3) / 2.0 * s2;
       const double c = std::pow(t, 2) * s2;
@@ -101,7 +110,8 @@ void Tracker::BuildEkfFull()
   };
 
   // R (4x4)：ypd 在世界系下转化为 xyz 协方差，再加 yaw_armor 噪声
-  auto u_r = [this](const Eigen::VectorXd& x) {
+  auto u_r = [this](const Eigen::VectorXd& x)
+  {
     Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
 
     const double xc = x(0), yc = x(2), za = x(4), yaw = x(5), radius = x(7);
@@ -151,21 +161,24 @@ void Tracker::BuildEkfFull()
 // =====================================================================
 void Tracker::BuildEkfArmor()
 {
-  auto f = [this](const Eigen::VectorXd& x) {
+  auto f = [this](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd x_new = x;
     x_new(0) += x(1) * dt_;
     x_new(2) += x(3) * dt_;
     return x_new;
   };
 
-  auto j_f = [this](const Eigen::VectorXd&) {
+  auto j_f = [this](const Eigen::VectorXd&)
+  {
     Eigen::MatrixXd m = Eigen::MatrixXd::Identity(5, 5);
     m(0, 1) = dt_;
     m(2, 3) = dt_;
     return m;
   };
 
-  auto h = [](const Eigen::VectorXd& x) {
+  auto h = [](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd z(3);
     z(0) = x(0);
     z(1) = x(2);
@@ -173,7 +186,8 @@ void Tracker::BuildEkfArmor()
     return z;
   };
 
-  auto j_h = [](const Eigen::VectorXd&) {
+  auto j_h = [](const Eigen::VectorXd&)
+  {
     Eigen::MatrixXd m = Eigen::MatrixXd::Zero(3, 5);
     m(0, 0) = 1;
     m(1, 2) = 1;
@@ -181,10 +195,12 @@ void Tracker::BuildEkfArmor()
     return m;
   };
 
-  auto u_q = [this]() {
+  auto u_q = [this]()
+  {
     const double t = dt_;
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(5, 5);
-    auto add_cv = [&](int p, int v, double s2) {
+    auto add_cv = [&](int p, int v, double s2)
+    {
       const double a = std::pow(t, 4) / 4.0 * s2;
       const double b = std::pow(t, 3) / 2.0 * s2;
       const double c = std::pow(t, 2) * s2;
@@ -200,7 +216,8 @@ void Tracker::BuildEkfArmor()
   };
 
   // R (3x3)：复用 ypd 协方差，去掉 yaw 行列
-  auto u_r = [this](const Eigen::VectorXd& x) {
+  auto u_r = [this](const Eigen::VectorXd& x)
+  {
     const Eigen::Vector3d p_world(x(0), x(2), x(4));
     const Eigen::Vector3d p_cam =
         camera_to_world_rot_.transpose() * (p_world - camera_origin_world_);
@@ -241,13 +258,15 @@ void Tracker::BuildEkfArmor()
 // =====================================================================
 void Tracker::BuildEkfOutpost()
 {
-  auto f = [this](const Eigen::VectorXd& x) {
+  auto f = [this](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd x_new = x;
     x_new(3) += x(4) * dt_;  // yaw += v_yaw * dt
     return x_new;
   };
 
-  auto j_f = [this](const Eigen::VectorXd&) {
+  auto j_f = [this](const Eigen::VectorXd&)
+  {
     Eigen::MatrixXd m = Eigen::MatrixXd::Identity(5, 5);
     m(3, 4) = dt_;
     return m;
@@ -255,7 +274,8 @@ void Tracker::BuildEkfOutpost()
 
   const double r_const = params_.outpost_r;
 
-  auto h = [r_const](const Eigen::VectorXd& x) {
+  auto h = [r_const](const Eigen::VectorXd& x)
+  {
     Eigen::VectorXd z(4);
     const double xc = x(0), yc = x(1), zc = x(2), yaw = x(3);
     z(0) = xc - r_const * std::cos(yaw);
@@ -265,17 +285,21 @@ void Tracker::BuildEkfOutpost()
     return z;
   };
 
-  auto j_h = [r_const](const Eigen::VectorXd& x) {
+  auto j_h = [r_const](const Eigen::VectorXd& x)
+  {
     const double yaw = x(3);
     Eigen::MatrixXd m = Eigen::MatrixXd::Zero(4, 5);
-    m(0, 0) = 1;  m(0, 3) = r_const * std::sin(yaw);
-    m(1, 1) = 1;  m(1, 3) = -r_const * std::cos(yaw);
+    m(0, 0) = 1;
+    m(0, 3) = r_const * std::sin(yaw);
+    m(1, 1) = 1;
+    m(1, 3) = -r_const * std::cos(yaw);
     m(2, 2) = 1;
     m(3, 3) = 1;
     return m;
   };
 
-  auto u_q = [this]() {
+  auto u_q = [this]()
+  {
     const double t = dt_;
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(5, 5);
     q(0, 0) = t * params_.s2_q_xy_outpost;
@@ -291,7 +315,8 @@ void Tracker::BuildEkfOutpost()
     return q;
   };
 
-  auto u_r = [this, r_const](const Eigen::VectorXd& x) {
+  auto u_r = [this, r_const](const Eigen::VectorXd& x)
+  {
     Eigen::MatrixXd r = Eigen::MatrixXd::Zero(4, 4);
     const double xc = x(0), yc = x(1), zc = x(2), yaw = x(3);
     const Eigen::Vector3d p_world(xc - r_const * std::cos(yaw),
@@ -349,9 +374,8 @@ Eigen::Matrix3d Tracker::BuildJacobianYpdToCameraXyz(const Eigen::Vector3d& p_ca
   const double SP = std::sin(PITCH);
 
   Eigen::Matrix3d j;
-  j << D * CP * CY, -D * SP * SY, CP * SY,
-       0.0,          D * CP,      SP,
-       -D * CP * SY, -D * SP * CY, CP * CY;
+  j << D * CP * CY, -D * SP * SY, CP * SY, 0.0, D * CP, SP, -D * CP * SY, -D * SP * CY,
+      CP * CY;
   return j;
 }
 
@@ -973,8 +997,8 @@ void Tracker::UpdateOutpost(const Armors::SharedPtr& armors_msg)
 
   double position_diff = DBL_MAX;
   double yaw_diff = DBL_MAX;
-  matched = MatchArmorOutpost(target_id_armors, outpost_pred, position_diff, yaw_diff,
-                              is_jump);
+  matched =
+      MatchArmorOutpost(target_id_armors, outpost_pred, position_diff, yaw_diff, is_jump);
   info_position_diff = position_diff;
   info_yaw_diff = yaw_diff;
 
@@ -1045,8 +1069,7 @@ bool Tracker::MatchArmorOutpost(const std::vector<Armor>& target_id_armors,
   const Eigen::Vector3d pos_vec(pos.x, pos.y, pos.z);
   const double pos_diff = (pred_armor_pos - pos_vec).norm();
 
-  if (best_yaw_diff < params_.max_match_yaw_diff &&
-      pos_diff < params_.max_match_distance)
+  if (best_yaw_diff < params_.max_match_yaw_diff && pos_diff < params_.max_match_distance)
   {
     tracked_armor_ = cand;
     is_jump = false;
@@ -1074,8 +1097,7 @@ bool Tracker::MatchArmorOutpost(const std::vector<Armor>& target_id_armors,
 // =====================================================================
 // 前哨站 EKF Update（送入前先把 z 修正到 zc 等价）
 // =====================================================================
-void Tracker::UpdateEkfOutpost(double measured_yaw,
-                               const geometry_msgs::msg::Point& p)
+void Tracker::UpdateEkfOutpost(double measured_yaw, const geometry_msgs::msg::Point& p)
 {
   ++outpost_update_count_;
   const double z_corrected =
@@ -1102,11 +1124,11 @@ void Tracker::HandleArmorJumpOutpost(const Armor& current_armor)
 void Tracker::UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool is_jump)
 {
   const Eigen::VectorXd x = ekf_outpost_.GetState();
-  const int sign = (outpost_motion_ == OutpostMotion::LEARNING)
-                       ? (x(4) >= 0.0 ? 1 : -1)
-                       : outpost_v_yaw_sign_;
+  const int sign = (outpost_motion_ == OutpostMotion::LEARNING) ? (x(4) >= 0.0 ? 1 : -1)
+                                                                : outpost_v_yaw_sign_;
 
-  auto apply_jump_logic = [&]() {
+  auto apply_jump_logic = [&]()
+  {
     const double z_diff = last_tracked_armor_.pose.position.z - armor_pos.z;
     if (sign * z_diff > params_.outpost_cast_threshold)
     {
@@ -1118,34 +1140,10 @@ void Tracker::UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool 
     }
   };
 
-  // 阶段 A: z_c 不稳定，仅在跳变时更新
-  if (outpost_update_count_ < params_.outpost_zc_stable_count)
+  if (is_jump)
   {
-    if (is_jump)
-    {
-      apply_jump_logic();
-    }
-    return;
+    apply_jump_logic();
   }
-
-  // 阶段 B: z_c 稳定，几何法 + 跳变法结合
-  const double zc = x(2);
-  const double idx_real = 1.0 - (armor_pos.z - zc) / params_.outpost_dz;
-  const double rounded = std::round(idx_real);
-  const double dist_to_nearest = std::abs(idx_real - rounded);
-
-  // dist_to_nearest 接近 0.5 表示模糊（在 idx 之间）
-  const double ambiguous_lower = 0.5 - params_.outpost_idx_geo_margin;
-  if (dist_to_nearest > ambiguous_lower)
-  {
-    if (is_jump)
-    {
-      apply_jump_logic();
-    }
-    return;
-  }
-
-  outpost_idx_ = std::clamp(static_cast<int>(rounded), 0, 2);
 }
 
 // =====================================================================
