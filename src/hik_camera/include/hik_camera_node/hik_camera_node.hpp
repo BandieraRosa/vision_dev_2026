@@ -17,6 +17,8 @@
 
 #include "CameraParams.h"
 #include "MvCameraControl.h"
+#include "MvErrorDefine.h"
+#include "MvISPErrorDefine.h"
 
 namespace HikCamera
 {
@@ -71,6 +73,8 @@ class HikCameraNode : public rclcpp::Node
 
   void SetFloatValue(const std::string& name, double value);
   void SetEnumValue(const std::string& name, unsigned int value);
+
+  static std::string PhaseError(unsigned int error_code);
 
   // === 参数 ===
   Parameters params_;

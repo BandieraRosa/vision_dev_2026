@@ -39,6 +39,7 @@ class MindVisionCameraNode : public rclcpp::Node
   {
     double exposure_time;  // us
     double gain;           // MindVision raw analog-gain value; clamped to camera range
+    int gamma;             // MindVision raw gamma value; clamped to camera range
     bool autocap;          // true: continuous acquisition; false: external trigger
     bool frame_rate_enable;
     double frame_rate;
@@ -72,14 +73,17 @@ class MindVisionCameraNode : public rclcpp::Node
   void ProtectRunning();
   void SwitchCamera(bool to_lob);
   void ReportFpsStats();
+  void RunPeriodicManualWhiteBalance();
 
   void SetExposureTime(double value_us);
   void SetAnalogGain(double value);
+  void SetGamma(int value);
   bool CheckStatus(CameraSdkStatus status, const std::string& action, bool fatal = false);
   int SelectDeviceIndex(const tSdkCameraDevInfo* device_list, int device_count) const;
   bool IsTriggerModeSupported(int mode) const;
   static uint8_t ClampUInt8(int value, uint8_t fallback, const rclcpp::Logger& logger,
                             const std::string& name);
+  static std::string PhaseError(CameraSdkStatus status);
 
   Parameters params_;
   std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
@@ -91,7 +95,6 @@ class MindVisionCameraNode : public rclcpp::Node
 
   CameraHandle handle_{-1};
   tSdkCameraCapbility capability_{};
-  bool is_mono_sensor_{false};
 
   std::atomic<CameraStateEnum> camera_state_{CameraStateEnum::STOPPED};
   std::atomic<bool> running_{true};
@@ -112,6 +115,8 @@ class MindVisionCameraNode : public rclcpp::Node
 
   std::atomic<bool> in_read_{false};
   std::atomic<bool> is_switching_{false};
+  std::atomic<bool> periodic_manual_white_balance_enabled_{false};
+  std::atomic<uint32_t> manual_white_balance_frame_count_{0};
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lob_shot_sub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr camera_switch_done_pub_;
 

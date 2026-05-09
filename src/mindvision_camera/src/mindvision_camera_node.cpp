@@ -5,8 +5,14 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <unordered_map>
 
 using namespace std::chrono_literals;
+
+namespace
+{
+constexpr uint32_t kManualWhiteBalanceFramePeriod = 200;
+}
 
 namespace MindVisionCamera
 {
@@ -28,6 +34,7 @@ MindVisionCameraNode::MindVisionCameraNode(const rclcpp::NodeOptions& options)
 {
   params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);
   params_.gain = this->declare_parameter<double>("gain", 15.0);
+  params_.gamma = this->declare_parameter<int>("gamma", 75);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
   params_.frame_rate_enable = this->declare_parameter<bool>("frame_rate_enable", false);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
@@ -289,7 +296,6 @@ bool MindVisionCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
     in_read_.store(false, std::memory_order_release);
     return false;
   }
-
   size_t rgb_byte_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
   image_msg_.data.resize(rgb_byte_count);
   cv::Mat dst_image(height, width, CV_8UC3, image_msg_.data.data(),
@@ -297,23 +303,9 @@ bool MindVisionCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 
   bool process_ok = true;
   CameraSdkStatus process_ret = CAMERA_STATUS_SUCCESS;
-  if (is_mono_sensor_)
-  {
-    mono_buffer_.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
-    process_ret =
-        CameraImageProcess(handle_, raw_buffer, mono_buffer_.data(), &frame_info);
-    if (process_ret == CAMERA_STATUS_SUCCESS)
-    {
-      cv::Mat mono_image(height, width, CV_8UC1, mono_buffer_.data(),
-                         static_cast<size_t>(width));
-      cv::cvtColor(mono_image, dst_image, cv::COLOR_GRAY2RGB);
-    }
-  }
-  else
-  {
-    process_ret =
-        CameraImageProcess(handle_, raw_buffer, image_msg_.data.data(), &frame_info);
-  }
+
+  process_ret =
+      CameraImageProcess(handle_, raw_buffer, image_msg_.data.data(), &frame_info);
 
   if (process_ret != CAMERA_STATUS_SUCCESS)
   {
@@ -321,10 +313,10 @@ bool MindVisionCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   }
 
   CameraSdkStatus release_ret = CameraReleaseImageBuffer(handle_, raw_buffer);
-  in_read_.store(false, std::memory_order_release);
 
   if (!process_ok)
   {
+    in_read_.store(false, std::memory_order_release);
     RCLCPP_ERROR(this->get_logger(), "CameraImageProcess failed: %d", process_ret);
     camera_state_.store(CameraStateEnum::STOPPED, std::memory_order_release);
     guard_.is_quit.notify_all();
@@ -333,6 +325,7 @@ bool MindVisionCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
 
   if (release_ret != CAMERA_STATUS_SUCCESS)
   {
+    in_read_.store(false, std::memory_order_release);
     RCLCPP_ERROR(this->get_logger(),
                  "CameraReleaseImageBuffer failed: %d, switching to Stopped.",
                  release_ret);
@@ -342,8 +335,29 @@ bool MindVisionCameraNode::Read(cv::Mat& img, rclcpp::Time& timestamp)
   }
 
   img = dst_image;
+  RunPeriodicManualWhiteBalance();
+  in_read_.store(false, std::memory_order_release);
   received_frame_count_.fetch_add(1, std::memory_order_relaxed);
   return true;
+}
+
+void MindVisionCameraNode::RunPeriodicManualWhiteBalance()
+{
+  if (!periodic_manual_white_balance_enabled_.load(std::memory_order_relaxed) ||
+      handle_ < 0)
+  {
+    return;
+  }
+
+  uint32_t frame_count =
+      manual_white_balance_frame_count_.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (frame_count < kManualWhiteBalanceFramePeriod)
+  {
+    return;
+  }
+
+  manual_white_balance_frame_count_.store(0, std::memory_order_relaxed);
+  CheckStatus(CameraSetOnceWB(handle_), "CameraSetOnceWB(periodic)", false);
 }
 
 void MindVisionCameraNode::ReportFpsStats()
@@ -374,16 +388,19 @@ bool MindVisionCameraNode::CheckStatus(CameraSdkStatus status, const std::string
 {
   if (status == CAMERA_STATUS_SUCCESS)
   {
+    RCLCPP_INFO(this->get_logger(), "%s succeeded.", action.c_str());
     return true;
   }
 
   if (fatal)
   {
-    RCLCPP_ERROR(this->get_logger(), "%s failed: %d", action.c_str(), status);
+    RCLCPP_ERROR(this->get_logger(), "%s failed: %s", action.c_str(),
+                 PhaseError(status).c_str());
   }
   else
   {
-    RCLCPP_WARN(this->get_logger(), "%s failed: %d", action.c_str(), status);
+    RCLCPP_WARN(this->get_logger(), "%s failed: %s", action.c_str(),
+                PhaseError(status).c_str());
   }
   return false;
 }
@@ -492,7 +509,9 @@ void MindVisionCameraNode::CaptureInit()
     return;
   }
 
-  is_mono_sensor_ = capability_.sIspCapacity.bMonoSensor != 0;
+  periodic_manual_white_balance_enabled_.store(false, std::memory_order_relaxed);
+  manual_white_balance_frame_count_.store(0, std::memory_order_relaxed);
+
   int max_width = capability_.sResolutionRange.iWidthMax;
   int max_height = capability_.sResolutionRange.iHeightMax;
   if (max_width > 0 && max_height > 0)
@@ -529,16 +548,39 @@ void MindVisionCameraNode::CaptureInit()
                 "CameraSetExtTrigSignalType(EXT_TRIG_LEADING_EDGE)", false);
     CheckStatus(CameraSetTriggerCount(handle_, 1), "CameraSetTriggerCount(1)", false);
   }
-
-  if (!is_mono_sensor_)
+  CameraSdkStatus lut_ret = CameraSetLutMode(handle_, LUTMODE_PARAM_GEN);
+  if (CheckStatus(lut_ret, "CameraSetLutMode(LUTMODE_PARAM_GEN)", false))
   {
-    CheckStatus(CameraSetWbMode(handle_, TRUE), "CameraSetWbMode(auto)", false);
-    ret = CameraSetIspOutFormat(handle_, CAMERA_MEDIA_TYPE_RGB8);
+    SetGamma(params_.gamma);
   }
   else
   {
-    ret = CameraSetIspOutFormat(handle_, CAMERA_MEDIA_TYPE_MONO8);
+    RCLCPP_WARN(this->get_logger(),
+                "Gamma will not take effect because LUT dynamic parameter mode "
+                "could not be enabled.");
   }
+
+  CameraSdkStatus wb_ret = CameraSetWbMode(handle_, TRUE);
+  if (!CheckStatus(wb_ret, "CameraSetWbMode(auto)", false))
+  {
+    if (capability_.sIspCapacity.bWbOnce)
+    {
+      periodic_manual_white_balance_enabled_.store(true, std::memory_order_relaxed);
+      RCLCPP_WARN(this->get_logger(),
+                  "Auto white balance failed; will run one-shot manual white "
+                  "balance every %u frames.",
+                  static_cast<unsigned int>(kManualWhiteBalanceFramePeriod));
+    }
+    else
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "Auto white balance failed and one-shot manual white balance is "
+                  "not supported by this camera.");
+    }
+  }
+
+  ret = CameraSetIspOutFormat(handle_, CAMERA_MEDIA_TYPE_RGB8);
+
   if (!CheckStatus(ret, "CameraSetIspOutFormat", true))
   {
     CaptureStop();
@@ -583,6 +625,8 @@ void MindVisionCameraNode::CaptureInit()
 void MindVisionCameraNode::CaptureStop()
 {
   camera_state_.store(CameraStateEnum::STOPPED);
+  periodic_manual_white_balance_enabled_.store(false, std::memory_order_relaxed);
+  manual_white_balance_frame_count_.store(0, std::memory_order_relaxed);
 
   if (handle_ < 0)
   {
@@ -761,6 +805,152 @@ void MindVisionCameraNode::SetAnalogGain(double value)
                  gain, value, ret);
   }
 }
+
+void MindVisionCameraNode::SetGamma(int value)
+{
+  if (handle_ < 0)
+  {
+    return;
+  }
+
+  int min_gamma = capability_.sGammaRange.iMin;
+  int max_gamma = capability_.sGammaRange.iMax;
+  int gamma = value;
+  if (max_gamma >= min_gamma)
+  {
+    gamma = std::max(min_gamma, std::min(max_gamma, gamma));
+    if (gamma != value)
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "gamma %d is out of camera range [%d, %d]. Use %d instead.", value,
+                  min_gamma, max_gamma, gamma);
+    }
+  }
+  else
+  {
+    RCLCPP_WARN(this->get_logger(),
+                "Camera reported invalid gamma range [%d, %d]; use requested %d.",
+                min_gamma, max_gamma, gamma);
+  }
+
+  CameraSdkStatus ret = CameraSetGamma(handle_, gamma);
+  if (ret != CAMERA_STATUS_SUCCESS)
+  {
+    RCLCPP_ERROR(this->get_logger(), "CameraSetGamma(%d, requested %d) failed: %s", gamma,
+                 value, PhaseError(ret).c_str());
+    return;
+  }
+
+  int actual_gamma = 0;
+  CameraSdkStatus get_ret = CameraGetGamma(handle_, &actual_gamma);
+  if (get_ret == CAMERA_STATUS_SUCCESS)
+  {
+    RCLCPP_INFO(this->get_logger(),
+                "Gamma requested %d, applied %d, actual %d, camera range [%d, %d].",
+                value, gamma, actual_gamma, min_gamma, max_gamma);
+  }
+  else
+  {
+    CheckStatus(get_ret, "CameraGetGamma", false);
+  }
+}
+
+std::string MindVisionCameraNode::PhaseError(CameraSdkStatus status)
+{
+  static const std::unordered_map<int, std::string> ERROR_MAP = {
+      {CAMERA_STATUS_SUCCESS, "操作成功"},
+      {CAMERA_STATUS_FAILED, "操作失败"},
+      {CAMERA_STATUS_INTERNAL_ERROR, "内部错误"},
+      {CAMERA_STATUS_UNKNOW, "未知错误"},
+      {CAMERA_STATUS_NOT_SUPPORTED, "不支持该功能"},
+      {CAMERA_STATUS_NOT_INITIALIZED, "初始化未完成"},
+      {CAMERA_STATUS_PARAMETER_INVALID, "参数无效"},
+      {CAMERA_STATUS_PARAMETER_OUT_OF_BOUND, "参数越界"},
+      {CAMERA_STATUS_UNENABLED, "未使能"},
+      {CAMERA_STATUS_USER_CANCEL, "用户手动取消"},
+      {CAMERA_STATUS_PATH_NOT_FOUND, "注册表中没有找到对应的路径"},
+      {CAMERA_STATUS_SIZE_DISMATCH, "获得图像数据长度和定义的尺寸不匹配"},
+      {CAMERA_STATUS_TIME_OUT, "超时错误"},
+      {CAMERA_STATUS_IO_ERROR, "硬件IO错误"},
+      {CAMERA_STATUS_COMM_ERROR, "通讯错误"},
+      {CAMERA_STATUS_BUS_ERROR, "总线错误"},
+      {CAMERA_STATUS_NO_DEVICE_FOUND, "没有发现设备"},
+      {CAMERA_STATUS_NO_LOGIC_DEVICE_FOUND, "未找到逻辑设备"},
+      {CAMERA_STATUS_DEVICE_IS_OPENED, "设备已经打开"},
+      {CAMERA_STATUS_DEVICE_IS_CLOSED, "设备已经关闭"},
+      {CAMERA_STATUS_DEVICE_VEDIO_CLOSED, "没有打开设备视频"},
+      {CAMERA_STATUS_NO_MEMORY, "没有足够系统内存"},
+      {CAMERA_STATUS_FILE_CREATE_FAILED, "创建文件失败"},
+      {CAMERA_STATUS_FILE_INVALID, "文件格式无效"},
+      {CAMERA_STATUS_WRITE_PROTECTED, "写保护，不可写"},
+      {CAMERA_STATUS_GRAB_FAILED, "数据采集失败"},
+      {CAMERA_STATUS_LOST_DATA, "数据丢失，不完整"},
+      {CAMERA_STATUS_EOF_ERROR, "未接收到帧结束符"},
+      {CAMERA_STATUS_BUSY, "正忙(上一次操作还在进行中)"},
+      {CAMERA_STATUS_WAIT, "需要等待，可以再次尝试"},
+      {CAMERA_STATUS_IN_PROCESS, "正在进行，已经被操作过"},
+      {CAMERA_STATUS_IIC_ERROR, "IIC传输错误"},
+      {CAMERA_STATUS_SPI_ERROR, "SPI传输错误"},
+      {CAMERA_STATUS_USB_CONTROL_ERROR, "USB控制传输错误"},
+      {CAMERA_STATUS_USB_BULK_ERROR, "USB BULK传输错误"},
+      {CAMERA_STATUS_SOCKET_INIT_ERROR, "网络传输套件初始化失败"},
+      {CAMERA_STATUS_GIGE_FILTER_INIT_ERROR, "网络相机内核过滤驱动初始化失败"},
+      {CAMERA_STATUS_NET_SEND_ERROR, "网络数据发送错误"},
+      {CAMERA_STATUS_DEVICE_LOST, "与网络相机失去连接，心跳检测超时"},
+      {CAMERA_STATUS_DATA_RECV_LESS, "接收到的字节数比请求的少"},
+      {CAMERA_STATUS_FUNCTION_LOAD_FAILED, "从文件中加载程序失败"},
+      {CAMERA_STATUS_CRITICAL_FILE_LOST, "程序运行所必须的文件丢失"},
+      {CAMERA_STATUS_SENSOR_ID_DISMATCH, "固件和程序不匹配"},
+      {CAMERA_STATUS_OUT_OF_RANGE, "参数超出有效范围"},
+      {CAMERA_STATUS_REGISTRY_ERROR, "安装程序注册错误"},
+      {CAMERA_STATUS_ACCESS_DENY, "禁止访问"},
+      {CAMERA_STATUS_CAMERA_NEED_RESET, "相机需要复位后才能正常使用"},
+      {CAMERA_STATUS_ISP_MOUDLE_NOT_INITIALIZED, "ISP模块未初始化"},
+      {CAMERA_STATUS_ISP_DATA_CRC_ERROR, "数据校验错误"},
+      {CAMERA_STATUS_MV_TEST_FAILED, "数据测试失败"},
+      {CAMERA_STATUS_INTERNAL_ERR1, "内部错误1"},
+      {CAMERA_STATUS_U3V_NO_CONTROL_EP, "U3V控制端点未找到"},
+      {CAMERA_STATUS_U3V_CONTROL_ERROR, "U3V控制通讯错误"},
+      {CAMERA_STATUS_INVALID_FRIENDLY_NAME, "无效的设备名"},
+      {CAMERA_STATUS_FORMAT_ERROR, "格式错误"},
+      {CAMERA_STATUS_PCIE_OPEN_ERROR, "PCIE设备打开失败"},
+      {CAMERA_STATUS_PCIE_COMM_ERROR, "PCIE设备通讯失败"},
+      {CAMERA_STATUS_PCIE_DDR_ERROR, "PCIE DDR错误"},
+      {CAMERA_STATUS_IP_ERROR, "IP错误"},
+      {CAMERA_AIA_PACKET_RESEND, "该帧需要重传"},
+      {CAMERA_AIA_NOT_IMPLEMENTED, "设备不支持的命令"},
+      {CAMERA_AIA_INVALID_PARAMETER, "命令参数非法"},
+      {CAMERA_AIA_INVALID_ADDRESS, "不可访问的地址"},
+      {CAMERA_AIA_WRITE_PROTECT, "访问的对象不可写"},
+      {CAMERA_AIA_BAD_ALIGNMENT, "访问的地址没有按照要求对齐"},
+      {CAMERA_AIA_ACCESS_DENIED, "没有访问权限"},
+      {CAMERA_AIA_BUSY, "命令正在处理中"},
+      {CAMERA_AIA_DEPRECATED, "该指令已经废弃"},
+      {CAMERA_AIA_PACKET_UNAVAILABLE, "包无效"},
+      {CAMERA_AIA_DATA_OVERRUN, "数据溢出"},
+      {CAMERA_AIA_INVALID_HEADER, "数据包头部与协议不匹配"},
+      {CAMERA_AIA_PACKET_NOT_YET_AVAILABLE, "图像分包数据还未准备好"},
+      {CAMERA_AIA_PACKET_AND_PREV_REMOVED_FROM_MEMORY, "需要访问的分包已经不存在"},
+      {CAMERA_AIA_PACKET_REMOVED_FROM_MEMORY, "分包已从内存中删除"},
+      {CAMERA_AIA_NO_REF_TIME, "没有参考时钟源"},
+      {CAMERA_AIA_PACKET_TEMPORARILY_UNAVAILABLE, "由于带宽问题，分包暂时不可用"},
+      {CAMERA_AIA_OVERFLOW, "设备端数据溢出"},
+      {CAMERA_AIA_ACTION_LATE, "命令执行已经超过有效的指定时间"},
+      {CAMERA_AIA_ERROR, "AIA错误"},
+      {CAMERA_MV_SSR_COMM_ERROR, "SSR通讯错误"},
+      {CAMERA_MV_SSR_TRAIN_ERROR, "SSR训练错误"},
+  };
+
+  auto it = ERROR_MAP.find(status);
+  if (it != ERROR_MAP.end())
+  {
+    return it->second;
+  }
+
+  return "Unknown error code: 0x" + std::string(status < 0 ? "-" : "") +
+         std::to_string(std::abs(status));
+}
+
 }  // namespace MindVisionCamera
 
 #include "rclcpp_components/register_node_macro.hpp"

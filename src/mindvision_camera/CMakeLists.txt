@@ -58,8 +58,7 @@ endif()
 message(STATUS "Using MindVision SDK library: ${MVSDK_LIBRARY}")
 target_link_libraries(${PROJECT_NAME} ${MVSDK_LIBRARY})
 
-if(EXISTS
-   ${CMAKE_CURRENT_SOURCE_DIR}/mindvisionSDK/lib/${MVSDK_ARCH}/libMVSDK.so)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mindvisionSDK/lib/${MVSDK_ARCH}/libMVSDK.so)
   install(DIRECTORY mindvisionSDK/lib/${MVSDK_ARCH}/ DESTINATION lib)
 endif()
 
@@ -69,8 +68,10 @@ rclcpp_components_register_node(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_copyright
-       ament_cmake_uncrustify ament_cmake_cpplint)
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_copyright
+    ament_cmake_uncrustify
+    ament_cmake_cpplint)
   ament_lint_auto_find_test_dependencies()
 endif()
 
