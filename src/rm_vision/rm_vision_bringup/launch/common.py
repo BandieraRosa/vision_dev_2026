@@ -59,7 +59,7 @@ def get_camera_component(robot_type="default"):
     elif launch_params["camera"] == "mv":
         return ComposableNode(
             package="mindvision_camera",
-            plugin="mindvision_camera::MVCameraNode",
+            plugin="MindVisionCamera::MindVisionCameraNode",
             name="camera_node",
             parameters=[node_params, {"robot_type": robot_type}],
             extra_arguments=[{"use_intra_process_comms": True}],
