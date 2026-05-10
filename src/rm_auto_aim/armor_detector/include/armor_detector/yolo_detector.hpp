@@ -3,8 +3,8 @@
 
 #if ARMOR_DETECTOR_HAS_OPENVINO || ARMOR_DETECTOR_HAS_TENSORRT
 
-
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <opencv2/core.hpp>
 #include <string>
@@ -63,7 +63,7 @@ class YoloDetector : public DetectorBase
   void DrawResults(cv::Mat& img) override;
 
  private:
-  std::vector<Armor> Parse(double scale, cv::Mat& output);
+  std::vector<Armor> Parse(double scale, const cv::Mat& output);
 #if ARMOR_DETECTOR_HAS_TENSORRT
   std::vector<Armor> ParseEnd2End(double scale);
 
@@ -75,9 +75,19 @@ class YoloDetector : public DetectorBase
   std::vector<Armor> ParseOpenVinoEnd2End(double scale, int n, const float* scores,
                                           const int* classes, const float* kpts,
                                           int kpt_channels);
+
+  // 根据输入图像分辨率刷新 letterbox 比例缓存与持久 input buffer 的 padding 区。
+  // 仅当输入分辨率变化时才会执行实际工作。
+  void RefreshLetterboxCache(int rows, int cols);
 #endif
   void SortKeypoints(std::vector<cv::Point2f>& keypoints);
   ArmorType DetermineArmorType(const Light& light_1, const Light& light_2);
+
+  // 预计算的 per-class LUT, 避免每帧字符串比较 / map_label / std::find。
+  // 由构造函数在配置完 ignore_classes 后一次性建立, 之后只读。
+  std::vector<std::string> class_label_lut_;     // raw_label → mapped label
+  std::vector<int> class_color_lut_;             // RED / BLUE / -1 (颜色无关)
+  std::vector<std::uint8_t> class_ignored_lut_;  // 1=该 class 命中 ignore_classes
 
   YoloParams params_;
   int class_num_;
@@ -145,6 +155,18 @@ class YoloDetector : public DetectorBase
   ov::Core core_;
   ov::CompiledModel compiled_model_;
   ov::InferRequest infer_request_;
+
+  // 持久化 input buffer。直接 wrap OpenVINO infer_request 的内置 input tensor,
+  // 避免每帧 cv::Mat 分配 + cv::Scalar 全图清零 + ov::Tensor 构造 + set_input_tensor。
+  ov::Tensor ov_input_tensor_;
+  cv::Mat ov_input_mat_;
+
+  // letterbox 比例缓存。相机分辨率不变时 (实际场景 99% 都是) 这些值整轮复用。
+  int ov_last_rows_ = 0;
+  int ov_last_cols_ = 0;
+  double ov_cached_scale_ = 0.0;
+  int ov_cached_w_ = 0;
+  int ov_cached_h_ = 0;
 #endif  // ARMOR_DETECTOR_HAS_OPENVINO / ARMOR_DETECTOR_HAS_TENSORRT
 
   std::vector<Armor> last_armors_;
