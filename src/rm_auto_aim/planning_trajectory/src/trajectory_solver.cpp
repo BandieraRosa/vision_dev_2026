@@ -181,7 +181,8 @@ double TrajectorySolver::SolvePitch(double x, double y, double z)
   double distance = std::sqrt(x * x + y * y);
   double target_s = distance + s_bias_;
   double target_z = z + z_bias_;
-  if (std::fabs(z) < 0.01) {
+  if (std::fabs(z) < 0.01)
+  {
     RCLCPP_WARN(logger_, "Target z is too low: %.2f", target_z);
     return 0.0f;
   }
@@ -262,7 +263,7 @@ std::pair<double, double> TrajectorySolver::ComputeFireYawWindow(
     const TarPostion& armor) const
 {
   const double half_length_ =
-      (target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH;
+      ((target_.type == "small") ? SMALL_HALF_LENGTH : LARGE_HALF_LENGTH) - 0.03;
 
   const double sy = std::sin(armor.yaw);
   const double cy = std::cos(armor.yaw);
@@ -354,14 +355,8 @@ void TrajectorySolver::GlobalSelectArmor(double time_delay)
 
 void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
-  if (std::fabs(target_.velocity.yaw) < 1.6)
-  {
-    selected_idx_ = 0;
-    return;
-  }
-
   const TarPostion center0 = PredictCenter(time_delay);
-  const TarPostion armor0 = PredictArmor(0, center0);
+  const TarPostion armor0 = PredictArmor(1, center0);
   const double center_yaw_0 = SolveYaw(center0.x, center0.y);
   const double armor_yaw_err_0 =
       std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
@@ -568,8 +563,8 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
     yaw = SolveYaw(pre_center_.x, pre_center_.y);
 
     const double aim_yaw = SolveYaw(aim_x, aim_y);
-    is_fire = std::fabs(AngleDiff(aim_yaw, yaw)) < 0.03 &&
-              !choose_next_;  // CanFire(gimbal_yaw_, pitch, false);
+    is_fire = std::fabs(AngleDiff(aim_yaw, gimbal_yaw_)) <
+              0.013;  // CanFire(gimbal_yaw_, pitch, false);
     if (is_fire)
     {
       yaw = aim_yaw;
@@ -578,8 +573,92 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   else
   {
     yaw = SolveYaw(aim_x, aim_y);
-    is_fire = CanFire(yaw, pitch, false);
+    is_fire = CanFire(yaw, pitch, true);
   }
+
+  last_pitch_ = pitch;
+  last_yaw_ = yaw;
+  last_x_v_ = target_.velocity.x;
+  last_y_v_ = target_.velocity.y;
+  last_v_yaw_ = target_.velocity.yaw;
+  last_choose_next_ = choose_next_;
+  last_outpost_idx_ = target_.outpost_idx;
+}
+
+bool TrajectorySolver::IsFarSpinningOutpost() const
+{
+  const double distance = std::hypot(target_.position.x, target_.position.y);
+
+  return target_.num == 3 && distance > FAR_OUTPOST_DISTANCE &&
+         std::fabs(target_.velocity.yaw) > OUTPOST_SPIN_VYAW;
+}
+
+int TrajectorySolver::SelectOutpostBottomArmor() const
+{
+  const double sign = target_.velocity.yaw >= 0.0 ? 1.0 : -1.0;
+
+  for (int i = 0; i < target_.num; ++i)
+  {
+    const int offset = sign > 0.0 ? i : ((target_.num - i) % target_.num);
+    const int id = (target_.outpost_idx + offset) % target_.num;
+
+    // PredictArmor() 里：
+    // z = center.z + outpost_dz * (id - 1)
+    // 所以 id == 0 是底板
+    if (id == 0)
+    {
+      return i;
+    }
+  }
+
+  return 0;
+}
+
+void TrajectorySolver::SolveFarOutpostBottom(double send_time, double& pitch, double& yaw,
+                                             bool& is_fire, double& aim_x, double& aim_y,
+                                             double& aim_z, int& idx)
+{
+  selected_idx_ = SelectOutpostBottomArmor();
+  choose_next_ = false;
+  should_last_shot_ = true;
+
+  double time_delay = fly_time_ + bias_time_ + send_time;
+
+  PredictOneArmorPosition(time_delay, selected_idx_);
+
+  SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
+             pre_position_[selected_idx_].z);
+
+  time_delay = fly_time_ + bias_time_ + send_time;
+
+  PredictOneArmorPosition(time_delay, selected_idx_);
+
+  aim_x = pre_position_[selected_idx_].x;
+  aim_y = pre_position_[selected_idx_].y;
+  aim_z = pre_position_[selected_idx_].z;
+  idx = selected_idx_;
+
+  pitch = SolvePitch(aim_x, aim_y, aim_z);
+
+  const double aim_yaw = SolveYaw(aim_x, aim_y);
+
+  // 关键：云台停止转动，不追随前哨站
+  yaw = gimbal_yaw_;
+
+  const double yaw_delta = AngleDiff(aim_yaw, gimbal_yaw_);
+
+  const auto [yaw_lo, yaw_hi] = ComputeFireYawWindow(pre_position_[selected_idx_]);
+
+  const bool yaw_ok = yaw_delta >= yaw_lo && yaw_delta <= yaw_hi;
+
+  const bool pitch_ok = std::fabs(pitch - gimbal_pitch_) < OUTPOST_PITCH_TOL;
+
+  // 保证底板在前面：
+  // 装甲板自身 yaw 和从车到装甲板的观察 yaw 接近，说明这块板正面朝向我方
+  const bool bottom_in_front =
+      std::fabs(AngleDiff(pre_position_[selected_idx_].yaw, aim_yaw)) < OUTPOST_FRONT_YAW;
+
+  is_fire = bottom_in_front && yaw_ok && pitch_ok;
 
   last_pitch_ = pitch;
   last_yaw_ = yaw;
@@ -602,7 +681,14 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   gimbal_pitch_ = -gimbal_pitch;
   gimbal_yaw_speed_ = gimbal_yaw_speed;
 
-  fire_logic_mode_ = FireLogicMode::COMMON;
+  fire_logic_mode_ = FireLogicMode::SPIN;
+
+  // 远距离旋转前哨站：只瞄底板，云台停止转动，等底板转到正前方再开火
+  // if (IsFarSpinningOutpost())
+  // {
+  //   SolveFarOutpostBottom(send_time, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
+  //   return;
+  // }
 
   // 上游若标记 is_center=false，说明给的就是装甲板的位置/速度
   // 直接走 CV 外推分支，跳过整车建模和择板
@@ -621,6 +707,7 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
 
   double time_delay = fly_time_ + bias_time_ + send_time;
   AutoSelectArmor(time_delay);
+  RCLCPP_ERROR(logger_, " selected_idx_ = %d", selected_idx_);
   PredictOneArmorPosition(time_delay, selected_idx_);
   // 更新fly_time_
   SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
@@ -628,19 +715,6 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   time_delay = fly_time_ + bias_time_ + send_time;
   PredictOneArmorPosition(time_delay, selected_idx_);
   UpdateSolveState(pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
-  // 若希望每块装甲板只打一发
-  // if(no_fire == true)
-  // {
-  //   is_fire = false;
-  // }
-  // if(is_fire == true)
-  // {
-  //   no_fire = true;
-  // }
-  // if(choose_next_ == false && last_choose_next_ == true)
-  // {
-  //   no_fire = false;
-  // }
 }
 
 }  // namespace rm_auto_aim

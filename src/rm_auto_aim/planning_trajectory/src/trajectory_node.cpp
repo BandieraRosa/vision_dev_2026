@@ -1,6 +1,5 @@
 #include "planning_trajectory/trajectory_node.hpp"
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
@@ -8,6 +7,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -50,10 +50,7 @@ PlanningTrajectoryNode::PlanningTrajectoryNode(const rclcpp::NodeOptions& option
   RCLCPP_INFO(this->get_logger(), "Starting PlanningTrajectoryNode!");
 }
 
-PlanningTrajectoryNode::~PlanningTrajectoryNode()
-{
-  StopRtThread();
-}
+PlanningTrajectoryNode::~PlanningTrajectoryNode() { StopRtThread(); }
 
 void PlanningTrajectoryNode::TargetCallback(
     const auto_aim_interfaces::msg::Target::SharedPtr target_msg)
@@ -116,10 +113,7 @@ void PlanningTrajectoryNode::PublishStopCommand()
   send_pub_->publish(send_msg);
 }
 
-void PlanningTrajectoryNode::timer_callback()
-{
-  RtLoopOnce();
-}
+void PlanningTrajectoryNode::timer_callback() { RtLoopOnce(); }
 
 void PlanningTrajectoryNode::StartRtThread()
 {
@@ -165,17 +159,15 @@ bool PlanningTrajectoryNode::ConfigureCurrentThreadRealtime()
       CPU_ZERO(&cpuset);
       CPU_SET(rt_cpu_, &cpuset);
 
-      const int ret = pthread_setaffinity_np(
-          pthread_self(), sizeof(cpu_set_t), &cpuset);
+      const int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 
       if (ret != 0)
       {
         ok = false;
-        RCLCPP_WARN(
-            this->get_logger(),
-            "RT loop CPU affinity setup failed, cpu=%d, error=%s. "
-            "Continue without fixed CPU affinity.",
-            rt_cpu_, std::strerror(ret));
+        RCLCPP_WARN(this->get_logger(),
+                    "RT loop CPU affinity setup failed, cpu=%d, error=%s. "
+                    "Continue without fixed CPU affinity.",
+                    rt_cpu_, std::strerror(ret));
       }
       else
       {
@@ -185,11 +177,10 @@ bool PlanningTrajectoryNode::ConfigureCurrentThreadRealtime()
     else
     {
       ok = false;
-      RCLCPP_WARN(
-          this->get_logger(),
-          "RT loop requested CPU%d, but this machine has fewer online CPUs. "
-          "Continue without fixed CPU affinity.",
-          rt_cpu_);
+      RCLCPP_WARN(this->get_logger(),
+                  "RT loop requested CPU%d, but this machine has fewer online CPUs. "
+                  "Continue without fixed CPU affinity.",
+                  rt_cpu_);
     }
   }
 
@@ -201,10 +192,9 @@ bool PlanningTrajectoryNode::ConfigureCurrentThreadRealtime()
 
     if (priority != rt_priority_)
     {
-      RCLCPP_WARN(
-          this->get_logger(),
-          "RT priority %d is out of SCHED_FIFO range [%d, %d], clamped to %d",
-          rt_priority_, min_priority, max_priority, priority);
+      RCLCPP_WARN(this->get_logger(),
+                  "RT priority %d is out of SCHED_FIFO range [%d, %d], clamped to %d",
+                  rt_priority_, min_priority, max_priority, priority);
     }
 
     sched_param param{};
@@ -239,21 +229,18 @@ void PlanningTrajectoryNode::RtLoop()
   {
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
     {
-      RCLCPP_WARN(
-          this->get_logger(),
-          "mlockall failed: %s. Continue without locked memory.",
-          std::strerror(errno));
+      RCLCPP_WARN(this->get_logger(),
+                  "mlockall failed: %s. Continue without locked memory.",
+                  std::strerror(errno));
     }
   }
 
   const bool rt_setup_ok = ConfigureCurrentThreadRealtime();
 
-  RCLCPP_INFO(
-      this->get_logger(),
-      "Trajectory loop started: mode=%s, period=%.3f ms, rt_setup=%s",
-      use_rt_thread_ ? "independent_thread" : "ros_timer",
-      rt_period_ns_ / 1.0e6,
-      rt_setup_ok ? "ok" : "degraded");
+  RCLCPP_INFO(this->get_logger(),
+              "Trajectory loop started: mode=%s, period=%.3f ms, rt_setup=%s",
+              use_rt_thread_ ? "independent_thread" : "ros_timer", rt_period_ns_ / 1.0e6,
+              rt_setup_ok ? "ok" : "degraded");
 
   timespec next_time{};
   clock_gettime(CLOCK_MONOTONIC, &next_time);
@@ -270,8 +257,7 @@ void PlanningTrajectoryNode::RtLoop()
     int sleep_ret = 0;
     do
     {
-      sleep_ret = clock_nanosleep(
-          CLOCK_MONOTONIC, TIMER_ABSTIME, &next_time, nullptr);
+      sleep_ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_time, nullptr);
     } while (sleep_ret == EINTR && rt_running_.load());
 
     if (!rt_running_.load())
@@ -281,9 +267,8 @@ void PlanningTrajectoryNode::RtLoop()
 
     if (sleep_ret != 0)
     {
-      RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 1000,
-          "clock_nanosleep failed: %s", std::strerror(sleep_ret));
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                           "clock_nanosleep failed: %s", std::strerror(sleep_ret));
       continue;
     }
 
@@ -316,15 +301,12 @@ void PlanningTrajectoryNode::RtLoop()
 
     ++loop_count;
 
-    if (rt_statistics_interval_ > 0 &&
-        loop_count % rt_statistics_interval_ == 0)
+    if (rt_statistics_interval_ > 0 && loop_count % rt_statistics_interval_ == 0)
     {
       RCLCPP_INFO(
           this->get_logger(),
           "RT loop stats: count=%ld, max_wake=%.3f us, max_cost=%.3f us, miss=%ld",
-          loop_count,
-          max_wake_latency_ns / 1000.0,
-          max_loop_cost_ns / 1000.0,
+          loop_count, max_wake_latency_ns / 1000.0, max_loop_cost_ns / 1000.0,
           deadline_miss_count);
     }
   }
@@ -332,9 +314,7 @@ void PlanningTrajectoryNode::RtLoop()
   RCLCPP_INFO(
       this->get_logger(),
       "Trajectory loop stopped: count=%ld, max_wake=%.3f us, max_cost=%.3f us, miss=%ld",
-      loop_count,
-      max_wake_latency_ns / 1000.0,
-      max_loop_cost_ns / 1000.0,
+      loop_count, max_wake_latency_ns / 1000.0, max_loop_cost_ns / 1000.0,
       deadline_miss_count);
 }
 
@@ -401,9 +381,8 @@ void PlanningTrajectoryNode::RtLoopOnce()
   }
   catch (const tf2::TransformException& ex)
   {
-    RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 500,
-        "Get gimbal transform failed: %s", ex.what());
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500,
+                         "Get gimbal transform failed: %s", ex.what());
     PublishStopCommand();
     return;
   }
@@ -427,13 +406,8 @@ void PlanningTrajectoryNode::RtLoopOnce()
     }
 
     trajectory_->solver().AutoSolveTrajectory(
-        cmd.pitch, cmd.yaw, cmd.is_fire,
-        aim_x, aim_y, aim_z, idx,
-        target_local,
-        gimbal_yaw,
-        gimbal_pitch,
-        send_time_local,
-        gimbal_yaw_speed_);
+        cmd.pitch, cmd.yaw, cmd.is_fire, aim_x, aim_y, aim_z, idx, target_local,
+        gimbal_yaw, gimbal_pitch, send_time_local, gimbal_yaw_speed_);
 
     bc_yaw = cmd.yaw;
     bc_pitch = cmd.pitch;
@@ -448,8 +422,17 @@ void PlanningTrajectoryNode::RtLoopOnce()
 
   auto_aim_interfaces::msg::Send send_msg;
   send_msg.is_fire = cmd.is_fire;
-  send_msg.pitch = bc_pitch;
-  send_msg.yaw = bc_yaw;
+
+  if (std::fabs(gimbal_yaw - bc_yaw) > M_PI / 2)
+  {
+    send_msg.pitch = 0;
+    send_msg.yaw = 0;
+  }
+  else
+  {
+    send_msg.pitch = bc_pitch;
+    send_msg.yaw = bc_yaw;
+  }
 
   // Keep the current uploaded behavior: yaw velocity/acceleration output is
   // forced to zero. Replace with cmd.vel_yaw/cmd.acc_yaw if the controller
@@ -467,7 +450,7 @@ void PlanningTrajectoryNode::RtLoopOnce()
   info_msg.gimbal_pitch = -gimbal_pitch;
   info_msg.idx = idx;
   info_msg.bc_yaw = bc_yaw;
-  info_msg.bc_pitch = cmd.pitch;
+  info_msg.bc_pitch = bc_pitch;
   info_pub_->publish(info_msg);
 }
 
@@ -526,16 +509,13 @@ void PlanningTrajectoryNode::Init()
     send_frequency_ = 200.0;
   }
   dt_ = 1.0 / send_frequency_;
-  rt_period_ns_ =
-      std::max<int64_t>(1, static_cast<int64_t>(1.0e9 / send_frequency_));
+  rt_period_ns_ = std::max<int64_t>(1, static_cast<int64_t>(1.0e9 / send_frequency_));
 
   use_rt_thread_ = this->declare_parameter("rt.use_rt_thread", true);
   rt_cpu_ = this->declare_parameter("rt.cpu", 7);
   rt_priority_ = this->declare_parameter("rt.priority", 80);
-  rt_enable_cpu_affinity_ =
-      this->declare_parameter("rt.enable_cpu_affinity", true);
-  rt_enable_realtime_ =
-      this->declare_parameter("rt.enable_realtime", true);
+  rt_enable_cpu_affinity_ = this->declare_parameter("rt.enable_cpu_affinity", true);
+  rt_enable_realtime_ = this->declare_parameter("rt.enable_realtime", true);
   rt_lock_memory_ = this->declare_parameter("rt.lock_memory", true);
   rt_statistics_interval_ =
       this->declare_parameter("rt.statistics_interval", static_cast<int64_t>(0));
@@ -717,10 +697,9 @@ void PlanningTrajectoryNode::Init()
         timer_period, std::bind(&PlanningTrajectoryNode::timer_callback, this),
         timer_cb_group_);
 
-    RCLCPP_INFO(
-        this->get_logger(),
-        "Trajectory loop started: mode=ros_timer, period=%.3f ms",
-        rt_period_ns_ / 1.0e6);
+    RCLCPP_INFO(this->get_logger(),
+                "Trajectory loop started: mode=ros_timer, period=%.3f ms",
+                rt_period_ns_ / 1.0e6);
   }
 }
 }  // namespace rm_auto_aim

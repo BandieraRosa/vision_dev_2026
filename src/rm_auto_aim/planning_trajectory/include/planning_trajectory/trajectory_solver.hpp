@@ -112,8 +112,14 @@ class TrajectorySolver
   bool CanFire(double yaw, double pitch, bool is_fast_fire = false);
   void GlobalSelectArmor(double time_delay);
   void LocalSelectArmor(double time_delay);
+  void LocalSelectArmorForHero(double time_delay);
   void PreSelectArmor(double time_delay);
   void AutoSelectArmor(double time_delay, bool is_pre_select = false);
+
+  bool IsFarSpinningOutpost() const;
+  int SelectOutpostBottomArmor() const;
+  void SolveFarOutpostBottom(double send_time, double& pitch, double& yaw, bool& is_fire,
+                             double& aim_x, double& aim_y, double& aim_z, int& idx);
 
   // 装甲板 CV 模型分支：上游已经给装甲板位置和速度，不再建模、不再择板
   void SolveByArmorCV(double time_delay);
@@ -124,8 +130,8 @@ class TrajectorySolver
 
   void AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire, double& aim_x,
                            double& aim_y, double& aim_z, int& idx, const Target& target,
-                           double gimbal_yaw, double gimbal_pitch,
-                           const double send_time, double gimbal_yaw_speed);
+                           double gimbal_yaw, double gimbal_pitch, const double send_time,
+                           double gimbal_yaw_speed);
 
   void SetTarget(const Target& t) { target_ = t; }
 
@@ -164,6 +170,11 @@ class TrajectorySolver
   std::array<TarPostion, 4> pre_position_{};
   Target target_{};
 
+  static constexpr double FAR_OUTPOST_DISTANCE = 6.0;
+  static constexpr double OUTPOST_SPIN_VYAW = 1.0;
+  static constexpr double OUTPOST_FRONT_YAW = 0.35;
+  static constexpr double OUTPOST_PITCH_TOL = 0.025;
+
   double gimbal_yaw_{0.0};
   double gimbal_pitch_{0.0};
 
@@ -198,6 +209,5 @@ class TrajectorySolver
 
   int last_outpost_idx_{-1};
 };
-
 
 }  // namespace rm_auto_aim

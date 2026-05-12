@@ -674,26 +674,26 @@ void Tracker::UpdateEkfFull(double measured_yaw, const geometry_msgs::msg::Point
   Eigen::VectorXd x_post = ekf_full_.Update(measurement);
 
   // 高速旋转：锁定 r
-  if (std::fabs(x_post(6)) > 1.5)
-  {
-    if (full_update_count_ <= 100)
-    {
-      full_last_r_ += x_post(7) / 100.0;
-    }
-    else
-    {
-      x_post(7) = std::clamp(x_post(7), full_last_r_ - 0.0001, full_last_r_ + 0.0001);
-      full_last_r_ = x_post(7);
-      ekf_full_.SetState(x_post);
-    }
-  }
-  else
-  {
+  // if (std::fabs(x_post(6)) > 1.5)
+  // {
+  //   if (full_update_count_ <= 100)
+  //   {
+  //     full_last_r_ += x_post(7) / 100.0;
+  //   }
+  //   else
+  //   {
+  //     x_post(7) = std::clamp(x_post(7), full_last_r_ - 0.0001, full_last_r_ + 0.0001);
+  //     full_last_r_ = x_post(7);
+  //     ekf_full_.SetState(x_post);
+  //   }
+  // }
+  // else
+  // {
     full_update_count_ = 0;
     x_post(7) = std::clamp(x_post(7), full_last_r_ - 0.001, full_last_r_ + 0.001);
     full_last_r_ = x_post(7);
     ekf_full_.SetState(x_post);
-  }
+  // }
 }
 
 // =====================================================================
@@ -1119,34 +1119,6 @@ void Tracker::HandleArmorJumpOutpost(const Armor& current_armor)
 }
 
 // =====================================================================
-// 前哨站 outpost_idx 判定（跳变法 + 几何法结合）
-// =====================================================================
-void Tracker::UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool is_jump)
-{
-  const Eigen::VectorXd x = ekf_outpost_.GetState();
-  const int sign = (outpost_motion_ == OutpostMotion::LEARNING) ? (x(4) >= 0.0 ? 1 : -1)
-                                                                : outpost_v_yaw_sign_;
-
-  auto apply_jump_logic = [&]()
-  {
-    const double z_diff = last_tracked_armor_.pose.position.z - armor_pos.z;
-    if (sign * z_diff > params_.outpost_cast_threshold)
-    {
-      outpost_idx_ = (sign == 1) ? 0 : 2;
-    }
-    else
-    {
-      outpost_idx_ = (outpost_idx_ + sign + 3) % 3;
-    }
-  };
-
-  if (is_jump)
-  {
-    apply_jump_logic();
-  }
-}
-
-// =====================================================================
 // 前哨站 旋转/静止 判定 + v_yaw / zc 钳制
 // =====================================================================
 void Tracker::ApplyOutpostMotionLogic()
@@ -1191,7 +1163,7 @@ void Tracker::ApplyOutpostMotionLogic()
   {
     x(4) = 0.0;
   }
-  x(2) = std::clamp(x(2), outpost_z_avg_ - 0.001, outpost_z_avg_ + 0.001);
+  //x(2) = std::clamp(x(2), outpost_z_avg_ - 0.001, outpost_z_avg_ + 0.001);
   ekf_outpost_.SetState(x);
 }
 
