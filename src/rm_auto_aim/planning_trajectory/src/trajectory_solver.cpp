@@ -356,7 +356,7 @@ void TrajectorySolver::GlobalSelectArmor(double time_delay)
 void TrajectorySolver::LocalSelectArmor(double time_delay)
 {
   const TarPostion center0 = PredictCenter(time_delay);
-  const TarPostion armor0 = PredictArmor(1, center0);
+  const TarPostion armor0 = PredictArmor(0, center0);
   const double center_yaw_0 = SolveYaw(center0.x, center0.y);
   const double armor_yaw_err_0 =
       std::fabs(AngleDiff(SolveYaw(armor0.x, armor0.y), center_yaw_0));
@@ -681,7 +681,7 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   gimbal_pitch_ = -gimbal_pitch;
   gimbal_yaw_speed_ = gimbal_yaw_speed;
 
-  fire_logic_mode_ = FireLogicMode::SPIN;
+  fire_logic_mode_ = FireLogicMode::COMMON;
 
   // 远距离旋转前哨站：只瞄底板，云台停止转动，等底板转到正前方再开火
   // if (IsFarSpinningOutpost())

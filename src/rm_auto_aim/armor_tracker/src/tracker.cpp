@@ -689,10 +689,10 @@ void Tracker::UpdateEkfFull(double measured_yaw, const geometry_msgs::msg::Point
   // }
   // else
   // {
-    full_update_count_ = 0;
-    x_post(7) = std::clamp(x_post(7), full_last_r_ - 0.001, full_last_r_ + 0.001);
-    full_last_r_ = x_post(7);
-    ekf_full_.SetState(x_post);
+  full_update_count_ = 0;
+  x_post(7) = std::clamp(x_post(7), full_last_r_ - 0.001, full_last_r_ + 0.001);
+  full_last_r_ = x_post(7);
+  ekf_full_.SetState(x_post);
   // }
 }
 
@@ -1116,6 +1116,47 @@ void Tracker::HandleArmorJumpOutpost(const Armor& current_armor)
   Eigen::VectorXd x = ekf_outpost_.GetState();
   x(3) = yaw;
   ekf_outpost_.SetState(x);
+
+  const int sign = (outpost_motion_ == OutpostMotion::LEARNING) ? (x(4) >= 0.0 ? 1 : -1)
+                                                                : outpost_v_yaw_sign_;
+  const double z_diff =
+      last_tracked_armor_.pose.position.z - current_armor.pose.position.z;
+  if (sign * z_diff > params_.outpost_cast_threshold)
+  {
+    outpost_idx_ = (sign == 1) ? 0 : 2;
+  }
+  else
+  {
+    outpost_idx_ = (outpost_idx_ + sign + 3) % 3;
+  }
+}
+
+// =====================================================================
+// 前哨站 outpost_idx 判定（跳变法 + 几何法结合）
+// =====================================================================
+void Tracker::UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool is_jump)
+{
+  const Eigen::VectorXd x = ekf_outpost_.GetState();
+  const int sign = (outpost_motion_ == OutpostMotion::LEARNING) ? (x(4) >= 0.0 ? 1 : -1)
+                                                                : outpost_v_yaw_sign_;
+
+  auto apply_jump_logic = [&]()
+  {
+    const double z_diff = last_tracked_armor_.pose.position.z - armor_pos.z;
+    if (sign * z_diff > params_.outpost_cast_threshold)
+    {
+      outpost_idx_ = (sign == 1) ? 0 : 2;
+    }
+    else
+    {
+      outpost_idx_ = (outpost_idx_ + sign + 3) % 3;
+    }
+  };
+
+  if (is_jump)
+  {
+    apply_jump_logic();
+  }
 }
 
 // =====================================================================
@@ -1163,7 +1204,7 @@ void Tracker::ApplyOutpostMotionLogic()
   {
     x(4) = 0.0;
   }
-  //x(2) = std::clamp(x(2), outpost_z_avg_ - 0.001, outpost_z_avg_ + 0.001);
+  // x(2) = std::clamp(x(2), outpost_z_avg_ - 0.001, outpost_z_avg_ + 0.001);
   ekf_outpost_.SetState(x);
 }
 
