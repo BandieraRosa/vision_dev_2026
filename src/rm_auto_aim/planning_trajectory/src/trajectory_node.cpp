@@ -412,9 +412,6 @@ void PlanningTrajectoryNode::RtLoopOnce()
     bc_yaw = cmd.yaw;
     bc_pitch = cmd.pitch;
 
-    // Keep the current behavior of the uploaded code: UpdatePlanTrajectory()
-    // remains disabled. If you want the constrained planner to update each
-    // cycle, uncomment the next line after verifying planner timing.
     // trajectory_->UpdatePlanTrajectory(cmd, gimbal_yaw);
 
     gimbal_yaw_speed_ = cmd.vel_yaw;
@@ -434,9 +431,6 @@ void PlanningTrajectoryNode::RtLoopOnce()
     send_msg.yaw = bc_yaw;
   }
 
-  // Keep the current uploaded behavior: yaw velocity/acceleration output is
-  // forced to zero. Replace with cmd.vel_yaw/cmd.acc_yaw if the controller
-  // needs feed-forward.
   send_msg.vel_yaw = 0.0;
   send_msg.acc_yaw = 0.0;
   send_msg.num = target_local.number;

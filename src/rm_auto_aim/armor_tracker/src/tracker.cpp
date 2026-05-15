@@ -931,7 +931,7 @@ void Tracker::InitOutpost(const Armor& armor)
   outpost_z_avg_ = 0.0;
   outpost_motion_ = OutpostMotion::LEARNING;
   outpost_v_yaw_sign_ = 1;
-  outpost_idx_ = 1;  // 默认从中间档开始
+  outpost_idx_ = 0;  // 默认从抵档开始
   last_yaw_unwrap_ = 0.0;
 
   {
@@ -1005,7 +1005,6 @@ void Tracker::UpdateOutpost(const Armors::SharedPtr& armors_msg)
   if (matched)
   {
     const double measured_yaw = OrientationToYaw(tracked_armor_.pose.orientation);
-    UpdateOutpostIdx(tracked_armor_.pose.position, false);
     UpdateEkfOutpost(measured_yaw, tracked_armor_.pose.position);
     last_tracked_armor_ = tracked_armor_;
   }
@@ -1014,7 +1013,6 @@ void Tracker::UpdateOutpost(const Armors::SharedPtr& armors_msg)
     if (jump_cooldown_ <= 0)
     {
       RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Outpost armor jump!");
-      UpdateOutpostIdx(tracked_armor_.pose.position, true);
       HandleArmorJumpOutpost(tracked_armor_);
       last_tracked_armor_ = tracked_armor_;
       jump_cooldown_ = JUMP_COOLDOWN_FRAMES;
@@ -1128,34 +1126,6 @@ void Tracker::HandleArmorJumpOutpost(const Armor& current_armor)
   else
   {
     outpost_idx_ = (outpost_idx_ + sign + 3) % 3;
-  }
-}
-
-// =====================================================================
-// 前哨站 outpost_idx 判定（跳变法 + 几何法结合）
-// =====================================================================
-void Tracker::UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool is_jump)
-{
-  const Eigen::VectorXd x = ekf_outpost_.GetState();
-  const int sign = (outpost_motion_ == OutpostMotion::LEARNING) ? (x(4) >= 0.0 ? 1 : -1)
-                                                                : outpost_v_yaw_sign_;
-
-  auto apply_jump_logic = [&]()
-  {
-    const double z_diff = last_tracked_armor_.pose.position.z - armor_pos.z;
-    if (sign * z_diff > params_.outpost_cast_threshold)
-    {
-      outpost_idx_ = (sign == 1) ? 0 : 2;
-    }
-    else
-    {
-      outpost_idx_ = (outpost_idx_ + sign + 3) % 3;
-    }
-  };
-
-  if (is_jump)
-  {
-    apply_jump_logic();
   }
 }
 

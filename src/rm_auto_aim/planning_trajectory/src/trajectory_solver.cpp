@@ -130,8 +130,6 @@ TrajectorySolver::TarPostion TrajectorySolver::PredictArmor(
   return pre_pos;
 }
 
-// 从图片时间到打到的时间：自瞄处理的时间+电控延迟(从视觉发信号到电机动和发弹延迟)+云台转动时间+飞行时间
-// msg消息的频率即我们发送开火指令的频率，这可以作为我们的步长时间
 void TrajectorySolver::PredictAllArmorPosition(double time_delay)
 {
   pre_center_ = PredictCenter(time_delay);
@@ -173,7 +171,6 @@ double TrajectorySolver::MonoDirectionalAirResistanceModel(double s, double angl
   return v * sin(angle) * fly_time_ - GRAVITY * fly_time_ * fly_time_ / 2;
 }
 
-// 计算俯仰角(两种模式)
 // 计算俯仰角(两种模式)
 double TrajectorySolver::SolvePitch(double x, double y, double z)
 {
@@ -585,90 +582,6 @@ void TrajectorySolver::UpdateSolveState(double& pitch, double& yaw, bool& is_fir
   last_outpost_idx_ = target_.outpost_idx;
 }
 
-bool TrajectorySolver::IsFarSpinningOutpost() const
-{
-  const double distance = std::hypot(target_.position.x, target_.position.y);
-
-  return target_.num == 3 && distance > FAR_OUTPOST_DISTANCE &&
-         std::fabs(target_.velocity.yaw) > OUTPOST_SPIN_VYAW;
-}
-
-int TrajectorySolver::SelectOutpostBottomArmor() const
-{
-  const double sign = target_.velocity.yaw >= 0.0 ? 1.0 : -1.0;
-
-  for (int i = 0; i < target_.num; ++i)
-  {
-    const int offset = sign > 0.0 ? i : ((target_.num - i) % target_.num);
-    const int id = (target_.outpost_idx + offset) % target_.num;
-
-    // PredictArmor() 里：
-    // z = center.z + outpost_dz * (id - 1)
-    // 所以 id == 0 是底板
-    if (id == 0)
-    {
-      return i;
-    }
-  }
-
-  return 0;
-}
-
-void TrajectorySolver::SolveFarOutpostBottom(double send_time, double& pitch, double& yaw,
-                                             bool& is_fire, double& aim_x, double& aim_y,
-                                             double& aim_z, int& idx)
-{
-  selected_idx_ = SelectOutpostBottomArmor();
-  choose_next_ = false;
-  should_last_shot_ = true;
-
-  double time_delay = fly_time_ + bias_time_ + send_time;
-
-  PredictOneArmorPosition(time_delay, selected_idx_);
-
-  SolvePitch(pre_position_[selected_idx_].x, pre_position_[selected_idx_].y,
-             pre_position_[selected_idx_].z);
-
-  time_delay = fly_time_ + bias_time_ + send_time;
-
-  PredictOneArmorPosition(time_delay, selected_idx_);
-
-  aim_x = pre_position_[selected_idx_].x;
-  aim_y = pre_position_[selected_idx_].y;
-  aim_z = pre_position_[selected_idx_].z;
-  idx = selected_idx_;
-
-  pitch = SolvePitch(aim_x, aim_y, aim_z);
-
-  const double aim_yaw = SolveYaw(aim_x, aim_y);
-
-  // 关键：云台停止转动，不追随前哨站
-  yaw = gimbal_yaw_;
-
-  const double yaw_delta = AngleDiff(aim_yaw, gimbal_yaw_);
-
-  const auto [yaw_lo, yaw_hi] = ComputeFireYawWindow(pre_position_[selected_idx_]);
-
-  const bool yaw_ok = yaw_delta >= yaw_lo && yaw_delta <= yaw_hi;
-
-  const bool pitch_ok = std::fabs(pitch - gimbal_pitch_) < OUTPOST_PITCH_TOL;
-
-  // 保证底板在前面：
-  // 装甲板自身 yaw 和从车到装甲板的观察 yaw 接近，说明这块板正面朝向我方
-  const bool bottom_in_front =
-      std::fabs(AngleDiff(pre_position_[selected_idx_].yaw, aim_yaw)) < OUTPOST_FRONT_YAW;
-
-  is_fire = bottom_in_front && yaw_ok && pitch_ok;
-
-  last_pitch_ = pitch;
-  last_yaw_ = yaw;
-  last_x_v_ = target_.velocity.x;
-  last_y_v_ = target_.velocity.y;
-  last_v_yaw_ = target_.velocity.yaw;
-  last_choose_next_ = choose_next_;
-  last_outpost_idx_ = target_.outpost_idx;
-}
-
 void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_fire,
                                            double& aim_x, double& aim_y, double& aim_z,
                                            int& idx, const Target& target,
@@ -682,13 +595,6 @@ void TrajectorySolver::AutoSolveTrajectory(double& pitch, double& yaw, bool& is_
   gimbal_yaw_speed_ = gimbal_yaw_speed;
 
   fire_logic_mode_ = FireLogicMode::COMMON;
-
-  // 远距离旋转前哨站：只瞄底板，云台停止转动，等底板转到正前方再开火
-  // if (IsFarSpinningOutpost())
-  // {
-  //   SolveFarOutpostBottom(send_time, pitch, yaw, is_fire, aim_x, aim_y, aim_z, idx);
-  //   return;
-  // }
 
   // 上游若标记 is_center=false，说明给的就是装甲板的位置/速度
   // 直接走 CV 外推分支，跳过整车建模和择板
