@@ -978,15 +978,28 @@ void Tracker::UpdateOutpost(const Armors::SharedPtr& armors_msg)
   bool is_jump = false;
 
   const auto& armors = armors_msg->armors;
-  std::vector<Armor> target_id_armors;
-  target_id_armors.reserve(armors.size());
-  std::copy_if(armors.begin(), armors.end(), std::back_inserter(target_id_armors),
+
+  // 先按 ID 过滤
+  std::vector<Armor> id_filtered;
+  std::copy_if(armors.begin(), armors.end(), std::back_inserter(id_filtered),
                [id = tracked_id_](const Armor& a) { return a.number == id; });
 
-  if (target_id_armors.size() != armors.size())
+  if (id_filtered.size() != armors.size())
   {
     DoYouWantToChangeTarget(armors_msg);
   }
+
+  // 再按 pitch 过滤
+  std::vector<Armor> target_id_armors;
+  std::copy_if(id_filtered.begin(), id_filtered.end(),
+               std::back_inserter(target_id_armors),
+               [this](const Armor& a)
+               {
+                 double pitch = OrientationToPitch(a.pose.orientation);
+                 std::cerr << "pitch: " << pitch << std::endl;
+                 // return std::abs(pitch - 15.0 * M_PI / 180.0) > ;
+                 return 1;
+               });
 
   if (target_id_armors.empty())
   {
@@ -1245,6 +1258,14 @@ double Tracker::OrientationToYaw(const geometry_msgs::msg::Quaternion& q)
   yaw = last_yaw_unwrap_ + angles::shortest_angular_distance(last_yaw_unwrap_, yaw);
   last_yaw_unwrap_ = yaw;
   return yaw;
+}
+
+double Tracker::OrientationToPitch(const geometry_msgs::msg::Quaternion& q)
+{
+  tf2::Quaternion tf_q(q.x, q.y, q.z, q.w);
+  double roll, pitch, yaw;
+  tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
+  return pitch;
 }
 
 Eigen::Vector3d Tracker::GetArmorPositionFromFullState(const Eigen::VectorXd& x) const

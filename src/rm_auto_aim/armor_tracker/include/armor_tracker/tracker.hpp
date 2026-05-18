@@ -4,11 +4,10 @@
 // ROS
 #include <angles/angles.h>
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
 #include <Eigen/Dense>
 #include <optional>
 #include <string>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
 
 #include "armor_tracker/extended_kalman_filter.hpp"
@@ -50,7 +49,7 @@ class Tracker  // 整车观测
   // 对外输出，Node 端按字段填充 target_msg
   struct Output
   {
-    bool is_center = true;           // true = 整车/前哨 (xc,yc), false = 装甲板 (xa,ya)
+    bool is_center = true;  // true = 整车/前哨 (xc,yc), false = 装甲板 (xa,ya)
     Eigen::Vector3d position{0, 0, 0};
     Eigen::Vector3d velocity{0, 0, 0};
     double yaw = 0.0;
@@ -135,8 +134,7 @@ class Tracker  // 整车观测
                          double& yaw_diff, bool& is_jump);
 
   void HandleArmorJumpOutpost(const Armor& current_armor);
-  void UpdateEkfOutpost(double measured_yaw,
-                        const geometry_msgs::msg::Point& armor_pos);
+  void UpdateEkfOutpost(double measured_yaw, const geometry_msgs::msg::Point& armor_pos);
 
   // 更新当前观测装甲板 idx：跳变法 + 几何法
   void UpdateOutpostIdx(const geometry_msgs::msg::Point& armor_pos, bool is_jump);
@@ -151,6 +149,7 @@ class Tracker  // 整车观测
   void UpdateArmorsNum(const Armor& armor);
 
   double OrientationToYaw(const geometry_msgs::msg::Quaternion& q);
+  double OrientationToPitch(const geometry_msgs::msg::Quaternion& q);
   Eigen::Vector3d GetArmorPositionFromFullState(const Eigen::VectorXd& x) const;
   Eigen::Vector3d GetArmorPositionFromOutpostState(const Eigen::VectorXd& x) const;
 
@@ -208,6 +207,8 @@ class Tracker  // 整车观测
 
   // 前哨站：当前被观测装甲板索引（0=高 / 1=中 / 2=低）
   int outpost_idx_ = 0;
+
+  double outpost_pitch_ = 0.0;
 
   // 状态机计数
   int detect_count_ = 0;
