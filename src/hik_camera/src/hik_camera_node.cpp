@@ -13,6 +13,7 @@ HikCameraNode::HikCameraNode(const rclcpp::NodeOptions& options)
 {
   params_.exposure_time = this->declare_parameter<double>("exposure_time", 1000.0);  // us
   params_.gain = this->declare_parameter<double>("gain", 15.0);
+  params_.gamma = this->declare_parameter<double>("gamma", 0.7);
   params_.autocap = this->declare_parameter<bool>("autocap", true);
   params_.frame_rate_enable = this->declare_parameter<bool>("frame_rate_enable", false);
   params_.frame_rate = this->declare_parameter<double>("frame_rate", 249.0);
@@ -469,6 +470,7 @@ void HikCameraNode::CaptureInit()
   SetEnumValue("PixelFormat", PixelType_Gvsp_BayerRG8);
   SetFloatValue("ExposureTime", params_.exposure_time);
   SetFloatValue("Gain", params_.gain);
+  SetFloatValue("Gamma", params_.gamma);
 
   MVCC_ENUMVALUE adc_bit_depth{};
   ret = MV_CC_GetEnumValue(handle_, "ADCBitDepth", &adc_bit_depth);

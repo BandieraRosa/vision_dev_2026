@@ -39,6 +39,7 @@ class HikCameraNode : public rclcpp::Node
   {
     double exposure_time;  // us
     double gain;
+    double gamma;
     bool autocap;
     bool frame_rate_enable;
     double frame_rate;
