@@ -10,8 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Export compile commands for clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build YOLO detector with OpenVINO support" ON)
-option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build YOLO detector with TensorRT support" OFF)
+# Backend toggles are independent: both can be ON in the same build.
+# Runtime selection is controlled by the yolo.backend ROS parameter.
+option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build runtime-selectable YOLO OpenVINO backend" ON)
+option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build runtime-selectable YOLO TensorRT backend" ON)
 
 # ####################
 # Find dependencies ##
@@ -27,7 +29,12 @@ ament_auto_find_build_dependencies()
 
 # 创建列表，内容为 src 目录下的所有 .cpp 文件
 file(GLOB_RECURSE SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
-list(REMOVE_ITEM SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_detector.cpp)
+list(
+  REMOVE_ITEM
+  SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/yolo/yolo_detector.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/yolo/openvino_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/yolo/tensorrt_backend.cpp)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 
@@ -35,18 +42,19 @@ target_include_directories(
   ${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS}
                          ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
-target_sources(${PROJECT_NAME} PRIVATE src/yolo_detector.cpp)
+target_sources(${PROJECT_NAME} PRIVATE src/yolo/yolo_detector.cpp)
 
 if(ARMOR_DETECTOR_ENABLE_OPENVINO)
   find_package(OpenVINO REQUIRED CONFIG)
+  target_sources(${PROJECT_NAME} PRIVATE src/yolo/openvino_backend.cpp)
   target_link_libraries(${PROJECT_NAME} openvino::runtime)
   target_compile_definitions(${PROJECT_NAME}
                              PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=1)
-  message(STATUS "YOLO detector enabled with OpenVINO")
+  message(STATUS "YOLO OpenVINO backend enabled")
 else()
   target_compile_definitions(${PROJECT_NAME}
                              PUBLIC ARMOR_DETECTOR_HAS_OPENVINO=0)
-  message(STATUS "YOLO detector disabled")
+  message(STATUS "YOLO OpenVINO backend disabled")
 endif()
 
 if(ARMOR_DETECTOR_ENABLE_TENSORRT)
@@ -70,9 +78,10 @@ if(ARMOR_DETECTOR_ENABLE_TENSORRT)
   target_include_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_INCLUDE_DIR})
   target_link_directories(${PROJECT_NAME} PUBLIC ${TENSORRT_LIB_DIR})
 
-  target_sources(${PROJECT_NAME} PRIVATE src/gpu_preprocessor.cu)
+  target_sources(${PROJECT_NAME} PRIVATE src/yolo/tensorrt_backend.cpp
+                                         src/yolo/gpu_preprocessor.cu)
 
-  set_source_files_properties(src/gpu_preprocessor.cu PROPERTIES LANGUAGE CUDA)
+  set_source_files_properties(src/yolo/gpu_preprocessor.cu PROPERTIES LANGUAGE CUDA)
 
   set_target_properties(
     ${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "87;89"
@@ -83,11 +92,15 @@ if(ARMOR_DETECTOR_ENABLE_TENSORRT)
 
   target_compile_definitions(${PROJECT_NAME}
                              PUBLIC ARMOR_DETECTOR_HAS_TENSORRT=1)
-  message(STATUS "YOLO detector enabled with TensorRT")
+  message(STATUS "YOLO TensorRT backend enabled")
 else()
   target_compile_definitions(${PROJECT_NAME}
                              PUBLIC ARMOR_DETECTOR_HAS_TENSORRT=0)
-  message(STATUS "YOLO detector disabled")
+  message(STATUS "YOLO TensorRT backend disabled")
+endif()
+
+if(ARMOR_DETECTOR_ENABLE_OPENVINO AND ARMOR_DETECTOR_ENABLE_TENSORRT)
+  message(STATUS "YOLO OpenVINO and TensorRT backends will coexist; yolo.backend selects the runtime backend")
 endif()
 
 rclcpp_components_register_node(
@@ -107,11 +120,19 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest)
 
   file(GLOB TEST_SOURCES test/*.cpp)
+  set(MANUAL_YOLO_TEST_SOURCE
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_yolo_detector.cpp)
+  list(REMOVE_ITEM TEST_SOURCES ${MANUAL_YOLO_TEST_SOURCE})
   foreach(TEST_SOURCE ${TEST_SOURCES})
     get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
     ament_add_gtest(${TEST_NAME} ${TEST_SOURCE})
     target_link_libraries(${TEST_NAME} ${PROJECT_NAME})
   endforeach()
+
+  if(ARMOR_DETECTOR_ENABLE_OPENVINO OR ARMOR_DETECTOR_ENABLE_TENSORRT)
+    add_executable(test_yolo_detector_manual ${MANUAL_YOLO_TEST_SOURCE})
+    target_link_libraries(test_yolo_detector_manual ${PROJECT_NAME})
+  endif()
 endif()
 
 # ##########
