@@ -1,4 +1,4 @@
-#if ARMOR_DETECTOR_ENABLE_YOLO
+#if ARMOR_DETECTOR_HAS_OPENVINO || ARMOR_DETECTOR_HAS_TENSORRT
 
 #include <iostream>
 #include <opencv2/highgui.hpp>
