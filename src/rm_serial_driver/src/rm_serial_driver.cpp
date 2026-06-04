@@ -17,7 +17,6 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
   auto robot_type = this->declare_parameter<std::string>("robot_type", "default");
   is_hero_ = (robot_type == "hero");
   is_send_vel_ = this->declare_parameter<bool>("send_velocity", true);
-  std::cout << "Serial timestamp_offset: " << timestamp_offset_ << '\n';
 
   uart_client_ = std::make_unique<LibXR::LinuxUART>(
       vid, pid, 115200, LibXR::LinuxUART::Parity::NO_PARITY, 8, 1);
@@ -36,6 +35,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
       LibXR::Topic::FindOrCreate<LibXR::Quaternion<float>>("ahrs_quaternion");
 
   lob_shot_topic_ = LibXR::Topic::FindOrCreate<uint8_t>("lob_shot");
+
+  reset_topic_ = LibXR::Topic::FindOrCreate<uint8_t>("reset");
 
   // 发送到下位机的话题
   LibXR::Topic::Domain tracker_domain = LibXR::Topic::Domain("tracker");
@@ -63,20 +64,8 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
         "/lob_shot_switch", rclcpp::QoS(1).reliable());
   }
 
-  // 打弹（t键打弹，g键停止）
-  // fire_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-  //     "/cmd_vel", rclcpp::SensorDataQoS(),
-  //     [this](const geometry_msgs::msg::Twist::SharedPtr msg)
-  //     {
-  //       if (msg->linear.z > 0.0)
-  //       {
-  //         fire_notify_ = 1;
-  //       }
-  //       else if (msg->linear.z == 0.0)
-  //       {
-  //         fire_notify_ = 0;
-  //       }
-  //     });
+  reset_pub_ =
+      this->create_publisher<std_msgs::msg::Bool>("/reset", rclcpp::QoS(1).reliable());
 
   // 订阅 /tracker/send
   send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
@@ -133,6 +122,21 @@ RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions& options)
     auto lob_shot_cb = LibXR::Topic::Callback::Create(lob_shot_cb_fun, this);
     lob_shot_topic_.RegisterCallback(lob_shot_cb);
   }
+
+  void (*reset_cb_fun)(bool, RMSerialDriver* self, LibXR::RawData& data) =
+      [](bool, RMSerialDriver* self, LibXR::RawData& data)
+  {
+    auto val = *reinterpret_cast<uint8_t*>(data.addr_);
+    if (val == 1)
+    {
+      std_msgs::msg::Bool msg;
+      msg.data = true;
+      self->reset_pub_->publish(msg);
+      RCLCPP_WARN(self->get_logger(), "player wants tracker reset");
+    }
+  };
+  auto reset_cb = LibXR::Topic::Callback::Create(reset_cb_fun, this);
+  reset_topic_.RegisterCallback(reset_cb);
 }
 
 RMSerialDriver::~RMSerialDriver() {}

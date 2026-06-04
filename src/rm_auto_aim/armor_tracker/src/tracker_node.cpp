@@ -1,7 +1,7 @@
 #include "armor_tracker/tracker_node.hpp"
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
 
 namespace rm_auto_aim
@@ -40,9 +40,20 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions& options)
 
   armors_filter_->registerCallback(&ArmorTrackerNode::ArmorsCallback, this);
 
+  reset_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/reset", rclcpp::QoS(1).reliable(),
+      [this](const std_msgs::msg::Bool::SharedPtr msg)
+      {
+        if (!msg->data)
+        {
+          return;
+        }
+        tracker_->Init(last_armors_);
+      });
+
   // ---------- 发布 ----------
-  info_pub_ = this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>(
-      "/tracker/info", 10);
+  info_pub_ =
+      this->create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
   target_pub_ = this->create_publisher<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS());
 }
@@ -59,8 +70,8 @@ TrackerParams ArmorTrackerNode::DeclareTrackerParams()
       this->declare_parameter("tracker.max_match_distance", p.max_match_distance);
   p.max_match_yaw_diff =
       this->declare_parameter("tracker.max_match_yaw_diff", p.max_match_yaw_diff);
-  p.tracking_thres =
-      static_cast<int>(this->declare_parameter("tracker.tracking_thres", p.tracking_thres));
+  p.tracking_thres = static_cast<int>(
+      this->declare_parameter("tracker.tracking_thres", p.tracking_thres));
   p.lost_time_thres =
       this->declare_parameter("tracker.lost_time_thres", p.lost_time_thres);
   p.change_time_thres =
@@ -88,13 +99,11 @@ TrackerParams ArmorTrackerNode::DeclareTrackerParams()
   // 装甲板 CV EKF Q
   p.s2_q_x_armor = this->declare_parameter("ekf.s2_q_x_armor", p.s2_q_x_armor);
   p.s2_q_y_armor = this->declare_parameter("ekf.s2_q_y_armor", p.s2_q_y_armor);
-  p.s2_q_z_armor = this->declare_parameter("ekf.s2_q_z_armor", p.s2_q_z_armor); 
+  p.s2_q_z_armor = this->declare_parameter("ekf.s2_q_z_armor", p.s2_q_z_armor);
 
   // 前哨 EKF Q
-  p.s2_q_xy_outpost =
-      this->declare_parameter("ekf.s2_q_xy_outpost", p.s2_q_xy_outpost);
-  p.s2_q_z_outpost =
-      this->declare_parameter("ekf.s2_q_z_outpost", p.s2_q_z_outpost);
+  p.s2_q_xy_outpost = this->declare_parameter("ekf.s2_q_xy_outpost", p.s2_q_xy_outpost);
+  p.s2_q_z_outpost = this->declare_parameter("ekf.s2_q_z_outpost", p.s2_q_z_outpost);
   p.s2_q_yaw_outpost =
       this->declare_parameter("ekf.s2_q_yaw_outpost", p.s2_q_yaw_outpost);
 
@@ -103,24 +112,23 @@ TrackerParams ArmorTrackerNode::DeclareTrackerParams()
   p.outpost_dz = this->declare_parameter("outpost.outpost_dz", p.outpost_dz);
   p.outpost_cast_threshold =
       this->declare_parameter("outpost.outpost_cast_threshold", p.outpost_cast_threshold);
-  p.outpost_vyaw_abs = this->declare_parameter("outpost.outpost_vyaw_abs", p.outpost_vyaw_abs);
-  p.outpost_static_threshold =
-      this->declare_parameter("outpost.outpost_static_threshold", p.outpost_static_threshold);
-  p.outpost_learning_frames = static_cast<int>(
-      this->declare_parameter("outpost.outpost_learning_frames", p.outpost_learning_frames));
-  p.outpost_zc_stable_count = static_cast<int>(
-      this->declare_parameter("outpost.outpost_zc_stable_count", p.outpost_zc_stable_count));
+  p.outpost_vyaw_abs =
+      this->declare_parameter("outpost.outpost_vyaw_abs", p.outpost_vyaw_abs);
+  p.outpost_static_threshold = this->declare_parameter("outpost.outpost_static_threshold",
+                                                       p.outpost_static_threshold);
+  p.outpost_learning_frames = static_cast<int>(this->declare_parameter(
+      "outpost.outpost_learning_frames", p.outpost_learning_frames));
+  p.outpost_zc_stable_count = static_cast<int>(this->declare_parameter(
+      "outpost.outpost_zc_stable_count", p.outpost_zc_stable_count));
   p.outpost_idx_geo_margin =
       this->declare_parameter("outpost.outpost_idx_geo_margin", p.outpost_idx_geo_margin);
 
   // 测量噪声
   p.r_ypd_yaw_std = this->declare_parameter("ekf.r_ypd_yaw_std", p.r_ypd_yaw_std);
-  p.r_ypd_pitch_std =
-      this->declare_parameter("ekf.r_ypd_pitch_std", p.r_ypd_pitch_std);
-  p.r_ypd_distance_std_scale = this->declare_parameter("ekf.r_ypd_distance_std_scale",
-                                                       p.r_ypd_distance_std_scale);
-  p.r_armor_yaw_std =
-      this->declare_parameter("ekf.r_armor_yaw_std", p.r_armor_yaw_std);
+  p.r_ypd_pitch_std = this->declare_parameter("ekf.r_ypd_pitch_std", p.r_ypd_pitch_std);
+  p.r_ypd_distance_std_scale =
+      this->declare_parameter("ekf.r_ypd_distance_std_scale", p.r_ypd_distance_std_scale);
+  p.r_armor_yaw_std = this->declare_parameter("ekf.r_armor_yaw_std", p.r_armor_yaw_std);
 
   return p;
 }
@@ -131,6 +139,7 @@ TrackerParams ArmorTrackerNode::DeclareTrackerParams()
 void ArmorTrackerNode::ArmorsCallback(
     auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
+  last_armors_ = armors_msg;
   // 1. 查询相机位姿（target_frame -> camera frame）
   Eigen::Matrix3d camera_to_world_rot = Eigen::Matrix3d::Identity();
   Eigen::Vector3d camera_origin_world = Eigen::Vector3d::Zero();
@@ -180,7 +189,8 @@ void ArmorTrackerNode::ArmorsCallback(
   armors_msg->armors.erase(
       std::remove_if(
           armors_msg->armors.begin(), armors_msg->armors.end(),
-          [this](const auto_aim_interfaces::msg::Armor& armor) {
+          [this](const auto_aim_interfaces::msg::Armor& armor)
+          {
             return std::fabs(armor.pose.position.z) > 5 ||
                    Eigen::Vector2d(armor.pose.position.x, armor.pose.position.y).norm() >
                        max_armor_distance_;
@@ -214,8 +224,7 @@ void ArmorTrackerNode::ArmorsCallback(
     if (state == Tracker::State::DETECTING)
     {
       target_msg.tracking = false;
-      RCLCPP_ERROR(get_logger(),
-                   "Tracker state is DETECTING");
+      RCLCPP_ERROR(get_logger(), "Tracker state is DETECTING");
     }
     else if (state == Tracker::State::TRACKING || state == Tracker::State::TEMP_LOST)
     {

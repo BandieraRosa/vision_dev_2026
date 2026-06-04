@@ -32,7 +32,7 @@ static void XRobotMain(LibXR::HardwareContainer& hw)
   static ApplicationManager appmgr;
 
   static SharedTopic shared_topic(hw, appmgr, "uart_client", 256,
-                                  {{"ahrs_quaternion"}, {"lob_shot"}});
+                                  {{"ahrs_quaternion"}, {"lob_shot"}, {"reset"}});
 
   static SharedTopicClient shared_topic_client(
       hw, appmgr, "uart_client", 256,
@@ -67,6 +67,7 @@ class RMSerialDriver : public rclcpp::Node
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
       joint_state_pub_;                                             // 云台关节状态发布者
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr lob_shot_pub_;  // 吊射标志发布者
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr reset_pub_;
 
   /* ROS2订阅者 */
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
@@ -78,6 +79,7 @@ class RMSerialDriver : public rclcpp::Node
   LibXR::Topic fire_notify_topic_;
   LibXR::Topic lob_shot_topic_;
   LibXR::Topic target_num_topic_;
+  LibXR::Topic reset_topic_;
 
   /* LibXR初始化相关成员变量 */
   std::unique_ptr<LibXR::RamFS> ramfs_;
@@ -93,6 +95,8 @@ class RMSerialDriver : public rclcpp::Node
   uint8_t last_lob_val_{0};
   bool is_hero_{false};
   bool is_send_vel_ = false;
+
+  uint8_t last_reset_val_{0};
 
   std::chrono::time_point<std::chrono::steady_clock,
                           std::chrono::duration<uint64_t, std::ratio<1, 1000000000>>>
