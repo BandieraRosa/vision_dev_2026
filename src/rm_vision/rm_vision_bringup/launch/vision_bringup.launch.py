@@ -15,7 +15,6 @@ from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 
-
 sys.path.append(
     os.path.join(get_package_share_directory("rm_vision_bringup"), "launch")
 )
@@ -33,13 +32,13 @@ def _safe_taskset_prefix(cpu_list):
         return None
 
     return (
-        "bash -lc 'CPU_LIST=\"%s\"; "
+        'bash -lc \'CPU_LIST="%s"; '
         "if command -v taskset >/dev/null 2>&1 && "
-        "taskset -c \"$CPU_LIST\" true >/dev/null 2>&1; then "
-        "exec taskset -c \"$CPU_LIST\" \"$@\"; "
+        'taskset -c "$CPU_LIST" true >/dev/null 2>&1; then '
+        'exec taskset -c "$CPU_LIST" "$@"; '
         "else "
-        "echo \"[launch] skip taskset CPU_LIST=$CPU_LIST: unavailable or invalid on this machine\" >&2; "
-        "exec \"$@\"; "
+        'echo "[launch] skip taskset CPU_LIST=$CPU_LIST: unavailable or invalid on this machine" >&2; '
+        'exec "$@"; '
         "fi' --"
     ) % cpu_list
 
@@ -62,8 +61,8 @@ def _build_after_checkout(context, *args, **kwargs):
 
     robot_type = LaunchConfiguration("robot").perform(context)
 
-    vision_cpu_list = launch_params.get("vision_cpu_list", "4-6")
-    trajectory_cpu_list = launch_params.get("trajectory_cpu_list", "7")
+    vision_cpu_list = launch_params.get("vision_cpu_list", "2-6")
+    trajectory_cpu_list = launch_params.get("trajectory_cpu_list", "1")
 
     # 普通视觉节点：优先 CPU4-6；若机器不支持则自动跳过 taskset
     vision_container = ComposableNodeContainer(
@@ -82,7 +81,7 @@ def _build_after_checkout(context, *args, **kwargs):
         output="both",
         emulate_tty=True,
         parameters=[
-            {"thread_num": os.cpu_count() - 2},
+            {"thread_num": os.cpu_count()},
         ],
         ros_arguments=[
             "--ros-args",
@@ -127,6 +126,8 @@ def _build_after_checkout(context, *args, **kwargs):
 
 
 def generate_launch_description():
+    from rosbag_record import get_rosbag_record_actions
+
     ws_root = LaunchConfiguration("ws_root")
     robot = LaunchConfiguration("robot")
 
@@ -155,6 +156,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("ws_root", default_value=os.getcwd()),
             DeclareLaunchArgument("robot", default_value=""),
+            # *get_rosbag_record_actions(bag_name_prefix="vision"),
             checkout_robot,
             RegisterEventHandler(
                 OnProcessExit(
