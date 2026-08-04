@@ -13,7 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Backend toggles are independent: both can be ON in the same build.
 # Runtime selection is controlled by the yolo.backend ROS parameter.
 option(ARMOR_DETECTOR_ENABLE_OPENVINO "Build runtime-selectable YOLO OpenVINO backend" ON)
-option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build runtime-selectable YOLO TensorRT backend" ON)
+option(ARMOR_DETECTOR_ENABLE_TENSORRT "Build runtime-selectable YOLO TensorRT backend" OFF)
 
 # ####################
 # Find dependencies ##
